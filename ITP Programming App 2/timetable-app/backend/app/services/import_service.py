@@ -137,7 +137,7 @@ class ImportService:
             }
 
         for index, row in frame.iterrows():
-            source_row_no = int(row.get("Source Row No") or index + 2)
+            source_row_no = self._source_row_no(row.get("Source Row No"), int(index))
             try:
                 count = self._positive_int(row.get("Session Count")) or 1
                 for _ in range(count):
@@ -406,7 +406,15 @@ class ImportService:
             return None
         return int(number)
 
+    def _source_row_no(self, value, index: int) -> int:
+        row_no = self._positive_int(value)
+        if row_no and row_no >= 2:
+            return row_no
+        return index + 2
+
     def _positive_float(self, value) -> float | None:
+        if isinstance(value, bool):
+            return None
         text = clean_text(value)
         if not text:
             return None

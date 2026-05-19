@@ -42,3 +42,19 @@ def test_fixed_session_with_no_matching_slot_returns_validation_error(db_session
 
     assert validation["is_valid"] is False
     assert any("No default time slot matches" in error["message"] for error in validation["errors"])
+
+
+def test_custom_even_week_session_uses_even_slot(db_session):
+    session = db_session.query(Session).filter_by(requirement_id="REQ-DEMO-001").one()
+    session.week_pattern = "Custom"
+    session.custom_weeks = "2,4,6,8,10,12"
+
+    result = CpSatTimetableSolver().solve(
+        [session],
+        db_session.query(TimeSlot).all(),
+        db_session.query(Room).all(),
+        max_seconds=5,
+    )
+
+    assert result["solver_status"] in {"FEASIBLE", "OPTIMAL"}
+    assert result["assignments"][0]["week_pattern"] == "Even"

@@ -4,6 +4,15 @@ FastAPI backend for the timetable scheduling prototype.
 
 ## Setup
 
+For normal Windows use, prefer the repo-level launcher:
+
+```powershell
+cd ..
+powershell -NoProfile -ExecutionPolicy Bypass -File .\quicklaunch.ps1
+```
+
+Manual backend-only setup:
+
 ```powershell
 python -m venv venv
 venv\Scripts\activate

@@ -10,8 +10,10 @@ ALLOWED_DELIVERY_MODES = {
     "face to face",
     "f2f",
     "online",
+    "online synchronous",
     "hybrid",
     "asynchronous",
+    "online asynchronous",
     "async",
 }
 
@@ -20,7 +22,7 @@ def clean_text(value: object) -> str | None:
     if value is None:
         return None
     text = str(value).strip()
-    if not text or text.lower() in {"nan", "none", "null"}:
+    if not text or text.lower() in {"nan", "none", "null", "na", "<na>", "nat"}:
         return None
     return text
 
@@ -73,11 +75,11 @@ def canonical_delivery_mode(value: object) -> str | None:
         return None
     if token in {"face to face", "f2f", "physical", "in person"}:
         return "Face-to-face"
-    if token == "online":
+    if token in {"online", "online synchronous", "synchronous", "sync"}:
         return "Online"
     if token == "hybrid":
         return "Hybrid"
-    if token in {"asynchronous", "async"}:
+    if token in {"asynchronous", "async", "online asynchronous"}:
         return "Asynchronous"
     return clean_text(value)
 
@@ -93,6 +95,13 @@ def parse_day_list(value: object) -> list[str]:
         if day:
             days.append(day)
     return days
+
+
+def parse_custom_weeks(value: object) -> list[int]:
+    text = clean_text(value)
+    if not text:
+        return []
+    return [int(match) for match in re.findall(r"\d+", text)]
 
 
 def time_to_minutes(value: object) -> int | None:

@@ -43,6 +43,7 @@ def seed_reference_data(db: DbSession) -> None:
         ("VIRTUAL-ROOM-1", "Virtual Room 1", "virtual", 999, True, "Virtual", True),
         ("SR-01", "Seminar Room 01", "classroom", 40, False, "Physical", False),
         ("SR-02", "Seminar Room 02", "classroom", 60, False, "Physical", False),
+        ("SR-03", "Seminar Room 03", "classroom", 80, False, "Physical", False),
         ("LAB-01", "Lab 01", "lab", 30, False, "Physical", False),
         ("LECT-01", "Lectorial 01", "lectorial", 120, False, "Physical", True),
     ]

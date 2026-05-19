@@ -10,6 +10,32 @@ Working full-stack prototype for importing academic timetable requirements, vali
 
 ## Run Locally
 
+### Quick Start on Windows
+
+Prerequisites:
+
+- Python 3.10 or newer
+- Node.js 20 or newer, including npm
+
+From a fresh clone, double-click:
+
+```text
+Launch Timetable Scheduler.cmd
+```
+
+Or run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\quicklaunch.ps1
+```
+
+The quicklaunch script creates `backend\venv` when missing, installs backend packages from `backend\requirements.txt`, installs frontend packages with `npm ci`, starts both servers, avoids ports already used by other processes, and opens the app in your browser. If the default ports are busy, it automatically tries the next available ports starting from:
+
+- Backend: http://127.0.0.1:8001
+- Frontend: http://127.0.0.1:5174
+
+### Manual Start
+
 Backend:
 
 ```powershell
@@ -31,6 +57,13 @@ npm run dev
 - Backend: http://localhost:8000
 - Frontend: http://localhost:5173
 - API docs: http://localhost:8000/docs
+
+When using a non-default backend port, start the frontend with:
+
+```powershell
+$env:VITE_PROXY_TARGET="http://127.0.0.1:8001"
+npm run dev -- --host 127.0.0.1 --port 5174
+```
 
 ## Workflow
 
@@ -115,6 +148,13 @@ pytest
 ```
 
 Coverage includes import validation, hard constraint detection, solver feasibility, infeasible capacity, and invalid fixed-time handling.
+
+Frontend build check:
+
+```powershell
+cd frontend
+npm run build
+```
 
 ## Known Limitations
 

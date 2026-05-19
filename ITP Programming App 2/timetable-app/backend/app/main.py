@@ -1,8 +1,12 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import create_db_and_seed
 from app.routes import data_routes, export_routes, schedule_routes, upload_routes, validation_routes
+
+APP_ROOT = Path(__file__).resolve().parents[1]
 
 app = FastAPI(title="Timetable Scheduling API", version="0.1.0")
 
@@ -29,4 +33,8 @@ def startup() -> None:
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "service": "academic-timetable-scheduler",
+        "app_root": str(APP_ROOT),
+    }

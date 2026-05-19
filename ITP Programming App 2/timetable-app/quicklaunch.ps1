@@ -3,10 +3,13 @@ $ErrorActionPreference = "Stop"
 $AppRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackendDir = Join-Path $AppRoot "backend"
 $FrontendDir = Join-Path $AppRoot "frontend"
-$BackendPort = 8001
-$FrontendPort = 5174
-$BackendUrl = "http://localhost:$BackendPort"
-$FrontendUrl = "http://localhost:$FrontendPort"
+$HostName = "127.0.0.1"
+$BackendStartPort = 8001
+$FrontendStartPort = 5174
+$BackendPort = $null
+$FrontendPort = $null
+$BackendUrl = $null
+$FrontendUrl = $null
 
 function Test-Http {
     param([string]$Url)
@@ -20,14 +23,157 @@ function Test-Http {
     }
 }
 
-function Test-Backend {
+function Get-MajorVersion {
+    param([string]$VersionText)
+
+    if ($VersionText -match "(\d+)\.") {
+        return [int]$Matches[1]
+    }
+    return $null
+}
+
+function Get-SystemPython {
+    $candidates = @(
+        @{ Name = "py"; PrefixArgs = @("-3") },
+        @{ Name = "python"; PrefixArgs = @() },
+        @{ Name = "python3"; PrefixArgs = @() }
+    )
+
+    foreach ($candidate in $candidates) {
+        $command = Get-Command $candidate.Name -ErrorAction SilentlyContinue
+        if (-not $command) {
+            continue
+        }
+
+        $version = & $command.Source @($candidate.PrefixArgs + @("--version")) 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            continue
+        }
+
+        $major = Get-MajorVersion ([string]$version)
+        if ($major -ge 3) {
+            return @{
+                Exe = $command.Source
+                PrefixArgs = $candidate.PrefixArgs
+            }
+        }
+    }
+
+    throw "Python 3 was not found. Install Python 3.10+ from https://www.python.org/downloads/ and enable 'Add python.exe to PATH'."
+}
+
+function Assert-NodeRuntime {
+    $node = Get-Command "node" -ErrorAction SilentlyContinue
+    if (-not $node) {
+        throw "Node.js was not found. Install Node.js 20+ from https://nodejs.org/ and run this launcher again."
+    }
+
+    $version = & $node.Source --version 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Node.js is installed but did not run correctly: $version"
+    }
+
+    $major = Get-MajorVersion ([string]$version)
+    if ($major -lt 20) {
+        throw "Node.js 20+ is required by the frontend tooling. Current version: $version"
+    }
+}
+
+function Get-NpmCommand {
+    $npm = Get-Command "npm.cmd" -ErrorAction SilentlyContinue
+    if (-not $npm) {
+        $npm = Get-Command "npm" -ErrorAction SilentlyContinue
+    }
+    if (-not $npm) {
+        throw "npm was not found. Reinstall Node.js 20+ with npm included, then run this launcher again."
+    }
+    return $npm.Source
+}
+
+function Normalize-Path {
+    param([string]$Path)
+
+    return [System.IO.Path]::GetFullPath($Path).TrimEnd("\").ToLowerInvariant()
+}
+
+function Test-AppHealth {
+    param($Response)
+
+    if ($null -eq $Response -or $null -eq $Response.status -or $null -eq $Response.app_root) {
+        return $false
+    }
+
+    return (Normalize-Path $Response.app_root) -eq (Normalize-Path $BackendDir)
+}
+
+function Test-BackendAt {
+    param([string]$Url)
+
     try {
-        $response = Invoke-RestMethod -Uri "$BackendUrl/health" -TimeoutSec 3
-        return $null -ne $response.status
+        $response = Invoke-RestMethod -Uri "$Url/health" -TimeoutSec 3
+        return Test-AppHealth $response
     }
     catch {
         return $false
     }
+}
+
+function Test-Backend {
+    return Test-BackendAt $BackendUrl
+}
+
+function Test-FrontendAt {
+    param([string]$Url)
+
+    try {
+        $response = Invoke-RestMethod -Uri "$Url/health" -TimeoutSec 3
+        return Test-AppHealth $response
+    }
+    catch {
+        return $false
+    }
+}
+
+function Get-ListeningProcesses {
+    param([int]$Port)
+
+    try {
+        return @(
+            Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+                ForEach-Object {
+                    Get-CimInstance Win32_Process -Filter "ProcessId = $($_.OwningProcess)" |
+                        Select-Object ProcessId, CommandLine
+                }
+        )
+    }
+    catch {
+        return @()
+    }
+}
+
+function Test-AppProcess {
+    param($Process)
+
+    $command = [string]$Process.CommandLine
+    if (-not $command) {
+        return $false
+    }
+    return $command.ToLowerInvariant().Contains($AppRoot.ToLowerInvariant())
+}
+
+function Test-PortOwnedByThisApp {
+    param([int]$Port)
+
+    $listeners = @(Get-ListeningProcesses $Port)
+    if ($listeners.Count -eq 0) {
+        return $false
+    }
+    foreach ($listener in $listeners) {
+        if (-not (Test-AppProcess $listener)) {
+            return $false
+        }
+    }
+    return $true
 }
 
 function Test-PortInUse {
@@ -39,6 +185,36 @@ function Test-PortInUse {
     catch {
         return $false
     }
+}
+
+function Get-BackendPort {
+    for ($port = $BackendStartPort; $port -le $BackendStartPort + 30; $port++) {
+        $candidateUrl = "http://${HostName}:$port"
+        if (-not (Test-PortInUse $port)) {
+            return $port
+        }
+        if ((Test-PortOwnedByThisApp $port) -and (Test-BackendAt $candidateUrl)) {
+            return $port
+        }
+        Write-Host "Backend port $port is already used by another process; trying $($port + 1)..."
+    }
+
+    throw "No available backend port found from $BackendStartPort to $($BackendStartPort + 30)."
+}
+
+function Get-FrontendPort {
+    for ($port = $FrontendStartPort; $port -le $FrontendStartPort + 30; $port++) {
+        $candidateUrl = "http://${HostName}:$port"
+        if (-not (Test-PortInUse $port)) {
+            return $port
+        }
+        if ((Test-PortOwnedByThisApp $port) -and (Test-FrontendAt $candidateUrl)) {
+            return $port
+        }
+        Write-Host "Frontend port $port is already used by another process; trying $($port + 1)..."
+    }
+
+    throw "No available frontend port found from $FrontendStartPort to $($FrontendStartPort + 30)."
 }
 
 function Wait-For {
@@ -63,22 +239,28 @@ function Ensure-BackendEnvironment {
     $python = Join-Path $BackendDir "venv\Scripts\python.exe"
 
     if (-not (Test-Path $python)) {
+        $systemPython = Get-SystemPython
         Write-Host "Creating backend virtual environment..."
         Push-Location $BackendDir
         try {
-            python -m venv venv
+            & $systemPython.Exe @($systemPython.PrefixArgs + @("-m", "venv", "venv"))
         }
         finally {
             Pop-Location
         }
     }
 
-    $probe = & $python -c "import fastapi, uvicorn, sqlalchemy, pandas, openpyxl, ortools" 2>$null
-    if ($LASTEXITCODE -ne 0) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    & $python -c "import fastapi, uvicorn, sqlalchemy, pandas, openpyxl, ortools" *> $null
+    $dependencyProbeExitCode = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorActionPreference
+
+    if ($dependencyProbeExitCode -ne 0) {
         Write-Host "Installing backend dependencies..."
         Push-Location $BackendDir
         try {
-            & $python -m pip install -r requirements.txt
+            & $python -m pip install -r requirements.txt | Out-Host
         }
         finally {
             Pop-Location
@@ -89,13 +271,20 @@ function Ensure-BackendEnvironment {
 }
 
 function Ensure-FrontendEnvironment {
+    Assert-NodeRuntime
+    $npm = Get-NpmCommand
     $nodeModules = Join-Path $FrontendDir "node_modules"
 
     if (-not (Test-Path $nodeModules)) {
         Write-Host "Installing frontend dependencies..."
         Push-Location $FrontendDir
         try {
-            npm install
+            if (Test-Path (Join-Path $FrontendDir "package-lock.json")) {
+                & $npm ci | Out-Host
+            }
+            else {
+                & $npm install | Out-Host
+            }
         }
         finally {
             Pop-Location
@@ -120,7 +309,7 @@ function Start-Backend {
     $stderr = Join-Path $BackendDir "quicklaunch-backend-$BackendPort.err.log"
     Start-Process `
         -FilePath $Python `
-        -ArgumentList @("-m", "uvicorn", "app.main:app", "--reload", "--host", "0.0.0.0", "--port", "$BackendPort") `
+        -ArgumentList @("-m", "uvicorn", "app.main:app", "--reload", "--host", $HostName, "--port", "$BackendPort") `
         -WorkingDirectory $BackendDir `
         -RedirectStandardOutput $stdout `
         -RedirectStandardError $stderr `
@@ -130,7 +319,7 @@ function Start-Backend {
 }
 
 function Start-Frontend {
-    if (Test-Http $FrontendUrl) {
+    if (Test-FrontendAt $FrontendUrl) {
         Write-Host "Frontend already running at $FrontendUrl"
         return
     }
@@ -142,7 +331,7 @@ function Start-Frontend {
     Write-Host "Starting frontend at $FrontendUrl..."
     $stdout = Join-Path $FrontendDir "quicklaunch-frontend-$FrontendPort.out.log"
     $stderr = Join-Path $FrontendDir "quicklaunch-frontend-$FrontendPort.err.log"
-    $command = "`$env:VITE_PROXY_TARGET = '$BackendUrl'; & npm.cmd run dev -- --host 0.0.0.0 --port $FrontendPort"
+    $command = "`$env:VITE_PROXY_TARGET = '$BackendUrl'; & npm.cmd run dev -- --host $HostName --port $FrontendPort --strictPort"
 
     Start-Process `
         -FilePath "powershell.exe" `
@@ -152,11 +341,15 @@ function Start-Frontend {
         -RedirectStandardError $stderr `
         -WindowStyle Hidden
 
-    Wait-For -Check { Test-Http $FrontendUrl } -Seconds 45 -Name "Frontend"
+    Wait-For -Check { Test-FrontendAt $FrontendUrl } -Seconds 45 -Name "Frontend"
 }
 
 $backendPython = Ensure-BackendEnvironment
 Ensure-FrontendEnvironment
+$BackendPort = Get-BackendPort
+$FrontendPort = Get-FrontendPort
+$BackendUrl = "http://${HostName}:$BackendPort"
+$FrontendUrl = "http://${HostName}:$FrontendPort"
 Start-Backend -Python $backendPython
 Start-Frontend
 

@@ -20,7 +20,7 @@ class ResultParser:
                         "day": slot.day,
                         "start_time": slot.start_time,
                         "end_time": slot.end_time,
-                        "week_pattern": session.week_pattern or slot.week_pattern,
+                        "week_pattern": slot.week_pattern,
                     }
                 )
         return results

@@ -4,6 +4,15 @@ React + TypeScript interface for the timetable scheduling prototype.
 
 ## Setup
 
+For normal Windows use, prefer the repo-level launcher:
+
+```powershell
+cd ..
+powershell -NoProfile -ExecutionPolicy Bypass -File .\quicklaunch.ps1
+```
+
+Manual frontend-only setup:
+
 ```powershell
 npm install
 npm run dev

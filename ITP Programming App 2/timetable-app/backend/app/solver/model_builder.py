@@ -10,6 +10,7 @@ from app.models.time_slot import TimeSlot
 from app.services.compatibility import (
     delivery_room_compatible,
     normalize_token,
+    parse_custom_weeks,
     parse_day_list,
     room_capacity_fits,
     slot_conflicts,
@@ -90,7 +91,18 @@ class TimetableModelBuilder:
             return False
         session_week = normalize_token(session.week_pattern or "Weekly")
         slot_week = normalize_token(slot.week_pattern)
-        if session_week in {"weekly", "odd", "even"} and session_week != slot_week:
+        if session_week == "custom":
+            custom_weeks = parse_custom_weeks(session.custom_weeks)
+            if custom_weeks:
+                has_odd = any(week % 2 == 1 for week in custom_weeks)
+                has_even = any(week % 2 == 0 for week in custom_weeks)
+                if has_odd and not has_even and slot_week != "odd":
+                    return False
+                if has_even and not has_odd and slot_week != "even":
+                    return False
+                if has_odd and has_even and slot_week != "weekly":
+                    return False
+        elif session_week in {"weekly", "odd", "even"} and session_week != slot_week:
             return False
         if normalize_token(session.scheduling_type) == "fixed":
             if session.fixed_day and slot.day != session.fixed_day:
