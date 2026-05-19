@@ -1,0 +1,82 @@
+from __future__ import annotations
+
+from sqlalchemy.orm import Session as DbSession
+
+from app.models.room import Room
+from app.models.schedule_run import ScheduleRun
+from app.models.scheduled_session import ScheduledSession
+from app.models.session import Session
+from app.models.time_slot import TimeSlot
+from app.services.constraint_service import ConstraintService
+from app.services.validation_service import ValidationService
+from app.solver.cp_sat_solver import CpSatTimetableSolver
+
+
+class ScheduleService:
+    def __init__(self) -> None:
+        self.validation_service = ValidationService()
+        self.solver = CpSatTimetableSolver()
+        self.constraint_service = ConstraintService()
+
+    def generate(self, db: DbSession) -> dict:
+        validation = self.validation_service.validate_latest(db)
+        if validation["error_count"] > 0:
+            return {
+                "error": "VALIDATION_FAILED",
+                "message": f"Cannot generate timetable because {validation['error_count']} validation errors exist.",
+                "details": validation["errors"],
+            }
+
+        sessions = db.query(Session).order_by(Session.id).all()
+        time_slots = db.query(TimeSlot).order_by(TimeSlot.day, TimeSlot.start_time).all()
+        rooms = db.query(Room).order_by(Room.room_code).all()
+
+        run = ScheduleRun(status="RUNNING", message="Solver started")
+        db.add(run)
+        db.flush()
+
+        result = self.solver.solve(sessions, time_slots, rooms)
+        run.solver_status = result["solver_status"]
+        run.soft_score = result["soft_score"]
+        run.message = result["message"]
+
+        if result["solver_status"] not in {"OPTIMAL", "FEASIBLE"}:
+            run.status = "FAILED"
+            run.message = result["message"]
+            db.commit()
+            return {
+                "schedule_run_id": run.id,
+                "solver_status": run.solver_status,
+                "hard_violation_count": 0,
+                "soft_score": 0,
+                "message": run.message,
+            }
+
+        for assignment in result["assignments"]:
+            db.add(
+                ScheduledSession(
+                    schedule_run_id=run.id,
+                    session_id=assignment["session_id"],
+                    room_id=assignment["room_id"],
+                    time_slot_id=assignment["time_slot_id"],
+                    staff_id=assignment["staff_id"],
+                    day=assignment["day"],
+                    start_time=assignment["start_time"],
+                    end_time=assignment["end_time"],
+                    week_pattern=assignment["week_pattern"],
+                )
+            )
+        db.flush()
+        check = self.constraint_service.check_and_store(db, run.id)
+        run.hard_violation_count = check["hard_violation_count"]
+        run.soft_score = int(run.soft_score or 0) + check["soft_warning_count"]
+        run.status = "COMPLETED" if run.hard_violation_count == 0 else "COMPLETED_WITH_CONFLICTS"
+        db.commit()
+
+        return {
+            "schedule_run_id": run.id,
+            "solver_status": run.solver_status,
+            "hard_violation_count": run.hard_violation_count,
+            "soft_score": run.soft_score,
+            "message": run.message,
+        }
