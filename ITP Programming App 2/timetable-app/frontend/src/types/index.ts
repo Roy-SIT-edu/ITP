@@ -15,6 +15,7 @@ export type ValidationResult = {
     hard_count: number;
     soft_count: number;
     total: number;
+    breakdown?: { constraint_code: string; severity: string; count: number }[];
   };
 };
 

@@ -64,18 +64,31 @@ class ValidationService:
             hard = 0
             soft = 0
             for severity, cnt in counts:
-                if (severity or '').upper() == "HARD":
+                if (severity or "").upper() == "HARD":
                     hard = cnt
                 else:
                     soft = cnt
+
+            # breakdown by constraint code
+            breakdown = (
+                db.query(ConstraintViolation.constraint_code, ConstraintViolation.severity, func.count(ConstraintViolation.id))
+                .filter(ConstraintViolation.schedule_run_id == latest_run.id)
+                .group_by(ConstraintViolation.constraint_code, ConstraintViolation.severity)
+                .all()
+            )
+            breakdown_list: list[dict] = []
+            for code, severity, cnt in breakdown:
+                breakdown_list.append({"constraint_code": code, "severity": severity, "count": int(cnt)})
+
             result["schedule_issues"] = {
                 "schedule_run_id": latest_run.id,
                 "hard_count": int(hard),
                 "soft_count": int(soft),
                 "total": int(hard + soft),
+                "breakdown": breakdown_list,
             }
         else:
-            result["schedule_issues"] = {"schedule_run_id": None, "hard_count": 0, "soft_count": 0, "total": 0}
+            result["schedule_issues"] = {"schedule_run_id": None, "hard_count": 0, "soft_count": 0, "total": 0, "breakdown": []}
 
         return result
 
