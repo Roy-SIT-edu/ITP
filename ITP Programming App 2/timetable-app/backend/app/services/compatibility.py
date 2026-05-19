@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 
 DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
@@ -95,11 +96,25 @@ def parse_day_list(value: object) -> list[str]:
 
 
 def time_to_minutes(value: object) -> int | None:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        numeric = float(value)
+        if math.isnan(numeric):
+            return None
+        if 0 <= numeric < 1:
+            return round(numeric * 24 * 60)
+        if numeric.is_integer():
+            value = int(numeric)
     text = clean_text(value)
     if not text:
         return None
     if hasattr(value, "hour") and hasattr(value, "minute"):
         return int(value.hour) * 60 + int(value.minute)
+    compact = re.sub(r"\D", "", text)
+    if len(compact) in {3, 4} and ":" not in text:
+        hour = int(compact[:-2])
+        minute = int(compact[-2:])
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            return hour * 60 + minute
     match = re.search(r"(\d{1,2})(?::(\d{2}))?", text)
     if not match:
         return None
