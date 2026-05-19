@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Info } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getValidation } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
@@ -31,7 +31,7 @@ export default function ValidationPage() {
       {validation && (
         <>
           <div className="status-row">
-            <StatusBadge label={validation.is_valid ? "Valid" : "Invalid"} tone={validation.is_valid ? "good" : "bad"} />
+                <StatusBadge label={validation.is_valid ? "Valid" : "Invalid"} tone={validation.is_valid ? "good" : "bad"} />
             <span>{validation.error_count} errors</span>
             <span>{validation.warning_count} warnings</span>
             {validation.schedule_issues && (
@@ -39,6 +39,9 @@ export default function ValidationPage() {
                 Schedule issues: {validation.schedule_issues.total} (H: {validation.schedule_issues.hard_count} / S: {validation.schedule_issues.soft_count})
               </span>
             )}
+                <span title={"Input validation checks uploaded session data for missing or invalid fields. Schedule issues are constraint violations detected after generating a timetable (conflicts in scheduled sessions)."} style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
+                  <Info size={14} />
+                </span>
           </div>
           <ValidationTable errors={validation.errors} warnings={validation.warnings} />
         </>
