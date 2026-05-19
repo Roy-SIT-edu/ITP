@@ -34,6 +34,11 @@ export default function ValidationPage() {
             <StatusBadge label={validation.is_valid ? "Valid" : "Invalid"} tone={validation.is_valid ? "good" : "bad"} />
             <span>{validation.error_count} errors</span>
             <span>{validation.warning_count} warnings</span>
+            {validation.schedule_issues && (
+              <span>
+                Schedule issues: {validation.schedule_issues.total} (H: {validation.schedule_issues.hard_count} / S: {validation.schedule_issues.soft_count})
+              </span>
+            )}
           </div>
           <ValidationTable errors={validation.errors} warnings={validation.warnings} />
         </>

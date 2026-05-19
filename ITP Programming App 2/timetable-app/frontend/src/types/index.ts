@@ -10,6 +10,12 @@ export type ValidationResult = {
   warning_count: number;
   errors: ValidationIssue[];
   warnings: ValidationIssue[];
+  schedule_issues?: {
+    schedule_run_id: number | null;
+    hard_count: number;
+    soft_count: number;
+    total: number;
+  };
 };
 
 export type UploadSummary = {

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from sqlalchemy.orm import Session as DbSession
+from sqlalchemy import func
+
+from app.models.schedule_run import ScheduleRun
+from app.models.constraint_violation import ConstraintViolation
 
 from app.models.session import Session
 from app.models.time_slot import TimeSlot
@@ -40,13 +44,40 @@ class ValidationService:
             self._required_checks(session, row, errors)
             self._value_checks(db, session, row, errors, warnings)
 
-        return {
+        result = {
             "is_valid": len(errors) == 0,
             "error_count": len(errors),
             "warning_count": len(warnings),
             "errors": errors,
             "warnings": warnings,
         }
+
+        # Add latest schedule violation counts (hard/soft)
+        latest_run = db.query(ScheduleRun).order_by(ScheduleRun.id.desc()).first()
+        if latest_run:
+            counts = (
+                db.query(ConstraintViolation.severity, func.count(ConstraintViolation.id))
+                .filter(ConstraintViolation.schedule_run_id == latest_run.id)
+                .group_by(ConstraintViolation.severity)
+                .all()
+            )
+            hard = 0
+            soft = 0
+            for severity, cnt in counts:
+                if (severity or '').upper() == "HARD":
+                    hard = cnt
+                else:
+                    soft = cnt
+            result["schedule_issues"] = {
+                "schedule_run_id": latest_run.id,
+                "hard_count": int(hard),
+                "soft_count": int(soft),
+                "total": int(hard + soft),
+            }
+        else:
+            result["schedule_issues"] = {"schedule_run_id": None, "hard_count": 0, "soft_count": 0, "total": 0}
+
+        return result
 
     def _required_checks(self, session: Session, row: int, errors: list[dict]) -> None:
         for field_name, attr in self.REQUIRED_FIELDS:
