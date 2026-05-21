@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Info } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getDashboard } from "../api/client";
 import type { Dashboard } from "../types";
@@ -44,6 +44,9 @@ export default function DashboardPage() {
         <div className="metric-card">
           <span>Validation</span>
           <strong>{dashboard.validation.error_count}</strong>
+          <span title={"Input validation checks uploaded session data for missing or invalid fields. Schedule issues are constraint violations detected after generating a timetable (conflicts in scheduled sessions)."} style={{ marginLeft: 8 }}>
+            <Info size={14} />
+          </span>
           <StatusBadge
             label={dashboard.validation.is_valid ? "Valid" : "Needs fixes"}
             tone={dashboard.validation.is_valid ? "good" : "bad"}
