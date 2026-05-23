@@ -87,9 +87,24 @@ export type SessionRow = {
   class_type: string | null;
   delivery_mode: string | null;
   campus_mode: string | null;
+  venue_type_required: string | null;
   duration_minutes: number | null;
+  sessions_per_week: number | null;
   exact_class_size: number | null;
+  start_week: number | null;
+  end_week: number | null;
   week_pattern: string | null;
+  custom_weeks: string | null;
+  scheduling_type: string | null;
+  fixed_day: string | null;
+  fixed_start_time: string | null;
+  fixed_end_time: string | null;
+  preferred_days: string | null;
+  avoid_days: string | null;
+  priority: string | null;
+  remarks: string | null;
+  source_file: string | null;
+  source_row_no: number | null;
 };
 
 export type Dashboard = {

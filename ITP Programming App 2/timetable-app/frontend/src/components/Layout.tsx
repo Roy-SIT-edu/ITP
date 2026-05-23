@@ -6,6 +6,7 @@ import {
   Upload,
   WandSparkles,
   CheckCircle2,
+  ClipboardList,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -19,6 +20,7 @@ const navItems = [
   { id: "dashboard", label: "Dashboard", icon: Gauge },
   { id: "upload", label: "Upload", icon: Upload },
   { id: "validation", label: "Validation", icon: CheckCircle2 },
+  { id: "requirements", label: "Requirements", icon: ClipboardList },
   { id: "generate", label: "Generate", icon: WandSparkles },
   { id: "review", label: "Review", icon: TableProperties },
   { id: "export", label: "Export", icon: Download },

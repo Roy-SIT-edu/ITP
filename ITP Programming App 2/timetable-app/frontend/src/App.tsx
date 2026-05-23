@@ -3,6 +3,7 @@ import Layout from "./components/Layout";
 import DashboardPage from "./pages/DashboardPage";
 import ExportPage from "./pages/ExportPage";
 import GenerateSchedulePage from "./pages/GenerateSchedulePage";
+import RequirementsPage from "./pages/RequirementsPage";
 import TimetableReviewPage from "./pages/TimetableReviewPage";
 import UploadPage from "./pages/UploadPage";
 import ValidationPage from "./pages/ValidationPage";
@@ -11,6 +12,7 @@ const routeMap = {
   dashboard: DashboardPage,
   upload: UploadPage,
   validation: ValidationPage,
+  requirements: RequirementsPage,
   generate: GenerateSchedulePage,
   review: TimetableReviewPage,
   export: ExportPage,
