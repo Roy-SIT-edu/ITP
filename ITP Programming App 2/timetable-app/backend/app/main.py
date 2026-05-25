@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import create_db_and_seed
-from app.routes import data_routes, export_routes, schedule_routes, upload_routes, validation_routes
+from app.routes import database_routes, data_routes, export_routes, schedule_routes, upload_routes, validation_routes
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 
@@ -22,6 +22,7 @@ app.add_middleware(
 app.include_router(upload_routes.router)
 app.include_router(validation_routes.router)
 app.include_router(data_routes.router)
+app.include_router(database_routes.router)
 app.include_router(schedule_routes.router)
 app.include_router(export_routes.router)
 

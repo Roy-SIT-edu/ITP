@@ -1,6 +1,8 @@
 import type {
   ConstraintViolation,
   Dashboard,
+  DatabaseRow,
+  DatabaseTypeInfo,
   ScheduleGenerateResult,
   ScheduleResponse,
   SessionRow,
@@ -33,6 +35,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
         ? detail
         : Array.isArray(detail) && detail.length > 0 && typeof detail[0] === "object" && detail[0] && "msg" in detail[0]
           ? String(detail[0].msg)
+          : Array.isArray(detail) && detail.length > 0 && typeof detail[0] === "object" && detail[0] && "message" in detail[0]
+            ? String(detail[0].message)
           : typeof detail === "object" && detail && "message" in detail
             ? String(detail.message)
             : `Request failed with status ${response.status}`;
@@ -49,13 +53,56 @@ export function getSessions() {
   return request<SessionRow[]>("/api/sessions");
 }
 
-export function uploadTemplate(file: File) {
+export function uploadTemplate(files: File[]) {
   const formData = new FormData();
-  formData.append("file", file);
+  files.forEach((file) => formData.append("files", file));
   return request<UploadSummary>("/api/upload/input-template", {
     method: "POST",
     body: formData,
   });
+}
+
+export function getDatabaseTypes() {
+  return request<DatabaseTypeInfo[]>("/api/database/types");
+}
+
+export function getDatabaseRows(dataType: string) {
+  return request<DatabaseRow[]>(`/api/database/${dataType}`);
+}
+
+export function createDatabaseRow(dataType: string, data: Record<string, unknown>) {
+  return request<DatabaseRow>(`/api/database/${dataType}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateDatabaseRow(dataType: string, id: number, data: Record<string, unknown>) {
+  return request<DatabaseRow>(`/api/database/${dataType}/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteDatabaseRow(dataType: string, id: number) {
+  return request<{ message: string }>(`/api/database/${dataType}/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export function uploadDatabaseFile(dataType: string, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<UploadSummary>(`/api/database/${dataType}/upload`, {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export function databaseExampleUrl(dataType: string) {
+  return `${API_BASE}/api/database/${dataType}/example.xlsx`;
 }
 
 export function getValidation() {

@@ -74,7 +74,7 @@ def test_update_session(tmp_path):
     client = _client_for(db)
     create_resp = client.post(
         "/api/sessions",
-        json={"requirement_id": "REQ-0002", "programme": "ASE", "duration_minutes": 60}
+        json={"requirement_id": "REQ-0002", "programme": "ASE", "duration_minutes": 60, "staff_name": "Dr Update"}
     )
     session_id = create_resp.json()["id"]
     
@@ -85,7 +85,8 @@ def test_update_session(tmp_path):
                 "requirement_id": "REQ-0002-MOD",
                 "programme": "ASE",
                 "duration_minutes": 180,
-                "class_type": "Tutorial"
+                "class_type": "Tutorial",
+                "staff_name": "Dr Update"
             }
         )
     finally:
@@ -103,7 +104,7 @@ def test_delete_session(tmp_path):
     db = _route_db(tmp_path)
     client = _client_for(db)
     
-    create_resp = client.post("/api/sessions", json={"requirement_id": "REQ-DEL", "programme": "MDME"})
+    create_resp = client.post("/api/sessions", json={"requirement_id": "REQ-DEL", "programme": "MDME", "staff_name": "Dr Delete"})
     session_id = create_resp.json()["id"]
     
     try:

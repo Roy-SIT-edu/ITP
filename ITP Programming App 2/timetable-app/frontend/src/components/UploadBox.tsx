@@ -3,26 +3,33 @@ import { useState } from "react";
 
 type Props = {
   busy: boolean;
-  onUpload: (file: File) => void;
+  onUpload: (files: File[]) => void;
 };
 
 export default function UploadBox({ busy, onUpload }: Props) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const label =
+    files.length === 0
+      ? "Select requirements Excel files"
+      : files.length === 1
+        ? files[0].name
+        : `${files.length} files selected`;
 
   return (
     <div className="upload-panel">
       <label className="file-input">
         <Upload size={20} />
-        <span>{file ? file.name : "System_Ready_Timetable_Input_Template.xlsx"}</span>
+        <span>{label}</span>
         <input
           accept=".xlsx,.xls"
+          multiple
           type="file"
-          onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+          onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
         />
       </label>
-      <button className="button" disabled={!file || busy} onClick={() => file && onUpload(file)}>
+      <button className="button" disabled={files.length === 0 || busy} onClick={() => onUpload(files)}>
         <Upload size={17} />
-        {busy ? "Uploading" : "Import"}
+        {busy ? "Uploading" : files.length > 1 ? "Import Files" : "Import"}
       </button>
     </div>
   );

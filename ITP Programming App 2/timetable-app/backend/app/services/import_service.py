@@ -89,6 +89,17 @@ class ImportService:
         data = file.read()
         return self.import_input_template_bytes(db, data, source_filename=filename)
 
+    def import_input_template_files(
+        self,
+        db: DbSession,
+        workbooks: list[tuple[bytes, str]],
+    ) -> dict:
+        frames = [
+            (self._read_workbook_frame(BytesIO(workbook_bytes)), source_filename)
+            for workbook_bytes, source_filename in workbooks
+        ]
+        return self._import_frames(db, frames)
+
     def import_input_template_bytes(
         self,
         db: DbSession,
@@ -96,7 +107,7 @@ class ImportService:
         source_filename: str,
     ) -> dict:
         frame = self._read_workbook_frame(BytesIO(workbook_bytes))
-        return self._import_frame(db, frame, source_filename)
+        return self._import_frames(db, [(frame, source_filename)])
 
     def import_input_template(
         self,
@@ -106,7 +117,7 @@ class ImportService:
     ) -> dict:
         source_filename = source_filename or Path(workbook_path).name
         frame = self._read_workbook_frame(workbook_path)
-        return self._import_frame(db, frame, source_filename)
+        return self._import_frames(db, [(frame, source_filename)])
 
     def _read_workbook_frame(self, workbook_source) -> pd.DataFrame:
         with pd.ExcelFile(workbook_source) as xls:
@@ -115,13 +126,14 @@ class ImportService:
         frame = frame.dropna(how="all")
         return self._prepare_frame(frame)
 
-    def _import_frame(self, db: DbSession, frame: pd.DataFrame, source_filename: str) -> dict:
+    def _import_frames(self, db: DbSession, frames: list[tuple[pd.DataFrame, str]]) -> dict:
         self._clear_sessions_and_schedules(db)
         seed_reference_data(db)
 
         errors: list[dict] = []
         rows_imported = 0
-        if frame.empty:
+        rows_read = sum(int(len(frame.index)) for frame, _ in frames)
+        if not frames or all(frame.empty for frame, _ in frames):
             db.commit()
             return {
                 "rows_read": 0,
@@ -136,26 +148,37 @@ class ImportService:
                 ],
             }
 
-        for index, row in frame.iterrows():
-            source_row_no = self._source_row_no(row.get("Source Row No"), int(index))
-            try:
-                count = self._positive_int(row.get("Session Count")) or 1
-                for _ in range(count):
-                    session = self._build_session(db, row, source_filename, source_row_no)
-                    db.add(session)
-                    rows_imported += 1
-            except Exception as exc:  # Defensive: one bad row should not block the whole upload.
+        for frame, source_filename in frames:
+            if frame.empty:
                 errors.append(
                     {
-                        "row": source_row_no,
-                        "field": "Row",
-                        "message": f"Could not import row: {exc}",
+                        "row": 0,
+                        "field": "Workbook",
+                        "message": f"{source_filename}: no usable timetable rows found.",
                     }
                 )
+                continue
+
+            for index, row in frame.iterrows():
+                source_row_no = self._source_row_no(row.get("Source Row No"), int(index))
+                try:
+                    count = self._positive_int(row.get("Session Count")) or 1
+                    for _ in range(count):
+                        session = self._build_session(db, row, source_filename, source_row_no)
+                        db.add(session)
+                        rows_imported += 1
+                except Exception as exc:  # Defensive: one bad row should not block the whole upload.
+                    errors.append(
+                        {
+                            "row": source_row_no,
+                            "field": "Row",
+                            "message": f"{source_filename}: could not import row: {exc}",
+                        }
+                    )
 
         db.commit()
         return {
-            "rows_read": int(len(frame.index)),
+            "rows_read": rows_read,
             "rows_imported": rows_imported,
             "rows_failed": len(errors),
             "errors": errors,

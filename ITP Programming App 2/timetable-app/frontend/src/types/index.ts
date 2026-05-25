@@ -26,6 +26,25 @@ export type UploadSummary = {
   errors: ValidationIssue[];
 };
 
+export type DatabaseColumn = {
+  key: string;
+  label: string;
+  kind: "text" | "number" | "boolean" | "time";
+  required: boolean;
+  read_only: boolean;
+};
+
+export type DatabaseTypeInfo = {
+  id: string;
+  label: string;
+  columns: DatabaseColumn[];
+};
+
+export type DatabaseRow = {
+  id: number;
+  [key: string]: string | number | boolean | null;
+};
+
 export type ScheduleRun = {
   id: number;
   created_at: string;

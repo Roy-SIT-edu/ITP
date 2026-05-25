@@ -12,14 +12,19 @@ router = APIRouter(prefix="/api/upload", tags=["upload"])
 
 @router.post("/input-template")
 async def upload_input_template(
-    file: UploadFile = File(...),
+    files: list[UploadFile] | None = File(None),
+    file: UploadFile | None = File(None),
     db: DbSession = Depends(get_db),
 ):
     try:
-        summary = ImportService().import_upload(db, file.file, file.filename or "input-template.xlsx")
+        uploads = files or ([] if file is None else [file])
+        if not uploads:
+            raise HTTPException(status_code=400, detail="Upload at least one requirements workbook.")
+        workbooks = [(await item.read(), item.filename or "input-template.xlsx") for item in uploads]
+        summary = ImportService().import_input_template_files(db, workbooks)
         return summary
     except (BadZipFile, InvalidFileException, OSError, ValueError) as exc:
         raise HTTPException(
             status_code=400,
-            detail=f"Could not read timetable workbook: {exc}",
+            detail=f"Could not read timetable workbook(s): {exc}",
         ) from exc

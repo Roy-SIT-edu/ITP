@@ -6,6 +6,7 @@ from app import models  # noqa: F401
 from app.database import Base
 from app.database import get_db
 from app.main import app
+from app.models.session import Session
 from app.services.seed_service import seed_reference_data, seed_sample_sessions
 from app.tests.conftest import valid_row, write_template
 
@@ -50,6 +51,47 @@ def test_upload_route_imports_valid_workbook(tmp_path):
 
     assert response.status_code == 200
     assert response.json()["rows_imported"] == 1
+
+
+def test_upload_route_combines_multiple_workbooks(tmp_path):
+    db = _route_db(tmp_path)
+    first = write_template(tmp_path / "first.xlsx", [valid_row(**{"Requirement ID": "REQ-MULTI-001"})])
+    second = write_template(
+        tmp_path / "second.xlsx",
+        [valid_row(**{"Requirement ID": "REQ-MULTI-002", "Module Code": "TST1002", "Staff 1 ID": "T002"})],
+    )
+    client = _client_for(db)
+    try:
+        response = client.post(
+            "/api/upload/input-template",
+            files=[
+                (
+                    "files",
+                    (
+                        "first.xlsx",
+                        first.read_bytes(),
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    ),
+                ),
+                (
+                    "files",
+                    (
+                        "second.xlsx",
+                        second.read_bytes(),
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    ),
+                ),
+            ],
+        )
+        count = db.query(Session).count()
+    finally:
+        app.dependency_overrides.clear()
+        db.close()
+
+    assert response.status_code == 200
+    assert response.json()["rows_read"] == 2
+    assert response.json()["rows_imported"] == 2
+    assert count == 2
 
 
 def test_upload_route_returns_400_for_unreadable_workbook(tmp_path):
