@@ -79,3 +79,25 @@ export function getViolations(scheduleRunId: number) {
 export function exportUrl(scheduleRunId: number, format: "csv" | "xlsx") {
   return `${API_BASE}/api/export/${scheduleRunId}/${format}`;
 }
+
+export function createSession(data: Omit<SessionRow, "id">) {
+  return request<SessionRow>("/api/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateSession(id: number, data: Partial<SessionRow>) {
+  return request<SessionRow>(`/api/sessions/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteSession(id: number) {
+  return request<{ message: string }>(`/api/sessions/${id}`, {
+    method: "DELETE",
+  });
+}
