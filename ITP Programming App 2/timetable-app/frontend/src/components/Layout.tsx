@@ -1,3 +1,9 @@
+/*
+ * Application shell and workflow navigation.
+ * Keeps Dashboard always visible and exposes Database subtabs through the
+ * horizontal navbar dropdown.
+ */
+
 import {
   CalendarClock,
   Download,
@@ -10,6 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
+import WorkflowProgress from "./WorkflowProgress";
 
 type Props = {
   route: string;
@@ -45,6 +52,7 @@ export default function Layout({ route, onNavigate, children }: Props) {
     }
     const active = nav.querySelector("a.active");
     if (active instanceof HTMLElement) {
+      // Keep the active workflow tab visible on narrow screens.
       active.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
     }
   }, [route]);
@@ -52,66 +60,69 @@ export default function Layout({ route, onNavigate, children }: Props) {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand">
-          <CalendarClock size={24} />
-          <div>
-            <strong>Timetable</strong>
-            <span>Scheduler</span>
+        <WorkflowProgress route={route} />
+        <div className="topbar-nav-row">
+          <div className="brand">
+            <CalendarClock size={24} />
+            <div>
+              <strong>Timetable</strong>
+              <span>Scheduler</span>
+            </div>
           </div>
-        </div>
-        <div className="nav-area">
-          <a
-            className={route === "dashboard" ? "nav-home active" : "nav-home"}
-            href="#dashboard"
-            onClick={() => onNavigate("dashboard")}
-          >
-            <Gauge size={18} />
-            <span>Dashboard</span>
-          </a>
-          <nav className="nav-list" aria-label="Workflow">
-            {workflowItems.map((item) => {
-              const Icon = item.icon;
-              const active = item.children ? route.startsWith("database-") : route === item.id;
-              if (item.children) {
-                return (
-                  <div className="nav-dropdown" key={item.id}>
-                    <a
-                      className={active ? "active" : ""}
-                      href="#database-rooms"
-                      onClick={() => onNavigate("database-rooms")}
-                    >
-                      <Icon size={18} />
-                      <span>{item.label}</span>
-                    </a>
-                    <div className="nav-submenu" role="menu">
-                      {item.children.map((child) => (
-                        <a
-                          className={route === child.id ? "active" : ""}
-                          href={`#${child.id}`}
-                          key={child.id}
-                          onClick={() => onNavigate(child.id)}
-                          role="menuitem"
-                        >
-                          {child.label}
-                        </a>
-                      ))}
+          <div className="nav-area">
+            <a
+              className={route === "dashboard" ? "nav-home active" : "nav-home"}
+              href="#dashboard"
+              onClick={() => onNavigate("dashboard")}
+            >
+              <Gauge size={18} />
+              <span>Dashboard</span>
+            </a>
+            <nav className="nav-list" aria-label="Workflow">
+              {workflowItems.map((item) => {
+                const Icon = item.icon;
+                const active = item.children ? route.startsWith("database-") : route === item.id;
+                if (item.children) {
+                  return (
+                    <div className="nav-dropdown" key={item.id}>
+                      <a
+                        className={active ? "active" : ""}
+                        href="#database-rooms"
+                        onClick={() => onNavigate("database-rooms")}
+                      >
+                        <Icon size={18} />
+                        <span>{item.label}</span>
+                      </a>
+                      <div className="nav-submenu" role="menu">
+                        {item.children.map((child) => (
+                          <a
+                            className={route === child.id ? "active" : ""}
+                            href={`#${child.id}`}
+                            key={child.id}
+                            onClick={() => onNavigate(child.id)}
+                            role="menuitem"
+                          >
+                            {child.label}
+                          </a>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  );
+                }
+                return (
+                  <a
+                    className={active ? "active" : ""}
+                    href={`#${item.id}`}
+                    key={item.id}
+                    onClick={() => onNavigate(item.id)}
+                  >
+                    <Icon size={18} />
+                    <span>{item.label}</span>
+                  </a>
                 );
-              }
-              return (
-                <a
-                  className={active ? "active" : ""}
-                  href={`#${item.id}`}
-                  key={item.id}
-                  onClick={() => onNavigate(item.id)}
-                >
-                  <Icon size={18} />
-                  <span>{item.label}</span>
-                </a>
-              );
-            })}
-          </nav>
+              })}
+            </nav>
+          </div>
         </div>
       </header>
       <main className="content">{children}</main>

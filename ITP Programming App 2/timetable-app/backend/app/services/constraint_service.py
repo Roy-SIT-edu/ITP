@@ -1,3 +1,9 @@
+"""Post-generation constraint checks for scheduled sessions.
+
+The solver avoids known hard clashes, and this service records hard/soft issues
+for the review and validation pages after a timetable has been generated.
+"""
+
 from __future__ import annotations
 
 from sqlalchemy.orm import Session as DbSession

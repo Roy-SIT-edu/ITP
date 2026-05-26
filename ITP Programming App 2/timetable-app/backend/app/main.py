@@ -1,3 +1,9 @@
+"""FastAPI application entrypoint.
+
+This file wires middleware, API routers, database startup, and the health check
+that the frontend/dev server uses to confirm the backend is alive.
+"""
+
 from pathlib import Path
 
 from fastapi import FastAPI

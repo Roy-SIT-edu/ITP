@@ -1,3 +1,9 @@
+"""Generic CRUD and Excel sync service for Database tab reference data.
+
+Each configured data type describes its model, visible columns, natural key, and
+serializer so the routes can share one implementation across split DB tables.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

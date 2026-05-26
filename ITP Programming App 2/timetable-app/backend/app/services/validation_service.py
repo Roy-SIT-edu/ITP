@@ -1,3 +1,9 @@
+"""Validation service for saved requirements and generated schedule quality.
+
+Upload/manual entry validation blocks bad data before save; this service reports
+the health of what is currently saved and any issues from the latest run.
+"""
+
 from __future__ import annotations
 
 from sqlalchemy.orm import Session as DbSession
@@ -14,7 +20,9 @@ from app.services.compatibility import (
     clean_text,
     normalize_token,
     parse_day_list,
+    weeks_conflict,
 )
+from app.services.requirement_input_service import RequirementInputService
 
 
 class ValidationService:
@@ -27,6 +35,10 @@ class ValidationService:
         ("Class Type", "class_type"),
         ("Delivery Mode", "delivery_mode"),
         ("Campus Mode", "campus_mode"),
+        ("Venue Type Required", "venue_type_required"),
+        ("Duration", "duration_minutes"),
+        ("Sessions Per Week", "sessions_per_week"),
+        ("Exact Class Size", "exact_class_size"),
         ("Staff 1 ID or Staff 1 Name", "staff_id"),
         ("Start Week", "start_week"),
         ("End Week", "end_week"),
@@ -38,6 +50,7 @@ class ValidationService:
         errors: list[dict] = []
         warnings: list[dict] = []
         sessions = db.query(Session).order_by(Session.id).all()
+        self._duplicate_requirement_checks(sessions, errors)
 
         for session in sessions:
             row = session.source_row_no or session.id
@@ -103,6 +116,25 @@ class ValidationService:
                         "message": f"{field_name} is required",
                     }
                 )
+
+    def _duplicate_requirement_checks(self, sessions: list[Session], errors: list[dict]) -> None:
+        seen: dict[str, int] = {}
+        for session in sessions:
+            requirement_id = clean_text(session.requirement_id)
+            if not requirement_id:
+                continue
+            key = requirement_id.lower()
+            row = session.source_row_no or session.id
+            if key in seen:
+                errors.append(
+                    {
+                        "row": row,
+                        "field": "Requirement ID",
+                        "message": f"Duplicate Requirement ID '{requirement_id}' also appears on row {seen[key]}",
+                    }
+                )
+            else:
+                seen[key] = row
 
     def _value_checks(
         self,
@@ -174,7 +206,7 @@ class ValidationService:
                     "message": "Online sessions should use online or virtual campus mode",
                 }
             )
-        if delivery_mode in {"face to face", "f2f"} and campus_mode in {"virtual", "online"}:
+        if delivery_mode in {"face to face", "f2f", "physical", "in person"} and campus_mode in {"virtual", "online"}:
             errors.append(
                 {
                     "row": row,
@@ -208,16 +240,31 @@ class ValidationService:
                         TimeSlot.start_time == session.fixed_start_time,
                         TimeSlot.end_time == session.fixed_end_time,
                     )
-                    .first()
+                    .all()
                 )
-                if not match:
+                if not any(weeks_conflict(slot.week_pattern, session.week_pattern) for slot in match):
                     errors.append(
                         {
                             "row": row,
                             "field": "Fixed Start Time",
-                            "message": "No default time slot matches the fixed day and time",
+                            "message": "No default time slot matches the fixed day, time, and week pattern",
                         }
                     )
+
+        if (
+            session.delivery_mode
+            and session.campus_mode
+            and session.venue_type_required
+            and session.exact_class_size
+            and not RequirementInputService().has_feasible_room_for_session(db, session)
+        ):
+            errors.append(
+                {
+                    "row": row,
+                    "field": "Venue Type Required",
+                    "message": "No room in the database matches this venue type, campus mode, delivery mode, and class size.",
+                }
+            )
 
         for field_name, values in [
             ("Preferred Days", parse_day_list(session.preferred_days)),

@@ -1,3 +1,8 @@
+/*
+ * Shared frontend types for API responses and table rows.
+ * Keeping the contracts here makes page/component props easier to read.
+ */
+
 export type ValidationIssue = {
   row: number;
   field: string;

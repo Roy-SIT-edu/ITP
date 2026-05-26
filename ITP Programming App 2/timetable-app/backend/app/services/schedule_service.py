@@ -1,3 +1,9 @@
+"""Schedule orchestration service.
+
+Runs saved-data validation, calls the CP-SAT solver, persists assignments, and
+stores post-generation constraint checks for review/export screens.
+"""
+
 from __future__ import annotations
 
 from sqlalchemy.orm import Session as DbSession

@@ -1,3 +1,5 @@
+"""Tests for requirements workbook upload routes."""
+
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -58,7 +60,7 @@ def test_upload_route_combines_multiple_workbooks(tmp_path):
     first = write_template(tmp_path / "first.xlsx", [valid_row(**{"Requirement ID": "REQ-MULTI-001"})])
     second = write_template(
         tmp_path / "second.xlsx",
-        [valid_row(**{"Requirement ID": "REQ-MULTI-002", "Module Code": "TST1002", "Staff 1 ID": "T002"})],
+        [valid_row(**{"Requirement ID": "REQ-MULTI-002"})],
     )
     client = _client_for(db)
     try:
@@ -92,6 +94,46 @@ def test_upload_route_combines_multiple_workbooks(tmp_path):
     assert response.json()["rows_read"] == 2
     assert response.json()["rows_imported"] == 2
     assert count == 2
+
+
+def test_upload_route_rejects_duplicate_requirement_ids_across_workbooks(tmp_path):
+    db = _route_db(tmp_path)
+    first = write_template(tmp_path / "first.xlsx", [valid_row(**{"Requirement ID": "REQ-DUP-001"})])
+    second = write_template(tmp_path / "second.xlsx", [valid_row(**{"Requirement ID": "REQ-DUP-001"})])
+    client = _client_for(db)
+    try:
+        before_count = db.query(Session).count()
+        response = client.post(
+            "/api/upload/input-template",
+            files=[
+                (
+                    "files",
+                    (
+                        "first.xlsx",
+                        first.read_bytes(),
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    ),
+                ),
+                (
+                    "files",
+                    (
+                        "second.xlsx",
+                        second.read_bytes(),
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    ),
+                ),
+            ],
+        )
+        after_count = db.query(Session).count()
+    finally:
+        app.dependency_overrides.clear()
+        db.close()
+
+    assert response.status_code == 200
+    assert response.json()["rows_imported"] == 0
+    assert response.json()["rows_failed"] >= 1
+    assert "Duplicate requirement_id" in response.json()["errors"][0]["message"]
+    assert after_count == before_count
 
 
 def test_upload_route_returns_400_for_unreadable_workbook(tmp_path):

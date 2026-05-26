@@ -1,129 +1,12 @@
 {
   "rooms": [
     {
-      "room_code": "*SP-SR5A",
-      "room_name": "SP-SR5A",
-      "room_type": "Seminar Room",
-      "capacity": 24,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": false
-    },
-    {
-      "room_code": "*SP-SR5B",
-      "room_name": "SP-SR5B",
-      "room_type": "Seminar Room",
-      "capacity": 24,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": false
-    },
-    {
-      "room_code": "*SP-SR5G",
-      "room_name": "SP-SR5G",
-      "room_type": "Seminar Room",
-      "capacity": 24,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": false
-    },
-    {
-      "room_code": "*SP-SR5K",
-      "room_name": "SP-SR5K",
-      "room_type": "Seminar Room",
-      "capacity": 12,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": false
-    },
-    {
-      "room_code": "*TP-SR3F",
-      "room_name": "TP-SR3F",
-      "room_type": "Seminar Room",
-      "capacity": 50,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": false
-    },
-    {
-      "room_code": "*TP-SR3G",
-      "room_name": "TP-SR3G",
-      "room_type": "Seminar Room",
-      "capacity": 25,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": false
-    },
-    {
-      "room_code": "*Temp Venue",
-      "room_name": "Temp Venue001",
-      "room_type": "Teaching Facility",
-      "capacity": 999,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": false
-    },
-    {
       "room_code": "CEFT External Venue",
       "room_name": "CEFT External Venue",
       "room_type": "External Venue",
       "capacity": 200,
       "is_virtual": true,
       "campus_mode": "External",
-      "recording_available": false
-    },
-    {
-      "room_code": "DV-AP SR1M",
-      "room_name": "DV-AP-SR1M",
-      "room_type": "Seminar Room",
-      "capacity": 50,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": true
-    },
-    {
-      "room_code": "DV-AP SR1S",
-      "room_name": "DV-AP-SR1S",
-      "room_type": "Seminar Room",
-      "capacity": 50,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": false
-    },
-    {
-      "room_code": "DV-AP SR2H",
-      "room_name": "DV-AP-SR2H",
-      "room_type": "Seminar Room",
-      "capacity": 26,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": false
-    },
-    {
-      "room_code": "DV-AP SR4D",
-      "room_name": "DV-AP-SR4D",
-      "room_type": "Seminar Room",
-      "capacity": 75,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": false
-    },
-    {
-      "room_code": "DV-AP SR4E",
-      "room_name": "DV-AP-SR4E",
-      "room_type": "Seminar Room",
-      "capacity": 90,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": false
-    },
-    {
-      "room_code": "DV-AP SRB1F",
-      "room_name": "DV-AP-SRB1F",
-      "room_type": "Seminar Room",
-      "capacity": 80,
-      "is_virtual": false,
-      "campus_mode": "Physical",
       "recording_available": false
     },
     {
@@ -235,6 +118,15 @@
       "recording_available": true
     },
     {
+      "room_code": "DV-AP-SR1M",
+      "room_name": "DV-AP SR1M",
+      "room_type": "Seminar Room",
+      "capacity": 50,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": true
+    },
+    {
       "room_code": "DV-AP-SR1N",
       "room_name": "DV-AP-SR1N",
       "room_type": "Seminar Room",
@@ -269,6 +161,15 @@
       "is_virtual": false,
       "campus_mode": "Physical",
       "recording_available": true
+    },
+    {
+      "room_code": "DV-AP-SR1S",
+      "room_name": "DV-AP SR1S",
+      "room_type": "Seminar Room",
+      "capacity": 50,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": false
     },
     {
       "room_code": "DV-AP-SR1T",
@@ -347,6 +248,15 @@
       "room_name": "DV-AP-SR2G",
       "room_type": "Seminar Room",
       "capacity": 50,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": false
+    },
+    {
+      "room_code": "DV-AP-SR2H",
+      "room_name": "DV-AP SR2H",
+      "room_type": "Seminar Room",
+      "capacity": 26,
       "is_virtual": false,
       "campus_mode": "Physical",
       "recording_available": false
@@ -604,6 +514,24 @@
       "recording_available": false
     },
     {
+      "room_code": "DV-AP-SR4D",
+      "room_name": "DV-AP SR4D",
+      "room_type": "Seminar Room",
+      "capacity": 75,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": false
+    },
+    {
+      "room_code": "DV-AP-SR4E",
+      "room_name": "DV-AP SR4E",
+      "room_type": "Seminar Room",
+      "capacity": 90,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": false
+    },
+    {
       "room_code": "DV-AP-SR4F",
       "room_name": "DV-AP-SR4F",
       "room_type": "Seminar Room",
@@ -662,6 +590,15 @@
       "room_name": "DV-AP-SRB1E",
       "room_type": "Seminar Room",
       "capacity": 30,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": false
+    },
+    {
+      "room_code": "DV-AP-SRB1F",
+      "room_name": "DV-AP SRB1F",
+      "room_type": "Seminar Room",
+      "capacity": 80,
       "is_virtual": false,
       "campus_mode": "Physical",
       "recording_available": false
@@ -838,31 +775,13 @@
       "recording_available": false
     },
     {
-      "room_code": "DV-URC SR1A",
-      "room_name": "DV-URC-SR1A",
+      "room_code": "DV-URC-SR1A",
+      "room_name": "DV-URC SR1A",
       "room_type": "Seminar Room",
       "capacity": 5,
       "is_virtual": false,
       "campus_mode": "Physical",
       "recording_available": true
-    },
-    {
-      "room_code": "DV-URC SR1D",
-      "room_name": "DV-URC-SR1D",
-      "room_type": "Seminar Room",
-      "capacity": 30,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": false
-    },
-    {
-      "room_code": "DV-URC SR1E",
-      "room_name": "DV-URC-SR1E",
-      "room_type": "Seminar Room",
-      "capacity": 25,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": false
     },
     {
       "room_code": "DV-URC-SR1B",
@@ -876,6 +795,24 @@
     {
       "room_code": "DV-URC-SR1C",
       "room_name": "DV-URC-SR1C",
+      "room_type": "Seminar Room",
+      "capacity": 25,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": false
+    },
+    {
+      "room_code": "DV-URC-SR1D",
+      "room_name": "DV-URC SR1D",
+      "room_type": "Seminar Room",
+      "capacity": 30,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": false
+    },
+    {
+      "room_code": "DV-URC-SR1E",
+      "room_name": "DV-URC SR1E",
       "room_type": "Seminar Room",
       "capacity": 25,
       "is_virtual": false,
@@ -899,6 +836,15 @@
       "is_virtual": false,
       "campus_mode": "Physical",
       "recording_available": false
+    },
+    {
+      "room_code": "DV-USC-LT1A",
+      "room_name": "DV-USC-Singapore Hokkien Huay Kuan",
+      "room_type": "Lecture Theatre",
+      "capacity": 40,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": true
     },
     {
       "room_code": "DV-USC-SR1C",
@@ -971,15 +917,6 @@
       "is_virtual": false,
       "campus_mode": "Physical",
       "recording_available": false
-    },
-    {
-      "room_code": "DV-USC-Singapore Hokkien Huay Kuan",
-      "room_name": "DV-USC-LT1A",
-      "room_type": "Lecture Theatre",
-      "capacity": 40,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": true
     },
     {
       "room_code": "E2-01-01-Lectorial 6",
@@ -2404,78 +2341,6 @@
       "recording_available": false
     },
     {
-      "room_code": "NYP-L2 SR2A",
-      "room_name": "NYP-SR2A",
-      "room_type": "Seminar Room",
-      "capacity": 50,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": true
-    },
-    {
-      "room_code": "NYP-L2 SR2B",
-      "room_name": "NYP-SR2B",
-      "room_type": "Seminar Room",
-      "capacity": 50,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": true
-    },
-    {
-      "room_code": "NYP-L3 SR3A",
-      "room_name": "NYP-SR3A",
-      "room_type": "Seminar Room",
-      "capacity": 50,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": false
-    },
-    {
-      "room_code": "NYP-L3 SR3B",
-      "room_name": "NYP-SR3B",
-      "room_type": "Seminar Room",
-      "capacity": 50,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": false
-    },
-    {
-      "room_code": "NYP-L5 SR5F",
-      "room_name": "NYP-SR5F",
-      "room_type": "Seminar Room",
-      "capacity": 50,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": true
-    },
-    {
-      "room_code": "NYP-L7 SR7C",
-      "room_name": "NYP-SR7C",
-      "room_type": "Seminar Room",
-      "capacity": 50,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": true
-    },
-    {
-      "room_code": "NYP-L7 SR7D",
-      "room_name": "NYP-SR7D",
-      "room_type": "Seminar Room",
-      "capacity": 50,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": true
-    },
-    {
-      "room_code": "NYP-L7 SR7E",
-      "room_name": "NYP-SR7E",
-      "room_type": "Seminar Room",
-      "capacity": 50,
-      "is_virtual": false,
-      "campus_mode": "Physical",
-      "recording_available": true
-    },
-    {
       "room_code": "NYP-LT1A",
       "room_name": "NYP-LT1A",
       "room_type": "Lecture Theatre",
@@ -2528,6 +2393,42 @@
       "is_virtual": false,
       "campus_mode": "Physical",
       "recording_available": true
+    },
+    {
+      "room_code": "NYP-SR2A",
+      "room_name": "NYP-L2 SR2A",
+      "room_type": "Seminar Room",
+      "capacity": 50,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": true
+    },
+    {
+      "room_code": "NYP-SR2B",
+      "room_name": "NYP-L2 SR2B",
+      "room_type": "Seminar Room",
+      "capacity": 50,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": true
+    },
+    {
+      "room_code": "NYP-SR3A",
+      "room_name": "NYP-L3 SR3A",
+      "room_type": "Seminar Room",
+      "capacity": 50,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": false
+    },
+    {
+      "room_code": "NYP-SR3B",
+      "room_name": "NYP-L3 SR3B",
+      "room_type": "Seminar Room",
+      "capacity": 50,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": false
     },
     {
       "room_code": "NYP-SR3E",
@@ -2665,6 +2566,15 @@
       "recording_available": true
     },
     {
+      "room_code": "NYP-SR5F",
+      "room_name": "NYP-L5 SR5F",
+      "room_type": "Seminar Room",
+      "capacity": 50,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": true
+    },
+    {
       "room_code": "NYP-SR5G",
       "room_name": "NYP-SR5G",
       "room_type": "Seminar Room",
@@ -2766,6 +2676,33 @@
     {
       "room_code": "NYP-SR7B",
       "room_name": "NYP-SR7B",
+      "room_type": "Seminar Room",
+      "capacity": 50,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": true
+    },
+    {
+      "room_code": "NYP-SR7C",
+      "room_name": "NYP-L7 SR7C",
+      "room_type": "Seminar Room",
+      "capacity": 50,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": true
+    },
+    {
+      "room_code": "NYP-SR7D",
+      "room_name": "NYP-L7 SR7D",
+      "room_type": "Seminar Room",
+      "capacity": 50,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": true
+    },
+    {
+      "room_code": "NYP-SR7E",
+      "room_name": "NYP-L7 SR7E",
       "room_type": "Seminar Room",
       "capacity": 50,
       "is_virtual": false,
@@ -3349,6 +3286,24 @@
       "recording_available": false
     },
     {
+      "room_code": "SP-SR5A",
+      "room_name": "*SP-SR5A",
+      "room_type": "Seminar Room",
+      "capacity": 24,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": false
+    },
+    {
+      "room_code": "SP-SR5B",
+      "room_name": "*SP-SR5B",
+      "room_type": "Seminar Room",
+      "capacity": 24,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": false
+    },
+    {
       "room_code": "SP-SR5C",
       "room_name": "SP-SR5C",
       "room_type": "Seminar Room",
@@ -3385,6 +3340,15 @@
       "recording_available": false
     },
     {
+      "room_code": "SP-SR5G",
+      "room_name": "*SP-SR5G",
+      "room_type": "Seminar Room",
+      "capacity": 24,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": false
+    },
+    {
       "room_code": "SP-SR5H",
       "room_name": "SP-SR5H",
       "room_type": "Seminar Room",
@@ -3398,6 +3362,15 @@
       "room_name": "SP-SR5J",
       "room_type": "Seminar Room",
       "capacity": 75,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": false
+    },
+    {
+      "room_code": "SP-SR5K",
+      "room_name": "*SP-SR5K",
+      "room_type": "Seminar Room",
+      "capacity": 12,
       "is_virtual": false,
       "campus_mode": "Physical",
       "recording_available": false
@@ -3430,8 +3403,8 @@
       "recording_available": false
     },
     {
-      "room_code": "SP-SR6D Seminar Room",
-      "room_name": "SP-SR6D",
+      "room_code": "SP-SR6D",
+      "room_name": "SP-SR6D Seminar Room",
       "room_type": "Seminar Room",
       "capacity": 25,
       "is_virtual": false,
@@ -3439,8 +3412,8 @@
       "recording_available": false
     },
     {
-      "room_code": "SP-SR6E Seminar Room",
-      "room_name": "SP-SR6E",
+      "room_code": "SP-SR6E",
+      "room_name": "SP-SR6E Seminar Room",
       "room_type": "Seminar Room",
       "capacity": 25,
       "is_virtual": false,
@@ -3592,6 +3565,24 @@
       "recording_available": true
     },
     {
+      "room_code": "TP-SR3F",
+      "room_name": "*TP-SR3F",
+      "room_type": "Seminar Room",
+      "capacity": 50,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": false
+    },
+    {
+      "room_code": "TP-SR3G",
+      "room_name": "*TP-SR3G",
+      "room_type": "Seminar Room",
+      "capacity": 25,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": false
+    },
+    {
       "room_code": "TP-SR3H",
       "room_name": "TP-SR3H",
       "room_type": "Seminar Room",
@@ -3677,6 +3668,15 @@
       "room_name": "TP-SR5C",
       "room_type": "Seminar Room",
       "capacity": 50,
+      "is_virtual": false,
+      "campus_mode": "Physical",
+      "recording_available": false
+    },
+    {
+      "room_code": "Temp Venue001",
+      "room_name": "*Temp Venue",
+      "room_type": "Teaching Facility",
+      "capacity": 999,
       "is_virtual": false,
       "campus_mode": "Physical",
       "recording_available": false

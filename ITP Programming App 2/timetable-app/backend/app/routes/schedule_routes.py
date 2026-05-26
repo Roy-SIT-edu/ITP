@@ -1,3 +1,5 @@
+"""API routes for generating and reading timetable schedules."""
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session as DbSession
 

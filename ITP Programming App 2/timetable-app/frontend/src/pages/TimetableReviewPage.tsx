@@ -1,3 +1,8 @@
+/*
+ * Review page.
+ * Displays the latest generated timetable and any stored constraint violations.
+ */
+
 import { Filter, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { getLatestSchedule, getViolations } from "../api/client";

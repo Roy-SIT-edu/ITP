@@ -1,3 +1,9 @@
+"""Database management API routes for split reference tables.
+
+These endpoints power the Database tab: list rows, inline CRUD, Excel replace
+uploads, and live example workbook downloads.
+"""
+
 from zipfile import BadZipFile
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile

@@ -110,7 +110,8 @@ def clean_rooms():
         )
 
     for index, row in non_campus.iterrows():
-        code = clean_text(row.get("Name"))
+        code = clean_text(row.get("Host Key")) or clean_text(row.get("Name"))
+        name = clean_text(row.get("Name")) or code
         capacity = to_int(row.get("Capacity"))
         if not code:
             continue
@@ -128,7 +129,7 @@ def clean_rooms():
         rooms.append(
             {
                 "room_code": code,
-                "room_name": clean_text(row.get("Host Key")) or code,
+                "room_name": name,
                 "room_type": infer_room_type(suitability=suitability, name=code),
                 "capacity": capacity,
                 "is_virtual": code.upper().startswith("CEFT EXTERNAL"),

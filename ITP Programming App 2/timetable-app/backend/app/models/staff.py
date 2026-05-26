@@ -1,3 +1,5 @@
+"""SQLAlchemy model for staff records used by requirement validation."""
+
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.orm import relationship
 

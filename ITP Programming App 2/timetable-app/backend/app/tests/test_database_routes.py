@@ -1,3 +1,5 @@
+"""Tests for split database APIs, example files, and schedule compatibility."""
+
 from io import BytesIO
 
 import pandas as pd

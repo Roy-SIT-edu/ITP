@@ -1,3 +1,8 @@
+/*
+ * Generic Database tab page.
+ * Renders any configured split database type as a searchable, editable table.
+ */
+
 import { Download, Edit2, Plus, RefreshCw, Save, Search, Trash2, Upload, X } from "lucide-react";
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -9,6 +14,7 @@ import {
   updateDatabaseRow,
   uploadDatabaseFile,
 } from "../api/client";
+import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
 import type { DatabaseColumn, DatabaseRow, DatabaseTypeInfo, UploadSummary } from "../types";
 
 type Props = {
@@ -125,6 +131,7 @@ export default function DatabasePage({ dataType }: Props) {
       setSuccess(`${title} row updated.`);
       setEditingId(null);
       await load();
+      notifyWorkflowProgressChange();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Update failed");
     } finally {
@@ -141,6 +148,7 @@ export default function DatabasePage({ dataType }: Props) {
       setSuccess(`${title} row added.`);
       setAdding(false);
       await load();
+      notifyWorkflowProgressChange();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create failed");
     } finally {
@@ -156,6 +164,7 @@ export default function DatabasePage({ dataType }: Props) {
       await deleteDatabaseRow(dataType, row.id);
       setSuccess(`${title} row deleted.`);
       await load();
+      notifyWorkflowProgressChange();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
     } finally {
@@ -174,10 +183,12 @@ export default function DatabasePage({ dataType }: Props) {
       const summary = await uploadDatabaseFile(dataType, file);
       setUploadSummary(summary);
       if (summary.rows_failed > 0) {
+        // Replace uploads rollback on validation errors, so reload only on success.
         setError(`Upload failed with ${summary.rows_failed} issue${summary.rows_failed === 1 ? "" : "s"}.`);
       } else {
         setSuccess(`Uploaded ${summary.rows_imported} ${title.toLowerCase()} row${summary.rows_imported === 1 ? "" : "s"}.`);
         await load();
+        notifyWorkflowProgressChange();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");

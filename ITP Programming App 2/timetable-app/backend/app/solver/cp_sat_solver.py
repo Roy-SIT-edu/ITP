@@ -1,3 +1,9 @@
+"""CP-SAT solver facade for timetable generation.
+
+This class keeps solver setup small: build candidate variables, run OR-Tools,
+and return normalized assignment dictionaries for persistence.
+"""
+
 from __future__ import annotations
 
 from ortools.sat.python import cp_model
@@ -40,6 +46,7 @@ class CpSatTimetableSolver:
 
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = max_seconds
+        # Multiple workers usually improves feasibility search on timetable grids.
         solver.parameters.num_search_workers = 8
         status = solver.Solve(built.model)
         status_name = solver.StatusName(status)

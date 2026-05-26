@@ -1,3 +1,8 @@
+/*
+ * Frontend API client.
+ * Centralizes fetch calls, error parsing, upload form-data, and export URLs.
+ */
+
 import type {
   ConstraintViolation,
   Dashboard,
@@ -29,6 +34,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const payload = contentType.includes("application/json") ? await response.json() : await response.text();
 
   if (!response.ok) {
+    // FastAPI may return strings, Pydantic errors, or row-level validation arrays.
     const detail = typeof payload === "object" && payload && "detail" in payload ? payload.detail : payload;
     const message =
       typeof detail === "string"
@@ -145,6 +151,12 @@ export function updateSession(id: number, data: Partial<SessionRow>) {
 
 export function deleteSession(id: number) {
   return request<{ message: string }>(`/api/sessions/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export function resetRequirementInputs() {
+  return request<{ message: string; rows_deleted: number }>("/api/sessions", {
     method: "DELETE",
   });
 }

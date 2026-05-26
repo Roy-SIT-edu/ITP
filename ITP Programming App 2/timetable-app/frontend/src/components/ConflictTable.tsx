@@ -1,3 +1,7 @@
+/*
+ * Displays hard and soft schedule constraint violations after generation.
+ */
+
 import type { ConstraintViolation } from "../types";
 import StatusBadge from "./StatusBadge";
 

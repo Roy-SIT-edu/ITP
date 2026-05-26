@@ -1,3 +1,5 @@
+"""Pydantic request schema for manual requirement create/update calls."""
+
 from typing import Optional
 from pydantic import BaseModel
 

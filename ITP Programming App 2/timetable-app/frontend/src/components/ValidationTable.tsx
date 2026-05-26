@@ -1,3 +1,7 @@
+/*
+ * Displays row-level validation errors and warnings from the backend.
+ */
+
 import type { ValidationIssue } from "../types";
 import StatusBadge from "./StatusBadge";
 

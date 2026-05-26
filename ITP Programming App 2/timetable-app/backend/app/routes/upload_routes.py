@@ -1,3 +1,9 @@
+"""Requirements workbook upload route.
+
+The upload accepts one or more Excel files and delegates validation/import to
+ImportService so failed batches leave existing requirements untouched.
+"""
+
 from zipfile import BadZipFile
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile

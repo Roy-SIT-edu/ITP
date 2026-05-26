@@ -1,3 +1,7 @@
+/*
+ * Small visual status label shared by dashboard, validation, review, and export.
+ */
+
 type Props = {
   label: string;
   tone?: "neutral" | "good" | "warn" | "bad" | "info";

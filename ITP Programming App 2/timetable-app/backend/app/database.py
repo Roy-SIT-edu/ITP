@@ -1,3 +1,9 @@
+"""Database setup for the split SQLite storage model.
+
+The app keeps one SQLAlchemy session, but routes each model to its own SQLite
+file through SQLAlchemy binds so services can query related models normally.
+"""
+
 from collections.abc import Generator
 from pathlib import Path
 
@@ -19,6 +25,7 @@ SPLIT_DATABASE_FILES = {
     "schedule_state": "schedule_state.db",
 }
 
+# Maps each table name to the split database file that owns it.
 TABLE_DATABASE_NAMES = {
     "rooms": "rooms",
     "staff": "staff",
@@ -80,6 +87,8 @@ def _model_database_names():
 def _routing_session_class(engines: dict[str, object]):
     class RoutingSession(Session):
         def get_bind(self, mapper=None, clause=None, **kwargs):
+            # SQLAlchemy calls this for every model operation; returning the
+            # matching engine is what makes cross-file access feel like one DB.
             if mapper is not None:
                 table_name = mapper.persist_selectable.name
                 database_name = TABLE_DATABASE_NAMES.get(table_name)
@@ -147,6 +156,7 @@ def _copy_legacy_rows(target_db: Session, legacy_database_path: Path) -> None:
     ]
     try:
         for model in ordered_models:
+            # Only migrate into empty split tables so current data is preserved.
             if target_db.query(model).count() > 0:
                 continue
             try:

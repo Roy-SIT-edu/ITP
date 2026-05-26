@@ -1,3 +1,8 @@
+/*
+ * Client-side router for the hash-based single-page app.
+ * Maps workflow tabs and database subtabs to their page components.
+ */
+
 import { useEffect, useState } from "react";
 import DatabasePage from "./pages/DatabasePage";
 import Layout from "./components/Layout";
@@ -29,6 +34,7 @@ function currentRoute(): RouteKey {
   const hash = window.location.hash.replace("#", "");
   if (hash === "database") return "database-rooms";
   if (hash === "requirements") {
+    // Old direct links still land on the merged Import + Requirements page.
     window.history.replaceState(null, "", "#upload");
     return "upload";
   }

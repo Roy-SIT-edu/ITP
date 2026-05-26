@@ -1,3 +1,9 @@
+"""Builds the OR-Tools CP-SAT model for timetable assignments.
+
+Each boolean variable means one session is assigned to one compatible
+room/time-slot pair; constraints then prevent clashes across rooms, staff, and groups.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -48,6 +54,7 @@ class TimetableModelBuilder:
                     if not self._room_allowed(session, room):
                         continue
                     key = (session.id, slot.id, room.id)
+                    # x_session_slot_room is true when the solver chooses this exact assignment.
                     variable = model.NewBoolVar(f"x_{session.id}_{slot.id}_{room.id}")
                     variables[key] = variable
                     assignment = {
@@ -62,6 +69,7 @@ class TimetableModelBuilder:
                 label = session.requirement_id or f"session {session.id}"
                 no_candidate_reasons.append(f"{label} has no compatible room/time-slot candidates")
             else:
+                # Every requirement must be scheduled exactly once.
                 model.Add(sum(session_vars) == 1)
 
         if not no_candidate_reasons:

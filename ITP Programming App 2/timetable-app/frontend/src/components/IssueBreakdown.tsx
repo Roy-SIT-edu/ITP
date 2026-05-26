@@ -1,3 +1,7 @@
+/*
+ * Human-readable breakdown for post-generation schedule issues.
+ */
+
 import { useState } from "react";
 import type { ValidationResult } from "../types";
 import { getViolations } from "../api/client";

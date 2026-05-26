@@ -1,15 +1,44 @@
-import { Edit2, Filter, Play, Plus, RefreshCw, Trash2 } from "lucide-react";
+/*
+ * Import page and merged requirements editor.
+ * Handles multi-file requirements uploads plus manual Add/Edit/Delete in one workflow step.
+ */
+
+import { Edit2, Filter, Play, Plus, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
+  ApiError,
   createSession,
   deleteSession,
   generateSchedule,
   getSessions,
+  resetRequirementInputs,
   updateSession,
   uploadTemplate,
 } from "../api/client";
+import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
 import UploadBox from "../components/UploadBox";
 import type { SessionRow, UploadSummary } from "../types";
+
+function formatApiError(err: unknown, fallback: string) {
+  if (err instanceof ApiError && Array.isArray(err.details)) {
+    // Backend validation returns row-level arrays; flatten them for modal notices.
+    const messages = err.details
+      .map((item) => {
+        if (typeof item === "object" && item && "message" in item) {
+          const issue = item as { field?: string; message?: string; row?: number };
+          const field = issue.field ? `${issue.field}: ` : "";
+          const row = issue.row ? `Row ${issue.row} - ` : "";
+          return `${row}${field}${issue.message}`;
+        }
+        return String(item);
+      })
+      .filter(Boolean);
+    if (messages.length > 0) {
+      return messages.slice(0, 6).join("\n");
+    }
+  }
+  return err instanceof Error ? err.message : fallback;
+}
 
 const emptySession: Omit<SessionRow, "id"> = {
   requirement_id: "",
@@ -97,6 +126,7 @@ function RequirementsEditor({ refreshSignal }: RequirementsEditorProps) {
       setSuccess(
         `Timetable regenerated. Solver status: ${result.solver_status}. Conflicts: ${result.hard_violation_count}.`,
       );
+      notifyWorkflowProgressChange();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed");
     } finally {
@@ -159,6 +189,7 @@ function RequirementsEditor({ refreshSignal }: RequirementsEditorProps) {
       await deleteSession(id);
       setSuccess("Requirement deleted.");
       await load();
+      notifyWorkflowProgressChange();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Deletion failed");
     } finally {
@@ -185,8 +216,9 @@ function RequirementsEditor({ refreshSignal }: RequirementsEditorProps) {
       }
       setIsModalOpen(false);
       await load();
+      notifyWorkflowProgressChange();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      setError(formatApiError(err, "Save failed"));
     } finally {
       setSaving(false);
     }
@@ -495,16 +527,45 @@ export default function UploadPage() {
   const [summary, setSummary] = useState<UploadSummary | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [refreshSignal, setRefreshSignal] = useState(0);
 
   const handleUpload = async (files: File[]) => {
     setBusy(true);
     setError(null);
+    setSuccess(null);
     try {
-      setSummary(await uploadTemplate(files));
-      setRefreshSignal((current) => current + 1);
+      const nextSummary = await uploadTemplate(files);
+      setSummary(nextSummary);
+      if (nextSummary.rows_failed > 0) {
+        // Failed uploads are all-or-nothing, so keep the old table visible.
+        setError("No requirements were imported because validation failed. Fix the row-level errors below and upload again.");
+      } else {
+        setRefreshSignal((current) => current + 1);
+        notifyWorkflowProgressChange();
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      setError(formatApiError(err, "Upload failed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleResetRequirements = async () => {
+    if (!window.confirm("Reset all requirement inputs? This clears imported/manual requirements and any generated schedule state.")) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const result = await resetRequirementInputs();
+      setSummary(null);
+      setSuccess(`${result.message} Cleared ${result.rows_deleted} requirement${result.rows_deleted === 1 ? "" : "s"}.`);
+      setRefreshSignal((current) => current + 1);
+      notifyWorkflowProgressChange();
+    } catch (err) {
+      setError(formatApiError(err, "Reset failed"));
     } finally {
       setBusy(false);
     }
@@ -517,9 +578,14 @@ export default function UploadPage() {
           <h1>Import Requirements</h1>
           <p>Import and combine one or more requirements workbooks</p>
         </div>
+        <button className="button danger" onClick={handleResetRequirements} disabled={busy} type="button">
+          <RotateCcw size={17} />
+          Reset Requirements
+        </button>
       </div>
       <UploadBox busy={busy} onUpload={handleUpload} />
       {error && <div className="notice bad">{error}</div>}
+      {success && <div className="notice good">{success}</div>}
       {summary && (
         <section className="metric-grid compact">
           <div className="metric-card">

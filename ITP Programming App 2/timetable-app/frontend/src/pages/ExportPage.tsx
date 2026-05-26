@@ -1,3 +1,8 @@
+/*
+ * Export page.
+ * Provides CSV/XLSX links for the latest generated schedule.
+ */
+
 import { Download, FileSpreadsheet, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { exportUrl, getLatestSchedule } from "../api/client";

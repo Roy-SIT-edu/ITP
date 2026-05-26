@@ -1,3 +1,7 @@
+/*
+ * Read-only timetable grid for reviewing generated scheduled sessions.
+ */
+
 import type { ScheduledRow } from "../types";
 
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];

@@ -1,3 +1,5 @@
+"""Serializer helpers that convert SQLAlchemy models into API dictionaries."""
+
 from __future__ import annotations
 
 from app.models.constraint_violation import ConstraintViolation

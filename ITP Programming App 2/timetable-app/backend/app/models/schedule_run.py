@@ -1,3 +1,5 @@
+"""SQLAlchemy model for generated timetable run metadata."""
+
 from datetime import datetime
 
 from sqlalchemy import Column, DateTime, Integer, String

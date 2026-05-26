@@ -1,3 +1,8 @@
+/*
+ * Reusable Excel file picker for requirements imports.
+ * Supports multiple files so the backend can combine and validate a batch.
+ */
+
 import { Upload } from "lucide-react";
 import { useState } from "react";
 

@@ -1,3 +1,5 @@
+"""Export service for converting generated schedules to CSV or Excel files."""
+
 from __future__ import annotations
 
 from io import BytesIO, StringIO

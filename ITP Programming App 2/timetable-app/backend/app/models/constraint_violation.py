@@ -1,3 +1,5 @@
+"""SQLAlchemy model for hard and soft schedule validation issues."""
+
 from sqlalchemy import Column, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 

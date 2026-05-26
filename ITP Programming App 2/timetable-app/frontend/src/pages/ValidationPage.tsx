@@ -1,3 +1,8 @@
+/*
+ * Validation page.
+ * Shows saved requirement errors/warnings and schedule issue breakdowns.
+ */
+
 import { RefreshCw, Info } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getValidation } from "../api/client";

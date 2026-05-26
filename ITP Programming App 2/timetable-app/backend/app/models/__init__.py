@@ -1,3 +1,9 @@
+"""Central import list for SQLAlchemy models.
+
+Importing this package loads every model class so table creation and tests can
+register the full metadata set with SQLAlchemy.
+"""
+
 from app.models.constraint_violation import ConstraintViolation
 from app.models.module import Module
 from app.models.programme import Programme

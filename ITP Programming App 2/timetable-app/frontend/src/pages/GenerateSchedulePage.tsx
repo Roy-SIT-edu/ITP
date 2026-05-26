@@ -1,8 +1,14 @@
+/*
+ * Generate page.
+ * Blocks schedule generation when saved requirements have validation errors.
+ */
+
 import { Play, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { generateSchedule, getValidation } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import ValidationTable from "../components/ValidationTable";
+import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
 import type { ScheduleGenerateResult, ValidationResult } from "../types";
 
 export default function GenerateSchedulePage() {
@@ -22,6 +28,7 @@ export default function GenerateSchedulePage() {
     setError(null);
     try {
       setResult(await generateSchedule());
+      notifyWorkflowProgressChange();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed");
     } finally {

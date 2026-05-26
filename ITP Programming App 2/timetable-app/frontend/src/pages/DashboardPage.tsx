@@ -1,4 +1,9 @@
-import { CheckCircle2, FileUp, Info, RefreshCw, ShieldCheck, WandSparkles } from "lucide-react";
+/*
+ * Dashboard page.
+ * Shows current import/validation/generation metrics; the flow chart lives in the global layout.
+ */
+
+import { Info, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getDashboard } from "../api/client";
 import type { Dashboard } from "../types";
@@ -18,44 +23,6 @@ export default function DashboardPage() {
   if (!dashboard) return <div className="empty-state">Loading dashboard.</div>;
 
   const latest = dashboard.latest_schedule;
-  const hasImport = dashboard.imported_rows > 0;
-  const validationClear = hasImport && dashboard.validation.is_valid;
-  const validationRan = hasImport;
-  const generationRan = !!latest;
-  const generationClear = !!latest && latest.status !== "FAILED";
-  const success = !!latest && latest.status === "COMPLETED" && latest.hard_violation_count === 0;
-
-  const processStages = [
-    {
-      label: "Import",
-      detail: hasImport ? `${dashboard.imported_rows} rows loaded` : "Waiting for data",
-      icon: FileUp,
-      state: hasImport ? "complete" : "pending",
-    },
-    {
-      label: "Validation",
-      detail: validationRan
-        ? validationClear
-          ? "Checks clear"
-          : `${dashboard.validation.error_count} errors`
-        : "Not run",
-      icon: ShieldCheck,
-      state: validationClear ? "complete" : validationRan ? "attention" : "pending",
-    },
-    {
-      label: "Generation",
-      detail: generationRan ? latest?.solver_status ?? latest?.status ?? "Run complete" : "Not run",
-      icon: WandSparkles,
-      state: generationClear ? "complete" : generationRan ? "attention" : "pending",
-    },
-    {
-      label: "Success",
-      detail: success ? "Timetable ready" : latest ? `${latest.hard_violation_count} hard conflicts` : "Awaiting schedule",
-      icon: CheckCircle2,
-      state: success ? "complete" : latest ? "attention" : "pending",
-    },
-  ];
-
   return (
     <div className="page">
       <div className="page-header">
@@ -68,26 +35,6 @@ export default function DashboardPage() {
           Refresh
         </button>
       </div>
-
-      <section className="process-flow" aria-label="Scheduling process flow">
-        {processStages.map((stage, index) => {
-          const Icon = stage.icon;
-          return (
-            <div className={`process-stage ${stage.state}`} key={stage.label}>
-              <div className="process-step">
-                <div className="process-icon">
-                  <Icon size={20} />
-                </div>
-                <div>
-                  <strong>{stage.label}</strong>
-                  <span>{stage.detail}</span>
-                </div>
-              </div>
-              {index < processStages.length - 1 && <div className={`process-line ${stage.state}`} />}
-            </div>
-          );
-        })}
-      </section>
 
       <section className="metric-grid">
         <div className="metric-card">
