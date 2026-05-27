@@ -8,6 +8,7 @@ export type ValidationIssue = {
   field: string;
   message: string;
   requirement_id?: string | null;
+  conflict_session_ids?: number[];
 };
 
 export type ValidationResult = {
@@ -72,6 +73,14 @@ export type ScheduleGenerateResult = {
   hard_violation_count: number;
   soft_score: number;
   message: string;
+};
+
+export type TimeSlot = {
+  id: number;
+  day: string;
+  start_time: string;
+  end_time: string;
+  week_pattern: string;
 };
 
 export type ScheduledRow = {

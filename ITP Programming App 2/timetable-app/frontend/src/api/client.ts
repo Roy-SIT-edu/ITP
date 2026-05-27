@@ -11,6 +11,7 @@ import type {
   ScheduleGenerateResult,
   ScheduleResponse,
   SessionRow,
+  TimeSlot,
   UploadSummary,
   ValidationResult,
 } from "../types";
@@ -57,6 +58,14 @@ export function getDashboard() {
 
 export function getSessions() {
   return request<SessionRow[]>("/api/sessions");
+}
+
+export function getSession(id: number) {
+  return request<SessionRow>(`/api/sessions/${id}`);
+}
+
+export function getTimeSlots() {
+  return request<TimeSlot[]>("/api/timeslots");
 }
 
 export function uploadTemplate(files: File[]) {

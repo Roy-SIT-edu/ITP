@@ -83,6 +83,14 @@ def sessions(db: DbSession = Depends(get_db)):
     return [session_to_dict(item) for item in db.query(Session).order_by(Session.id).all()]
 
 
+@router.get("/sessions/{session_id}")
+def session_by_id(session_id: int, db: DbSession = Depends(get_db)):
+    session = db.query(Session).filter_by(id=session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session_to_dict(session)
+
+
 @router.get("/dashboard")
 def dashboard(db: DbSession = Depends(get_db)):
     latest_run = db.query(ScheduleRun).order_by(ScheduleRun.id.desc()).first()

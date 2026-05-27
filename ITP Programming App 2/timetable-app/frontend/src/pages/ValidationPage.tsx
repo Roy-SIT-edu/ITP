@@ -4,9 +4,15 @@
  */
 
 import { RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
-import { getValidation } from "../api/client";
-import type { ValidationIssue, ValidationResult } from "../types";
+import { useEffect, useMemo, useState } from "react";
+import {
+  getValidation,
+  getSession,
+  getTimeSlots,
+  updateSession,
+  ApiError,
+} from "../api/client";
+import type { SessionRow, TimeSlot, ValidationIssue, ValidationResult } from "../types";
 
 const ISSUE_LABELS: Record<string, string> = {
   "Fixed Time": "Fixed session conflict",
@@ -24,15 +30,117 @@ export default function ValidationPage() {
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeIssue, setActiveIssue] = useState<ValidationIssue | null>(null);
+  const [conflictSessions, setConflictSessions] = useState<{ anchor?: SessionRow; target?: SessionRow } | null>(null);
+  const [timeslots, setTimeSlots] = useState<TimeSlot[]>([]);
+  const [editValues, setEditValues] = useState({
+    fixed_day: "",
+    fixed_start_time: "",
+    scheduling_type: "Flexible",
+    student_group_code: "",
+  });
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const load = () => {
+  const loadValidation = () => {
     getValidation().then(setValidation).catch((err: Error) => setError(err.message));
   };
 
-  useEffect(load, []);
+  useEffect(() => {
+    loadValidation();
+    getTimeSlots().then(setTimeSlots).catch(() => setTimeSlots([]));
+  }, []);
 
   const hasErrors = !!validation && validation.error_count > 0;
   const statusLabel = validation ? labelForStatus(validation.error_count) : "Loading validation...";
+
+  const dayOptions = useMemo(() => Array.from(new Set(timeslots.map((slot) => slot.day))), [timeslots]);
+  const startTimeOptions = useMemo(() => {
+    if (!editValues.fixed_day) {
+      return Array.from(new Set(timeslots.map((slot) => slot.start_time))).sort();
+    }
+    return Array.from(
+      new Set(
+        timeslots
+          .filter((slot) => slot.day === editValues.fixed_day)
+          .map((slot) => slot.start_time),
+      ),
+    ).sort();
+  }, [timeslots, editValues.fixed_day]);
+
+  const closeQuickEdit = () => {
+    setActiveIssue(null);
+    setConflictSessions(null);
+    setSaveError(null);
+    setIsSaving(false);
+    setEditValues({ fixed_day: "", fixed_start_time: "", scheduling_type: "Flexible", student_group_code: "" });
+  };
+
+  const openQuickEdit = async (item: ValidationIssue) => {
+    setError(null);
+    setSaveError(null);
+    setActiveIssue(item);
+
+    if (!item.conflict_session_ids?.length) {
+      setConflictSessions(null);
+      return;
+    }
+
+    try {
+      const sessions = await Promise.all(item.conflict_session_ids.map(getSession));
+      const target =
+        sessions.find(
+          (session) => session.requirement_id === item.requirement_id || session.source_row_no === item.row,
+        ) ?? sessions[0];
+      const anchor = sessions.find((session) => session.id !== target.id);
+      setConflictSessions({ anchor, target });
+      setEditValues({
+        fixed_day: target.fixed_day ?? "",
+        fixed_start_time: target.fixed_start_time ?? "",
+        scheduling_type: target.scheduling_type ?? "Flexible",
+        student_group_code: target.student_group_code ?? "",
+      });
+    } catch (err) {
+      setSaveError("Unable to load conflicting rows for quick edit.");
+    }
+  };
+
+  const saveQuickEdit = async () => {
+    if (!conflictSessions?.target) {
+      return;
+    }
+    setIsSaving(true);
+    setSaveError(null);
+
+    try {
+      const payload: Partial<SessionRow> = {
+        ...conflictSessions.target,
+        fixed_day: editValues.fixed_day || null,
+        fixed_start_time: editValues.fixed_start_time || null,
+        scheduling_type: editValues.scheduling_type || null,
+        student_group_code: editValues.student_group_code || null,
+      };
+
+      await updateSession(conflictSessions.target.id, payload);
+      const refreshedValidation = await getValidation();
+      setValidation(refreshedValidation);
+
+      if (refreshedValidation.error_count === 0) {
+        closeQuickEdit();
+      } else {
+        setSaveError("Saved. Validation still reports conflicts, please review the row again.");
+      }
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setSaveError(err.message);
+      } else if (err instanceof Error) {
+        setSaveError(err.message);
+      } else {
+        setSaveError("Unable to save changes.");
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className="page">
@@ -41,7 +149,7 @@ export default function ValidationPage() {
           <h1>Validation</h1>
           <p>Pre-generation pre-flight checklist</p>
         </div>
-        <button className="button secondary" onClick={load}>
+        <button className="button secondary" onClick={loadValidation}>
           <RefreshCw size={17} />
           Refresh
         </button>
@@ -58,7 +166,11 @@ export default function ValidationPage() {
                 {hasErrors ? "🔴" : "🟢"}
                 <span>{statusLabel}</span>
               </div>
-              <p>{hasErrors ? "Fix all hard conflicts before generating the timetable." : "No hard validation conflicts detected. You may proceed to generate."}</p>
+              <p>
+                {hasErrors
+                  ? "Fix all hard conflicts before generating the timetable."
+                  : "No hard validation conflicts detected. You may proceed to generate."}
+              </p>
             </section>
 
             <section className="status-card issue-card">
@@ -83,7 +195,7 @@ export default function ValidationPage() {
                           <td>{item.requirement_id ?? `Row ${item.row}`}</td>
                           <td>{item.message}</td>
                           <td>
-                            <button className="button secondary slim" onClick={() => setActiveIssue(item)}>
+                            <button className="button secondary slim" type="button" onClick={() => void openQuickEdit(item)}>
                               Quick Edit
                             </button>
                           </td>
@@ -108,12 +220,13 @@ export default function ValidationPage() {
                 <div className="modal-header">
                   <div>
                     <h2>Quick Edit</h2>
-                    <p>Review and fix the affected requirement row before generating.</p>
+                    <p>Review the conflicting rows and apply a fix without reuploading.</p>
                   </div>
-                  <button className="button secondary slim" type="button" onClick={() => setActiveIssue(null)}>
+                  <button className="button secondary slim" type="button" onClick={closeQuickEdit}>
                     Close
                   </button>
                 </div>
+
                 <div className="modal-body">
                   <div className="detail-row">
                     <strong>Issue Type</strong>
@@ -127,10 +240,119 @@ export default function ValidationPage() {
                     <strong>Details</strong>
                     <span>{activeIssue.message}</span>
                   </div>
+
+                  {conflictSessions?.anchor && conflictSessions?.target ? (
+                    <div className="quick-edit-grid">
+                      <div>
+                        <h3>Other conflicting row</h3>
+                        <div className="detail-row">
+                          <strong>Requirement</strong>
+                          <span>{conflictSessions.anchor.requirement_id ?? `Row ${conflictSessions.anchor.source_row_no ?? conflictSessions.anchor.id}`}</span>
+                        </div>
+                        <div className="detail-row">
+                          <strong>Student Group</strong>
+                          <span>{conflictSessions.anchor.student_group_code ?? "—"}</span>
+                        </div>
+                        <div className="detail-row">
+                          <strong>Fixed Day</strong>
+                          <span>{conflictSessions.anchor.fixed_day ?? "None"}</span>
+                        </div>
+                        <div className="detail-row">
+                          <strong>Fixed Start</strong>
+                          <span>{conflictSessions.anchor.fixed_start_time ?? "None"}</span>
+                        </div>
+                        <div className="detail-row">
+                          <strong>Fixed End</strong>
+                          <span>{conflictSessions.anchor.fixed_end_time ?? "None"}</span>
+                        </div>
+                        <div className="detail-row">
+                          <strong>Scheduling Type</strong>
+                          <span>{conflictSessions.anchor.scheduling_type ?? "Flexible"}</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h3>Editable row</h3>
+                        <div className="detail-row">
+                          <strong>Requirement</strong>
+                          <span>{conflictSessions.target.requirement_id ?? `Row ${conflictSessions.target.source_row_no ?? conflictSessions.target.id}`}</span>
+                        </div>
+                        <div className="detail-row">
+                          <label>
+                            <strong>Student Group</strong>
+                            <input
+                              value={editValues.student_group_code}
+                              onChange={(event) => setEditValues((prev) => ({ ...prev, student_group_code: event.target.value }))}
+                            />
+                          </label>
+                        </div>
+                        <div className="detail-row">
+                          <label>
+                            <strong>Fixed Day</strong>
+                            <select
+                              value={editValues.fixed_day}
+                              onChange={(event) => setEditValues((prev) => ({ ...prev, fixed_day: event.target.value }))}
+                            >
+                              <option value="">Select day</option>
+                              {dayOptions.map((day) => (
+                                <option key={day} value={day}>
+                                  {day}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <div className="detail-row">
+                          <label>
+                            <strong>Fixed Start Time</strong>
+                            <select
+                              value={editValues.fixed_start_time}
+                              onChange={(event) => setEditValues((prev) => ({ ...prev, fixed_start_time: event.target.value }))}
+                            >
+                              <option value="">Select time</option>
+                              {startTimeOptions.map((time) => (
+                                <option key={time} value={time}>
+                                  {time}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <div className="detail-row">
+                          <strong>Fixed End</strong>
+                          <span>{conflictSessions.target.fixed_end_time ?? "None"}</span>
+                        </div>
+                        <div className="detail-row">
+                          <label>
+                            <strong>Scheduling Type</strong>
+                            <select
+                              value={editValues.scheduling_type}
+                              onChange={(event) => setEditValues((prev) => ({ ...prev, scheduling_type: event.target.value }))}
+                            >
+                              <option value="Flexible">Flexible</option>
+                              <option value="Fixed">Fixed</option>
+                            </select>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="detail-row">
+                      <span>Conflict rows are unavailable for editing.</span>
+                    </div>
+                  )}
+
+                  {saveError && <div className="notice bad">{saveError}</div>}
                 </div>
+
                 <div className="modal-footer">
                   <button className="button secondary" type="button" onClick={() => (window.location.hash = "#upload")}>Open Upload</button>
-                  <button className="button" type="button" onClick={() => setActiveIssue(null)}>Close</button>
+                  <button className="button secondary" type="button" onClick={closeQuickEdit}>
+                    Close
+                  </button>
+                  <button className="button" type="button" onClick={saveQuickEdit} disabled={isSaving || !conflictSessions?.target}>
+                    {isSaving ? "Saving…" : "Save changes"}
+                  </button>
                 </div>
               </div>
             </div>

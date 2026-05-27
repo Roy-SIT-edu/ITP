@@ -83,8 +83,8 @@ class ValidationService:
                             who.append("student group")
                         who_text = " and ".join(who)
                         msg = f"Fixed sessions {a.requirement_id or a.id} and {b.requirement_id or b.id} are both fixed at {day} {start}-{end} and share {who_text} — this causes an unsatisfiable hard conflict."
-                        self._append_error(errors, row_a, "Fixed Time", msg, a.requirement_id)
-                        self._append_error(errors, row_b, "Fixed Time", msg, b.requirement_id)
+                        self._append_error(errors, row_a, "Fixed Time", msg, a.requirement_id, [a.id, b.id])
+                        self._append_error(errors, row_b, "Fixed Time", msg, b.requirement_id, [a.id, b.id])
                         # record pair (sorted) for schedule_issues breakdown
                         pair = (min(a.id, b.id), max(a.id, b.id))
                         if pair not in fixed_conflicts:
@@ -362,7 +362,15 @@ class ValidationService:
                 return None
         return current
 
-    def _append_error(self, errors: list[dict], row: int, field: str, message: str, requirement_id: str | None = None) -> None:
+    def _append_error(
+        self,
+        errors: list[dict],
+        row: int,
+        field: str,
+        message: str,
+        requirement_id: str | None = None,
+        conflict_session_ids: list[int] | None = None,
+    ) -> None:
         item = {
             "row": row,
             "field": field,
@@ -370,4 +378,6 @@ class ValidationService:
         }
         if requirement_id is not None:
             item["requirement_id"] = requirement_id
+        if conflict_session_ids is not None:
+            item["conflict_session_ids"] = conflict_session_ids
         errors.append(item)
