@@ -467,6 +467,87 @@ h2 {
   color: #64748b;
 }
 
+.status-board {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(260px, 1fr) minmax(420px, 2fr) minmax(240px, 320px);
+}
+
+.status-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.status-card-title {
+  color: #0f766e;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+
+.status-card-badge {
+  align-items: center;
+  display: inline-flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.status-card-badge.good {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-card-badge.bad {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.quick-edit-panel {
+  max-width: 520px;
+  width: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.quick-edit-panel .modal-header,
+.quick-edit-panel .modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.quick-edit-panel .modal-body {
+  display: grid;
+  gap: 14px;
+}
+
+.quick-edit-panel .detail-row {
+  display: grid;
+  gap: 6px;
+}
+
+.quick-edit-panel .detail-row strong {
+  color: #334155;
+}
+
+.quick-edit-panel .detail-row span {
+  color: #475569;
+}
+
+.modal-content.quick-edit-panel {
+  min-width: 320px;
+  max-width: 520px;
+}
+
 .upload-panel {
   align-items: center;
   background: #ffffff;

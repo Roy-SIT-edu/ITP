@@ -7,6 +7,7 @@ export type ValidationIssue = {
   row: number;
   field: string;
   message: string;
+  requirement_id?: string | null;
 };
 
 export type ValidationResult = {
