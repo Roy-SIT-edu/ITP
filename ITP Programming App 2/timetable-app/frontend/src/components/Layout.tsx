@@ -11,7 +11,6 @@ import {
   Database,
   TableProperties,
   Upload,
-  WandSparkles,
   CheckCircle2,
 } from "lucide-react";
 import { useEffect } from "react";
@@ -36,7 +35,6 @@ const databaseItems = [
 const workflowItems = [
   { id: "upload", label: "Import", icon: Upload },
   { id: "validation", label: "Validate", icon: CheckCircle2 },
-  { id: "generate", label: "Generate", icon: WandSparkles },
   { id: "review", label: "Review", icon: TableProperties },
   { id: "export", label: "Export", icon: Download },
   { id: "database", label: "Database", icon: Database, children: databaseItems },

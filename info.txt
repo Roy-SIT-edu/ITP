@@ -1,0 +1,657 @@
+Timetable Scheduler - Student-Friendly Code Rundown
+===================================================
+
+This file explains the important files changed in the latest improvement pass.
+It focuses on the new workflow features: upload preview, demo samples,
+constraint editing, schedule comparison, manual timetable moves, explanations,
+availability snapshots, and smart issue summaries.
+
+
+1. Backend API Files
+--------------------
+
+File: ITP Programming App 2/timetable-app/backend/app/routes/upload_routes.py
+Purpose:
+  Handles Excel requirement uploads, upload previews, and demo sample loading.
+
+Key snippet:
+  DEMO_SAMPLES = {
+      "no-constraints": {
+          "label": "No constraints",
+          "filename": "sample_no_constraints_20_rows.xlsx",
+      },
+  }
+
+Student explanation:
+  This dictionary is like a menu of built-in sample files. The frontend asks
+  for this list so it can show "Load Sample" buttons.
+
+Key snippet:
+  async def _read_workbooks(files, file):
+      return [(await item.read(), item.filename or "input-template.xlsx") for item in _uploads(files, file)]
+
+Student explanation:
+  Uploaded files arrive as temporary objects. This helper reads each file into
+  bytes and keeps the filename. Both real import and preview use this helper,
+  so the code is not repeated.
+
+Key snippet:
+  @router.post("/input-template/preview")
+  async def preview_input_template(...):
+      return ImportService().preview_input_template_files(db, await _read_workbooks(files, file))
+
+Student explanation:
+  This endpoint checks the uploaded Excel files without saving them. It lets
+  users see row counts and validation errors before replacing existing data.
+
+Key snippet:
+  @router.post("/demo-samples/{sample_id}/load")
+  def load_demo_sample(sample_id: str, db: DbSession = Depends(get_db)):
+      return ImportService().import_input_template(db, path, source_filename=sample["filename"])
+
+Student explanation:
+  This loads one of the sample workbooks directly into the app. It uses the
+  same import service as normal uploads, so samples follow the same rules.
+
+
+File: ITP Programming App 2/timetable-app/backend/app/services/import_service.py
+Purpose:
+  Reads Excel files, normalizes column names, validates rows, previews batches,
+  and imports valid batches.
+
+Key snippet:
+  def preview_input_template_files(self, db, workbooks):
+      frames = [(self._read_workbook_frame(BytesIO(workbook_bytes)), source_filename)
+                for workbook_bytes, source_filename in workbooks]
+      return self._preview_frames(db, frames)
+
+Student explanation:
+  A "frame" is a table read from Excel. This function converts uploaded
+  workbook bytes into tables, then asks the preview function to validate them.
+
+Key snippet:
+  file_summaries = [
+      {"filename": source_filename, "rows_read": int(len(frame.index)), "columns": [str(column) for column in frame.columns]}
+      for frame, source_filename in frames
+  ]
+
+Student explanation:
+  This creates one summary per uploaded file. It records the filename, number
+  of rows, and detected columns so the UI can show a clear import report.
+
+Key snippet:
+  session_data, errors = RequirementInputService().validate_upload_rows(db, upload_rows)
+
+Student explanation:
+  The preview and import paths both validate rows with the same service. This
+  avoids a bug where preview says a file is fine but import later rejects it.
+
+Key snippet:
+  "rows_importable": len(session_data) if not errors else 0
+
+Student explanation:
+  Uploads are all-or-nothing. If any row has an error, no rows should be
+  imported, so importable rows becomes 0 when errors exist.
+
+
+File: ITP Programming App 2/timetable-app/backend/app/services/requirement_input_service.py
+Purpose:
+  Converts spreadsheet rows into database-ready session data and reports row
+  validation errors.
+
+Key snippet:
+  issue["source_file"] = item.source_filename
+
+Student explanation:
+  Each validation error now remembers which Excel file caused it. This is what
+  lets the frontend group upload problems by file.
+
+
+File: ITP Programming App 2/timetable-app/backend/app/routes/schedule_routes.py
+Purpose:
+  Handles schedule generation, schedule history, comparison, manual moves,
+  explanations, and conflict lists.
+
+Key snippet:
+  class ManualMoveInput(BaseModel):
+      day: str
+      start_time: str
+      end_time: str
+      room_code: str
+
+Student explanation:
+  This describes the JSON body required when a user manually moves a class in
+  the timetable. FastAPI uses it to validate the request.
+
+Key snippet:
+  @router.get("/compare")
+  def compare_schedules(ids: list[int] | None = Query(default=None), db: DbSession = Depends(get_db)):
+
+Student explanation:
+  This endpoint returns recent schedule runs with useful comparison numbers.
+  The optional ids parameter lets the UI compare specific runs later.
+
+Key snippet:
+  "quality_score": max(0, 100 - (hard * 20) - int(run.soft_score or 0))
+
+Student explanation:
+  This is a simple score for quick comparison. Hard conflicts are costly, soft
+  issues reduce the score, and max(0, ...) prevents negative scores.
+
+Key snippet:
+  item.room_id = room.id
+  item.time_slot_id = slot.id
+  item.day = slot.day
+  item.start_time = slot.start_time
+  item.end_time = slot.end_time
+
+Student explanation:
+  These lines perform the manual timetable move. They update the scheduled
+  session to point at the chosen room and time slot.
+
+Key snippet:
+  check = ConstraintService().check_and_store(db, schedule_run_id)
+
+Student explanation:
+  After a manual move, conflicts are recalculated immediately. This prevents
+  the review page from showing outdated issue counts.
+
+Key snippet:
+  reasons.append(f"Room {item.room.room_code} fits {session.venue_type_required} delivery and capacity.")
+
+Student explanation:
+  The explanation endpoint builds short human-readable reasons for why a class
+  was placed where it was.
+
+
+File: ITP Programming App 2/timetable-app/backend/app/routes/data_routes.py
+Purpose:
+  Provides dashboard data, availability data, and smart constraint summaries.
+
+Key snippet:
+  @router.get("/availability")
+  def availability(db: DbSession = Depends(get_db)):
+
+Student explanation:
+  This endpoint summarizes which staff and rooms are busy in the latest
+  schedule. The dashboard turns that into day-by-day chips.
+
+Key snippet:
+  staff_busy.setdefault(staff_label, {"name": staff_label, "busy": []})["busy"].append(entry)
+
+Student explanation:
+  setdefault creates the staff entry if it does not exist yet, then appends
+  the busy class entry to that staff member.
+
+Key snippet:
+  @router.get("/constraint-insights")
+  def constraint_insights(db: DbSession = Depends(get_db)):
+
+Student explanation:
+  This endpoint combines input validation errors and generated schedule issues
+  into one ranked list for the dashboard.
+
+
+File: ITP Programming App 2/timetable-app/backend/app/services/export_service.py
+Purpose:
+  Turns scheduled sessions into rows for review and export.
+
+Key snippet:
+  "scheduled_session_id": item.id,
+  "session_id": session.id,
+
+Student explanation:
+  The frontend needs session_id to move a class manually. The scheduled row
+  now includes both the scheduled-session database ID and the original session ID.
+
+
+2. Frontend API And Type Files
+------------------------------
+
+File: ITP Programming App 2/timetable-app/frontend/src/api/client.ts
+Purpose:
+  Central place for frontend fetch calls.
+
+Key snippet:
+  export function previewTemplate(files: File[]) {
+      const formData = new FormData();
+      files.forEach((file) => formData.append("files", file));
+      return request<UploadPreview>("/api/upload/input-template/preview", { method: "POST", body: formData });
+  }
+
+Student explanation:
+  This sends selected Excel files to the preview endpoint. FormData is used
+  because file uploads are not normal JSON.
+
+Key snippet:
+  export function moveScheduledSession(scheduleRunId, sessionId, data) {
+      return request(`/api/schedules/${scheduleRunId}/sessions/${sessionId}`, { method: "PUT", ... });
+  }
+
+Student explanation:
+  This updates one scheduled class after the user changes its room or slot on
+  the Review page.
+
+Key snippet:
+  export function getAvailability() {
+      return request<Availability>("/api/availability");
+  }
+
+Student explanation:
+  This fetches the data used for the staff and room availability cards.
+
+
+File: ITP Programming App 2/timetable-app/frontend/src/types/index.ts
+Purpose:
+  Shared TypeScript shapes for API responses.
+
+Key snippet:
+  export type UploadPreview = {
+      rows_read: number;
+      rows_importable: number;
+      rows_failed: number;
+      errors: ValidationIssue[];
+      file_summaries: UploadFileSummary[];
+  };
+
+Student explanation:
+  This tells TypeScript what the upload preview API returns. If the UI uses a
+  wrong field name, TypeScript can catch it during build.
+
+Key snippet:
+  export type ScheduledRow = {
+      scheduled_session_id: number;
+      session_id: number;
+      ...
+  };
+
+Student explanation:
+  The review table needs session_id so it knows which class to move when the
+  user edits a row.
+
+
+3. Frontend Component And Page Files
+------------------------------------
+
+File: ITP Programming App 2/timetable-app/frontend/src/components/UploadBox.tsx
+Purpose:
+  Reusable Excel file picker.
+
+Key snippet:
+  const fileKey = (file: File) => `${file.name}-${file.size}-${file.lastModified}`;
+
+Student explanation:
+  This creates a mostly unique ID for each selected file. It helps prevent the
+  same file from being added twice.
+
+Key snippet:
+  <input accept=".xlsx,.xls" multiple type="file" ... />
+
+Student explanation:
+  multiple lets users select more than one Excel file. accept limits the file
+  picker to Excel formats.
+
+Key snippet:
+  {files.map((file) => (
+      <li key={key}> ... remove button ... </li>
+  ))}
+
+Student explanation:
+  The component shows every selected file and lets the user remove a file
+  before importing.
+
+
+File: ITP Programming App 2/timetable-app/frontend/src/pages/UploadPage.tsx
+Purpose:
+  Main page for importing Excel workbooks and editing requirements.
+
+Key snippet:
+  function FileReport(...)
+
+Student explanation:
+  FileReport displays upload preview/import results: total rows, ready rows,
+  failed rows, file summaries, and row-level errors.
+
+Key snippet:
+  const handlePreview = async (files: File[]) => {
+      setPreview(await previewTemplate(files));
+  };
+
+Student explanation:
+  This calls the backend preview API and stores the result in React state so
+  the preview report appears on screen.
+
+Key snippet:
+  const handleLoadSample = async (id: string) => {
+      const nextSummary = await loadDemoSample(id);
+      setSummary(nextSummary);
+      setRefreshSignal((current) => current + 1);
+  };
+
+Student explanation:
+  This loads a demo workbook, shows the import result, and tells the
+  requirements table to refresh.
+
+Key snippet:
+  function ConstraintStudio(...)
+
+Student explanation:
+  ConstraintStudio is the small form that lets a user set no constraints, soft
+  day preferences, or a hard fixed slot for an existing requirement.
+
+
+File: ITP Programming App 2/timetable-app/frontend/src/pages/ValidationPage.tsx
+Purpose:
+  Shows validation errors and provides quick fixes.
+
+Key snippet:
+  const endTimeOptions = useMemo(() => { ... }, [timeslots, editValues.fixed_day, editValues.fixed_start_time]);
+
+Student explanation:
+  useMemo recalculates end-time options only when the selected day or start
+  time changes. This keeps the UI efficient and clear.
+
+Key snippet:
+  const quickSuggestions = useMemo(() => { ... }, [activeIssue, conflictSessions, timeslots]);
+
+Student explanation:
+  This builds suggested fixes such as "Make row flexible" or "Try another time
+  slot" based on the current validation issue.
+
+Key snippet:
+  await updateSession(conflictSessions.target.id, payload);
+
+Student explanation:
+  This saves the quick-edit changes back to the backend.
+
+
+File: ITP Programming App 2/timetable-app/frontend/src/components/TimetableGrid.tsx
+Purpose:
+  Shows the timetable and optional manual move controls.
+
+Key snippet:
+  type MoveDraft = {
+      day: string;
+      start_time: string;
+      end_time: string;
+      room_code: string;
+  };
+
+Student explanation:
+  MoveDraft describes the temporary values a user chooses before clicking Move.
+
+Key snippet:
+  const matchingSlots = timeSlots.filter((slot) => slot.day === draft.day && slot.duration_minutes === rowDuration);
+
+Student explanation:
+  The start-time dropdown only shows slots on the selected day with the same
+  duration as the current class.
+
+Key snippet:
+  onChange(next);
+
+Student explanation:
+  The component sends the updated draft back to the Review page. The Review
+  page owns the final state and saves it.
+
+
+File: ITP Programming App 2/timetable-app/frontend/src/pages/TimetableReviewPage.tsx
+Purpose:
+  Review generated timetables, compare schedule versions, move sessions, and
+  read placement explanations.
+
+Key snippet:
+  const [comparisons, setComparisons] = useState<ScheduleComparison[]>([]);
+
+Student explanation:
+  This stores the schedule comparison rows shown in the "Schedule Versions"
+  table.
+
+Key snippet:
+  const [moveDrafts, setMoveDrafts] = useState<Record<number, MoveDraft>>({});
+
+Student explanation:
+  This stores unsaved move choices. The key is session_id, so each session can
+  have its own draft.
+
+Key snippet:
+  await moveScheduledSession(schedule.schedule_run.id, row.session_id, draft);
+
+Student explanation:
+  When the user clicks Move, this sends the chosen day/time/room to the backend.
+
+Key snippet:
+  {explanations.slice(0, 8).map((item) => (...))}
+
+Student explanation:
+  The page shows the first few schedule explanations so users can understand
+  why sessions were placed.
+
+
+File: ITP Programming App 2/timetable-app/frontend/src/pages/DashboardPage.tsx
+Purpose:
+  Shows overall health metrics, top issues, and availability summaries.
+
+Key snippet:
+  Promise.all([getDashboard(), getConstraintInsights(), getAvailability()])
+
+Student explanation:
+  The dashboard fetches three independent API calls at the same time. This is
+  faster than waiting for each one separately.
+
+Key snippet:
+  function AvailabilityRow({ days, item }) { ... }
+
+Student explanation:
+  This converts a list of busy entries into day counts such as Mon 2, Tue 1,
+  and displays them as small chips.
+
+Key snippet:
+  issue.code.split("_").join(" ")
+
+Student explanation:
+  Backend issue codes use underscores. This turns "ROOM_DOUBLE_BOOKING" into
+  readable text like "ROOM DOUBLE BOOKING".
+
+
+File: ITP Programming App 2/timetable-app/frontend/src/styles.css
+Purpose:
+  Shared styling for the app.
+
+Key snippets:
+  .selected-files { ... }
+  .sample-grid { ... }
+  .constraint-grid { ... }
+  .move-controls { ... }
+  .availability-days { ... }
+
+Student explanation:
+  These classes style the new multi-file picker, sample cards, constraint
+  builder, manual move controls, and availability chips. They reuse the app's
+  existing quiet dashboard style instead of adding a separate design system.
+
+
+4. Sample Workbook Files
+------------------------
+
+Folder: outputs/sample-input-workbooks/
+
+Files:
+  sample_no_constraints_20_rows.xlsx
+  sample_soft_constraints_only_20_rows.xlsx
+  sample_hard_constraints_20_rows.xlsx
+
+Student explanation:
+  These are ready-to-import demo Excel files. Each has 20 rows and uses the
+  same Input_Template sheet name expected by the importer.
+
+How they differ:
+  - No constraints: flexible rows without preferred/avoid/fixed times.
+  - Soft constraints only: flexible rows with preferred and avoided days.
+  - Hard constraints: fixed rows with specific valid day/time slots.
+
+
+5. Verification Commands
+------------------------
+
+Frontend:
+  cd "ITP Programming App 2/timetable-app/frontend"
+  npm run build
+
+Backend:
+  cd "ITP Programming App 2/timetable-app/backend"
+  python -m pytest
+
+What these prove:
+  npm run build checks TypeScript and production bundling.
+  python -m pytest checks backend upload, validation, CRUD, solver, database,
+  and constraint behavior.
+
+
+6. Quick Map Of Other Existing App Files
+----------------------------------------
+
+These files were not the main focus of the cleanup, but students will see them
+when browsing the project.
+
+Backend app setup:
+  File: backend/app/main.py
+  Key snippet:
+    app.include_router(upload_routes.router)
+  Explanation:
+    This attaches a group of API endpoints to the FastAPI app.
+
+  File: backend/app/database.py
+  Key snippet:
+    Base = declarative_base()
+  Explanation:
+    SQLAlchemy uses Base as the parent for all database model classes.
+
+Backend models:
+  Folder: backend/app/models/
+  Files:
+    programme.py, module.py, student_group.py, staff.py, room.py, time_slot.py,
+    session.py, schedule_run.py, scheduled_session.py, constraint_violation.py
+  Key snippet pattern:
+    id = Column(Integer, primary_key=True, index=True)
+  Explanation:
+    Each model describes one database table. Columns are table fields, and
+    relationships connect tables together.
+
+Backend services:
+  File: backend/app/services/schedule_service.py
+  Key snippet:
+    result = self.solver.solve(sessions, time_slots, rooms)
+  Explanation:
+    This sends all requirements, slots, and rooms into the solver.
+
+  File: backend/app/services/validation_service.py
+  Key snippet:
+    self._required_checks(session, row, errors)
+  Explanation:
+    This checks whether a saved requirement is missing important information.
+
+  File: backend/app/services/constraint_service.py
+  Key snippet:
+    self._hard_double_booking_checks(scheduled, violations)
+  Explanation:
+    This checks generated schedules for hard clashes like room, staff, or group
+    double bookings.
+
+  File: backend/app/services/serializers.py
+  Key snippet:
+    return {"id": item.id, "status": item.status, ...}
+  Explanation:
+    Serializers convert database objects into plain dictionaries that the
+    frontend can receive as JSON.
+
+  File: backend/app/services/seed_service.py
+  Key snippet:
+    _get_or_create(db, Room, room_code=code, defaults={...})
+  Explanation:
+    Seed data creates default rooms, modules, staff, groups, and time slots for
+    development and testing.
+
+Backend solver:
+  File: backend/app/solver/model_builder.py
+  Key snippet:
+    model.Add(sum(session_vars) == 1)
+  Explanation:
+    This tells the solver every requirement must be assigned exactly one slot
+    and room.
+
+  File: backend/app/solver/cp_sat_solver.py
+  Key snippet:
+    status = solver.Solve(built.model)
+  Explanation:
+    This runs the OR-Tools CP-SAT solver on the built timetable model.
+
+  File: backend/app/solver/result_parser.py
+  Key snippet:
+    if solver.Value(assignment["variable"]):
+  Explanation:
+    This reads which solver decision variables were chosen and turns them into
+    scheduled class rows.
+
+Other backend routes:
+  File: backend/app/routes/database_routes.py
+  Explanation:
+    CRUD endpoints for reference data like rooms, staff, modules, programmes,
+    student groups, and time slots.
+
+  File: backend/app/routes/validation_routes.py
+  Explanation:
+    Small route that returns the latest validation result.
+
+  File: backend/app/routes/export_routes.py
+  Explanation:
+    Exports a generated timetable to CSV or Excel.
+
+Frontend app setup:
+  File: frontend/src/main.tsx
+  Key snippet:
+    ReactDOM.createRoot(document.getElementById("root")!).render(...)
+  Explanation:
+    This starts the React app and mounts it into index.html.
+
+  File: frontend/src/App.tsx
+  Key snippet:
+    const Page = routeMap[route];
+  Explanation:
+    The app uses the URL hash to choose which page component to show.
+
+Frontend components:
+  File: frontend/src/components/Layout.tsx
+  Explanation:
+    Provides the common navigation/sidebar layout around every page.
+
+  File: frontend/src/components/WorkflowProgress.tsx
+  Explanation:
+    Shows where the user is in the import, validation, generation, review, and
+    export workflow.
+
+  File: frontend/src/components/StatusBadge.tsx
+  Explanation:
+    Small reusable colored label for statuses like Valid, No run, or OPTIMAL.
+
+  File: frontend/src/components/ConflictTable.tsx
+  Explanation:
+    Displays hard and soft constraint violations after schedule generation.
+
+  File: frontend/src/components/IssueBreakdown.tsx
+  Explanation:
+    Groups constraint issue counts into human-readable categories.
+
+Other frontend pages:
+  File: frontend/src/pages/DatabasePage.tsx
+  Explanation:
+    Lets users view, add, edit, delete, and upload reference database rows.
+
+  File: frontend/src/pages/ValidationPage.tsx
+  Explanation:
+    Validates requirement data, offers quick fixes, and now runs the solver
+    directly. There is no separate Generate page or tab.
+
+  File: frontend/src/pages/ExportPage.tsx
+  Explanation:
+    Gives users CSV/XLSX links for the latest generated timetable.

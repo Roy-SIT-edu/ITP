@@ -1,16 +1,39 @@
 /*
- * Read-only timetable grid for reviewing generated scheduled sessions.
+ * Timetable grid for reviewing and manually adjusting generated scheduled sessions.
  */
 
-import type { ScheduledRow } from "../types";
+import type { Room, ScheduledRow, TimeSlot } from "../types";
 
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
-type Props = {
-  rows: ScheduledRow[];
+type MoveDraft = {
+  day: string;
+  start_time: string;
+  end_time: string;
+  room_code: string;
 };
 
-export default function TimetableGrid({ rows }: Props) {
+type Props = {
+  rows: ScheduledRow[];
+  editable?: boolean;
+  rooms?: Room[];
+  timeSlots?: TimeSlot[];
+  moveDrafts?: Record<number, MoveDraft>;
+  savingMove?: number | null;
+  onChangeMove?: (sessionId: number, value: MoveDraft) => void;
+  onSaveMove?: (row: ScheduledRow) => void;
+};
+
+export default function TimetableGrid({
+  rows,
+  editable = false,
+  rooms = [],
+  timeSlots = [],
+  moveDrafts = {},
+  savingMove = null,
+  onChangeMove,
+  onSaveMove,
+}: Props) {
   return (
     <>
       <div className="timetable-board">
@@ -54,6 +77,7 @@ export default function TimetableGrid({ rows }: Props) {
               <th>End</th>
               <th>Weeks</th>
               <th>Mode</th>
+              {editable && <th>Edit Slot</th>}
             </tr>
           </thead>
           <tbody>
@@ -70,6 +94,19 @@ export default function TimetableGrid({ rows }: Props) {
                 <td>{row.end_time}</td>
                 <td>{row.week_pattern}</td>
                 <td>{row.delivery_mode}</td>
+                {editable && (
+                  <td>
+                    <MoveControls
+                      row={row}
+                      rooms={rooms}
+                      timeSlots={timeSlots}
+                      value={moveDrafts[row.session_id]}
+                      saving={savingMove === row.session_id}
+                      onChange={(value) => onChangeMove?.(row.session_id, value)}
+                      onSave={() => onSaveMove?.(row)}
+                    />
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -77,4 +114,72 @@ export default function TimetableGrid({ rows }: Props) {
       </div>
     </>
   );
+}
+
+function MoveControls({
+  row,
+  rooms,
+  timeSlots,
+  value,
+  saving,
+  onChange,
+  onSave,
+}: {
+  row: ScheduledRow;
+  rooms: Room[];
+  timeSlots: TimeSlot[];
+  value?: MoveDraft;
+  saving: boolean;
+  onChange: (value: MoveDraft) => void;
+  onSave: () => void;
+}) {
+  const draft = value ?? { day: row.day, start_time: row.start_time, end_time: row.end_time, room_code: row.room };
+  const rowDuration = duration(row);
+  const matchingSlots = timeSlots.filter((slot) => slot.day === draft.day && slot.duration_minutes === rowDuration);
+
+  const update = (patch: Partial<typeof draft>) => {
+    const next = { ...draft, ...patch };
+    const slot = timeSlots.find(
+      (item) => item.day === next.day && item.start_time === next.start_time && item.duration_minutes === rowDuration,
+    );
+    if (slot) {
+      next.end_time = slot.end_time;
+    }
+    onChange(next);
+  };
+
+  return (
+    <div className="move-controls">
+      <select value={draft.day} onChange={(event) => update({ day: event.target.value })}>
+        {days.map((day) => (
+          <option key={day} value={day}>
+            {day}
+          </option>
+        ))}
+      </select>
+      <select value={draft.start_time} onChange={(event) => update({ start_time: event.target.value })}>
+        {matchingSlots.map((slot) => (
+          <option key={`${slot.day}-${slot.start_time}-${slot.end_time}`} value={slot.start_time}>
+            {slot.start_time}-{slot.end_time}
+          </option>
+        ))}
+      </select>
+      <select value={draft.room_code} onChange={(event) => update({ room_code: event.target.value })}>
+        {rooms.map((room) => (
+          <option key={room.id} value={room.room_code}>
+            {room.room_code}
+          </option>
+        ))}
+      </select>
+      <button className="button secondary slim" disabled={saving} type="button" onClick={onSave}>
+        {saving ? "Saving" : "Move"}
+      </button>
+    </div>
+  );
+}
+
+function duration(row: ScheduledRow) {
+  const [startHour, startMinute] = row.start_time.split(":").map(Number);
+  const [endHour, endMinute] = row.end_time.split(":").map(Number);
+  return endHour * 60 + endMinute - (startHour * 60 + startMinute);
 }

@@ -72,13 +72,13 @@ class RequirementInputService:
                 # and schedule reports ambiguous, so reject them before insert.
                 key = requirement_id.lower()
                 if key in seen_requirement_ids:
-                    errors.append(
-                        self._issue(
-                            item.source_row_no,
-                            "Requirement ID",
-                            f"Duplicate requirement_id '{requirement_id}' in upload. First seen on row {seen_requirement_ids[key]}.",
-                        )
+                    issue = self._issue(
+                        item.source_row_no,
+                        "Requirement ID",
+                        f"Duplicate requirement_id '{requirement_id}' in upload. First seen on row {seen_requirement_ids[key]}.",
                     )
+                    issue["source_file"] = item.source_filename
+                    errors.append(issue)
                 else:
                     seen_requirement_ids[key] = item.source_row_no
 
@@ -89,6 +89,8 @@ class RequirementInputService:
                 item.source_row_no,
                 check_existing_duplicate=False,
             )
+            for issue in row_errors:
+                issue["source_file"] = item.source_filename
             errors.extend(row_errors)
             if not row_errors:
                 session_data.append(data)

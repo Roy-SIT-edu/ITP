@@ -99,6 +99,74 @@ def dashboard(db: DbSession = Depends(get_db)):
     }
 
 
+@router.get("/availability")
+def availability(db: DbSession = Depends(get_db)):
+    latest_run = db.query(ScheduleRun).order_by(ScheduleRun.id.desc()).first()
+    slots = [time_slot_to_dict(item) for item in db.query(TimeSlot).order_by(TimeSlot.day, TimeSlot.start_time).all()]
+    if not latest_run:
+        return {"schedule_run_id": None, "slots": slots, "staff": [], "rooms": []}
+
+    scheduled = db.query(ScheduledSession).filter_by(schedule_run_id=latest_run.id).all()
+    staff_busy: dict[str, dict] = {}
+    room_busy: dict[str, dict] = {}
+    for item in scheduled:
+        staff_label = item.session.staff.staff_name if item.session and item.session.staff else str(item.staff_id or "Unassigned")
+        room_label = item.room.room_code if item.room else str(item.room_id)
+        entry = {
+            "session_id": item.session_id,
+            "requirement_id": item.session.requirement_id if item.session else None,
+            "module_code": item.session.module.module_code if item.session and item.session.module else None,
+            "day": item.day,
+            "start_time": item.start_time,
+            "end_time": item.end_time,
+        }
+        staff_busy.setdefault(staff_label, {"name": staff_label, "busy": []})["busy"].append(entry)
+        room_busy.setdefault(room_label, {"room_code": room_label, "busy": []})["busy"].append(entry)
+
+    return {
+        "schedule_run_id": latest_run.id,
+        "slots": slots,
+        "staff": sorted(staff_busy.values(), key=lambda item: item["name"]),
+        "rooms": sorted(room_busy.values(), key=lambda item: item["room_code"]),
+    }
+
+
+@router.get("/constraint-insights")
+def constraint_insights(db: DbSession = Depends(get_db)):
+    validation = ValidationService().validate_latest(db)
+    latest_run = db.query(ScheduleRun).order_by(ScheduleRun.id.desc()).first()
+    schedule_issues = []
+    if latest_run:
+        schedule_issues = [
+            violation_to_summary(item)
+            for item in db.query(ConstraintViolation).filter_by(schedule_run_id=latest_run.id).all()
+        ]
+
+    counts: dict[str, dict] = {}
+    for issue in validation["errors"]:
+        key = issue["field"]
+        counts.setdefault(key, {"code": key, "severity": "HARD", "count": 0})["count"] += 1
+    for violation in schedule_issues:
+        counts.setdefault(
+            violation["constraint_code"],
+            {"code": violation["constraint_code"], "severity": violation["severity"], "count": 0},
+        )["count"] += 1
+
+    return {
+        "validation_error_count": validation["error_count"],
+        "validation_warning_count": validation["warning_count"],
+        "latest_schedule_id": latest_run.id if latest_run else None,
+        "top_issues": sorted(counts.values(), key=lambda item: item["count"], reverse=True),
+    }
+
+
+def violation_to_summary(item: ConstraintViolation) -> dict:
+    return {
+        "constraint_code": item.constraint_code,
+        "severity": item.severity,
+    }
+
+
 @router.post("/sessions")
 def create_session(data: SessionInput, db: DbSession = Depends(get_db)):
     service = RequirementInputService()

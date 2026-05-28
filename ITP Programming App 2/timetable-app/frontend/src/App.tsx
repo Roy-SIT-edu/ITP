@@ -8,7 +8,6 @@ import DatabasePage from "./pages/DatabasePage";
 import Layout from "./components/Layout";
 import DashboardPage from "./pages/DashboardPage";
 import ExportPage from "./pages/ExportPage";
-import GenerateSchedulePage from "./pages/GenerateSchedulePage";
 import TimetableReviewPage from "./pages/TimetableReviewPage";
 import UploadPage from "./pages/UploadPage";
 import ValidationPage from "./pages/ValidationPage";
@@ -23,7 +22,6 @@ const routeMap = {
   "database-student-groups": () => <DatabasePage dataType="student-groups" />,
   "database-time-slots": () => <DatabasePage dataType="time-slots" />,
   validation: ValidationPage,
-  generate: GenerateSchedulePage,
   review: TimetableReviewPage,
   export: ExportPage,
 };
@@ -37,6 +35,10 @@ function currentRoute(): RouteKey {
     // Old direct links still land on the merged Import + Requirements page.
     window.history.replaceState(null, "", "#upload");
     return "upload";
+  }
+  if (hash === "generate") {
+    window.history.replaceState(null, "", "#validation");
+    return "validation";
   }
   return hash in routeMap ? (hash as RouteKey) : "dashboard";
 }

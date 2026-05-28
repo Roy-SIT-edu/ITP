@@ -5,16 +5,24 @@
 
 import { Info, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
-import { getDashboard } from "../api/client";
-import type { Dashboard } from "../types";
+import { getAvailability, getConstraintInsights, getDashboard } from "../api/client";
+import type { Availability, ConstraintInsights, Dashboard } from "../types";
 import StatusBadge from "../components/StatusBadge";
 
 export default function DashboardPage() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [insights, setInsights] = useState<ConstraintInsights | null>(null);
+  const [availability, setAvailability] = useState<Availability | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = () => {
-    getDashboard().then(setDashboard).catch((err: Error) => setError(err.message));
+    Promise.all([getDashboard(), getConstraintInsights(), getAvailability()])
+      .then(([nextDashboard, nextInsights, nextAvailability]) => {
+        setDashboard(nextDashboard);
+        setInsights(nextInsights);
+        setAvailability(nextAvailability);
+      })
+      .catch((err: Error) => setError(err.message));
   };
 
   useEffect(load, []);
@@ -70,6 +78,80 @@ export default function DashboardPage() {
           <strong>{latest?.soft_score ?? 0}</strong>
         </div>
       </section>
+
+      <section className="dashboard-grid">
+        <div className="status-card">
+          <div className="status-card-title">Smart Constraint Dashboard</div>
+          {insights && insights.top_issues.length > 0 ? (
+            <div className="issue-stack">
+              {insights.top_issues.slice(0, 6).map((issue) => (
+                <div className="issue-pill" key={issue.code}>
+                  <span>{issue.code.split("_").join(" ")}</span>
+                  <strong>{issue.count}</strong>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">No current constraint issues.</div>
+          )}
+        </div>
+
+        <div className="status-card">
+          <div className="status-card-title">Staff Availability</div>
+          <AvailabilityList
+            emptyText="Generate a timetable to see staff load."
+            items={availability?.staff.map((item) => ({ label: item.name, busy: item.busy })) ?? []}
+          />
+        </div>
+
+        <div className="status-card">
+          <div className="status-card-title">Room Availability</div>
+          <AvailabilityList
+            emptyText="Generate a timetable to see room usage."
+            items={availability?.rooms.map((item) => ({ label: item.room_code, busy: item.busy })) ?? []}
+          />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AvailabilityList({
+  items,
+  emptyText,
+}: {
+  items: { label: string; busy: { day: string }[] }[];
+  emptyText: string;
+}) {
+  if (items.length === 0) {
+    return <div className="empty-state">{emptyText}</div>;
+  }
+  const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+  return (
+    <div className="availability-list">
+      {items.slice(0, 8).map((item) => (
+        <AvailabilityRow days={days} item={item} key={item.label} />
+      ))}
+    </div>
+  );
+}
+
+function AvailabilityRow({ days, item }: { days: string[]; item: { label: string; busy: { day: string }[] } }) {
+  const counts = item.busy.reduce<Record<string, number>>((current, entry) => {
+    current[entry.day] = (current[entry.day] ?? 0) + 1;
+    return current;
+  }, {});
+
+  return (
+    <div>
+      <span>{item.label}</span>
+      <div className="availability-days">
+        {days.map((day) => (
+          <small key={day} title={day}>
+            {day.slice(0, 3)} {counts[day] ?? 0}
+          </small>
+        ))}
+      </div>
     </div>
   );
 }

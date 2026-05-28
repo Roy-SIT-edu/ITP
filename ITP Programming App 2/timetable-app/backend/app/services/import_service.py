@@ -94,6 +94,17 @@ class ImportService:
         ]
         return self._import_frames(db, frames)
 
+    def preview_input_template_files(
+        self,
+        db: DbSession,
+        workbooks: list[tuple[bytes, str]],
+    ) -> dict:
+        frames = [
+            (self._read_workbook_frame(BytesIO(workbook_bytes)), source_filename)
+            for workbook_bytes, source_filename in workbooks
+        ]
+        return self._preview_frames(db, frames)
+
     def import_input_template_bytes(
         self,
         db: DbSession,
@@ -123,11 +134,20 @@ class ImportService:
     def _import_frames(self, db: DbSession, frames: list[tuple[pd.DataFrame, str]]) -> dict:
         errors: list[dict] = []
         rows_read = sum(int(len(frame.index)) for frame, _ in frames)
+        file_summaries = [
+            {
+                "filename": source_filename,
+                "rows_read": int(len(frame.index)),
+                "columns": [str(column) for column in frame.columns],
+            }
+            for frame, source_filename in frames
+        ]
         if not frames or all(frame.empty for frame, _ in frames):
             return {
                 "rows_read": 0,
                 "rows_imported": 0,
                 "rows_failed": 1,
+                "file_summaries": file_summaries,
                 "errors": [
                     {
                         "row": 0,
@@ -163,6 +183,7 @@ class ImportService:
                 "rows_read": rows_read,
                 "rows_imported": 0,
                 "rows_failed": len(errors),
+                "file_summaries": self._summaries_with_errors(file_summaries, errors),
                 "errors": errors,
             }
 
@@ -175,8 +196,62 @@ class ImportService:
             "rows_read": rows_read,
             "rows_imported": len(session_data),
             "rows_failed": len(errors),
+            "file_summaries": file_summaries,
             "errors": errors,
         }
+
+    def _preview_frames(self, db: DbSession, frames: list[tuple[pd.DataFrame, str]]) -> dict:
+        rows_read = sum(int(len(frame.index)) for frame, _ in frames)
+        file_summaries = [
+            {
+                "filename": source_filename,
+                "rows_read": int(len(frame.index)),
+                "columns": [str(column) for column in frame.columns],
+            }
+            for frame, source_filename in frames
+        ]
+        if not frames or all(frame.empty for frame, _ in frames):
+            return {
+                "rows_read": 0,
+                "rows_importable": 0,
+                "rows_failed": 1,
+                "file_summaries": file_summaries,
+                "errors": [
+                    {
+                        "row": 0,
+                        "field": "Workbook",
+                        "message": "No usable timetable rows found. Add rows with at least a Module Code, Student Group, Class Type, Staff, class size, and duration.",
+                    }
+                ],
+            }
+
+        upload_rows: list[RequirementUploadRow] = []
+        for frame, source_filename in frames:
+            for index, row in frame.iterrows():
+                upload_rows.append(RequirementUploadRow(row=row, source_filename=source_filename, source_row_no=self._source_row_no(row.get("Source Row No"), int(index))))
+
+        session_data, errors = RequirementInputService().validate_upload_rows(db, upload_rows)
+        return {
+            "rows_read": rows_read,
+            "rows_importable": len(session_data) if not errors else 0,
+            "rows_failed": len(errors),
+            "file_summaries": self._summaries_with_errors(file_summaries, errors),
+            "errors": errors,
+        }
+
+    def _summaries_with_errors(self, file_summaries: list[dict], errors: list[dict]) -> list[dict]:
+        counts = {}
+        for error in errors:
+            source = error.get("source_file")
+            if source:
+                counts[source] = counts.get(source, 0) + 1
+        return [
+            {
+                **summary,
+                "error_count": counts.get(summary["filename"], 0),
+            }
+            for summary in file_summaries
+        ]
 
     def _choose_sheet(self, sheet_names: list[str]) -> str:
         for preferred in ["Input_Template", "Timetable", "Template"]:

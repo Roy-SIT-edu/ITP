@@ -5,12 +5,24 @@
 
 import type {
   ConstraintViolation,
+  Availability,
+  ConstraintInsights,
   Dashboard,
   DatabaseRow,
   DatabaseTypeInfo,
+  DemoSample,
+  Room,
+  ScheduleComparison,
+  ScheduleExplanation,
   ScheduleGenerateResult,
+  ScheduleRun,
   ScheduleResponse,
   SessionRow,
+<<<<<<< Updated upstream
+=======
+  TimeSlot,
+  UploadPreview,
+>>>>>>> Stashed changes
   UploadSummary,
   ValidationResult,
 } from "../types";
@@ -59,12 +71,46 @@ export function getSessions() {
   return request<SessionRow[]>("/api/sessions");
 }
 
+<<<<<<< Updated upstream
+=======
+export function getSession(id: number) {
+  return request<SessionRow>(`/api/sessions/${id}`);
+}
+
+export function getTimeSlots() {
+  return request<TimeSlot[]>("/api/timeslots");
+}
+
+export function getRooms() {
+  return request<Room[]>("/api/rooms");
+}
+
+>>>>>>> Stashed changes
 export function uploadTemplate(files: File[]) {
   const formData = new FormData();
   files.forEach((file) => formData.append("files", file));
   return request<UploadSummary>("/api/upload/input-template", {
     method: "POST",
     body: formData,
+  });
+}
+
+export function previewTemplate(files: File[]) {
+  const formData = new FormData();
+  files.forEach((file) => formData.append("files", file));
+  return request<UploadPreview>("/api/upload/input-template/preview", {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export function getDemoSamples() {
+  return request<DemoSample[]>("/api/upload/demo-samples");
+}
+
+export function loadDemoSample(id: string) {
+  return request<UploadSummary>(`/api/upload/demo-samples/${id}/load`, {
+    method: "POST",
   });
 }
 
@@ -121,8 +167,40 @@ export function generateSchedule() {
   });
 }
 
+export function getScheduleRuns() {
+  return request<ScheduleRun[]>("/api/schedules");
+}
+
+export function compareSchedules(ids?: number[]) {
+  const query = ids?.length ? `?${ids.map((id) => `ids=${id}`).join("&")}` : "";
+  return request<ScheduleComparison[]>(`/api/schedules/compare${query}`);
+}
+
 export function getLatestSchedule() {
   return request<ScheduleResponse>("/api/schedules/latest");
+}
+
+export function getSchedule(id: number) {
+  return request<ScheduleResponse>(`/api/schedules/${id}`);
+}
+
+export function getScheduleExplanations(scheduleRunId: number) {
+  return request<ScheduleExplanation[]>(`/api/schedules/${scheduleRunId}/explanations`);
+}
+
+export function moveScheduledSession(
+  scheduleRunId: number,
+  sessionId: number,
+  data: { day: string; start_time: string; end_time: string; room_code: string },
+) {
+  return request<{ message: string; schedule_run: ScheduleRun | null; violations: ConstraintViolation[] }>(
+    `/api/schedules/${scheduleRunId}/sessions/${sessionId}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    },
+  );
 }
 
 export function getViolations(scheduleRunId: number) {
@@ -159,4 +237,12 @@ export function resetRequirementInputs() {
   return request<{ message: string; rows_deleted: number }>("/api/sessions", {
     method: "DELETE",
   });
+}
+
+export function getAvailability() {
+  return request<Availability>("/api/availability");
+}
+
+export function getConstraintInsights() {
+  return request<ConstraintInsights>("/api/constraint-insights");
 }

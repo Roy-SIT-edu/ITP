@@ -3,21 +3,23 @@
  * Handles multi-file requirements uploads plus manual Add/Edit/Delete in one workflow step.
  */
 
-import { Edit2, Filter, Play, Plus, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import { Edit2, Filter, Plus, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
   ApiError,
   createSession,
   deleteSession,
-  generateSchedule,
+  getDemoSamples,
   getSessions,
+  loadDemoSample,
+  previewTemplate,
   resetRequirementInputs,
   updateSession,
   uploadTemplate,
 } from "../api/client";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
 import UploadBox from "../components/UploadBox";
-import type { SessionRow, UploadSummary } from "../types";
+import type { DemoSample, SessionRow, UploadFileSummary, UploadPreview, UploadSummary } from "../types";
 
 function formatApiError(err: unknown, fallback: string) {
   if (err instanceof ApiError && Array.isArray(err.details)) {
@@ -38,6 +40,90 @@ function formatApiError(err: unknown, fallback: string) {
     }
   }
   return err instanceof Error ? err.message : fallback;
+}
+
+function FileReport({
+  title,
+  rowsRead,
+  rowsReady,
+  rowsFailed,
+  files,
+  errors,
+}: {
+  title: string;
+  rowsRead: number;
+  rowsReady: number;
+  rowsFailed: number;
+  files?: UploadFileSummary[];
+  errors: { row: number; field: string; message: string; source_file?: string | null }[];
+}) {
+  return (
+    <section className="status-card import-report">
+      <div className="status-card-title">{title}</div>
+      <div className="metric-grid compact">
+        <div className="metric-card">
+          <span>Rows read</span>
+          <strong>{rowsRead}</strong>
+        </div>
+        <div className="metric-card">
+          <span>Ready</span>
+          <strong>{rowsReady}</strong>
+        </div>
+        <div className="metric-card">
+          <span>Issues</span>
+          <strong>{rowsFailed}</strong>
+        </div>
+      </div>
+      {files && files.length > 0 && (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>Rows</th>
+                <th>Errors</th>
+                <th>Detected Columns</th>
+              </tr>
+            </thead>
+            <tbody>
+              {files.map((file) => (
+                <tr key={file.filename}>
+                  <td>{file.filename}</td>
+                  <td>{file.rows_read}</td>
+                  <td>{file.error_count ?? 0}</td>
+                  <td>{file.columns?.slice(0, 8).join(", ")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {errors.length > 0 && (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>Row</th>
+                <th>Field</th>
+                <th>Message</th>
+              </tr>
+            </thead>
+            <tbody>
+              {errors.slice(0, 12).map((item, index) => (
+                <tr key={`${item.source_file ?? "file"}-${item.row}-${index}`}>
+                  <td>{item.source_file ?? "Workbook"}</td>
+                  <td>{item.row}</td>
+                  <td>{item.field}</td>
+                  <td>{item.message}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
 }
 
 const emptySession: Omit<SessionRow, "id"> = {
@@ -79,7 +165,6 @@ function RequirementsEditor({ refreshSignal }: RequirementsEditorProps) {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -116,23 +201,6 @@ function RequirementsEditor({ refreshSignal }: RequirementsEditorProps) {
       ].some((value) => (value || "").toLowerCase().includes(query)),
     );
   }, [search, sessions]);
-
-  const handleGenerate = async () => {
-    setGenerating(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      const result = await generateSchedule();
-      setSuccess(
-        `Timetable regenerated. Solver status: ${result.solver_status}. Conflicts: ${result.hard_violation_count}.`,
-      );
-      notifyWorkflowProgressChange();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Generation failed");
-    } finally {
-      setGenerating(false);
-    }
-  };
 
   const handleOpenAdd = () => {
     setEditingSession(null);
@@ -228,6 +296,44 @@ function RequirementsEditor({ refreshSignal }: RequirementsEditorProps) {
     setFormData((previous) => ({ ...previous, [key]: value }));
   };
 
+  const applyConstraintPreset = async (
+    sessionId: number,
+    values: {
+      mode: "none" | "soft" | "hard";
+      preferred_days: string;
+      avoid_days: string;
+      fixed_day: string;
+      fixed_start_time: string;
+      fixed_end_time: string;
+    },
+  ) => {
+    const session = sessions.find((item) => item.id === sessionId);
+    if (!session) return;
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const payload: Partial<SessionRow> = {
+        ...session,
+        preferred_days: values.mode === "soft" ? values.preferred_days : "",
+        avoid_days: values.mode === "soft" ? values.avoid_days : "",
+        scheduling_type: values.mode === "hard" ? "Fixed" : "Flexible",
+        fixed_day: values.mode === "hard" ? values.fixed_day : "",
+        fixed_start_time: values.mode === "hard" ? values.fixed_start_time : "",
+        fixed_end_time: values.mode === "hard" ? values.fixed_end_time : "",
+        priority: values.mode === "hard" ? "Hard" : "Normal",
+      };
+      await updateSession(session.id, payload);
+      setSuccess("Constraint settings applied.");
+      await load();
+      notifyWorkflowProgressChange();
+    } catch (err) {
+      setError(formatApiError(err, "Could not apply constraints"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <section className="requirements-editor">
       <div className="page-header">
@@ -236,10 +342,6 @@ function RequirementsEditor({ refreshSignal }: RequirementsEditorProps) {
           <p>Review, add, edit, or delete imported teaching requirements</p>
         </div>
         <div className="toolbar-row">
-          <button className="button" onClick={handleGenerate} disabled={generating}>
-            {generating ? <RefreshCw className="spin" size={17} /> : <Play size={17} />}
-            Regenerate
-          </button>
           <button className="button secondary" onClick={load} disabled={loading || saving}>
             <RefreshCw className={loading ? "spin" : ""} size={17} />
             Refresh
@@ -253,6 +355,8 @@ function RequirementsEditor({ refreshSignal }: RequirementsEditorProps) {
 
       {error && <div className="notice bad">{error}</div>}
       {success && <div className="notice good">{success}</div>}
+
+      <ConstraintStudio sessions={sessions} disabled={saving || loading} onApply={applyConstraintPreset} />
 
       <div className="filter-bar" style={{ justifyContent: "space-between" }}>
         <div className="requirements-search">
@@ -523,12 +627,152 @@ function RequirementsEditor({ refreshSignal }: RequirementsEditorProps) {
   );
 }
 
+function ConstraintStudio({
+  sessions,
+  disabled,
+  onApply,
+}: {
+  sessions: SessionRow[];
+  disabled: boolean;
+  onApply: (
+    sessionId: number,
+    values: {
+      mode: "none" | "soft" | "hard";
+      preferred_days: string;
+      avoid_days: string;
+      fixed_day: string;
+      fixed_start_time: string;
+      fixed_end_time: string;
+    },
+  ) => void;
+}) {
+  const [sessionId, setSessionId] = useState<number | "">("");
+  const [mode, setMode] = useState<"none" | "soft" | "hard">("soft");
+  const [preferredDays, setPreferredDays] = useState("Monday,Tuesday");
+  const [avoidDays, setAvoidDays] = useState("Friday");
+  const [fixedDay, setFixedDay] = useState("Monday");
+  const [fixedStart, setFixedStart] = useState("09:00");
+  const [fixedEnd, setFixedEnd] = useState("11:00");
+
+  const selected = typeof sessionId === "number" ? sessions.find((item) => item.id === sessionId) : null;
+
+  useEffect(() => {
+    if (!selected) return;
+    setPreferredDays(selected.preferred_days || "Monday,Tuesday");
+    setAvoidDays(selected.avoid_days || "");
+    setFixedDay(selected.fixed_day || "Monday");
+    setFixedStart(selected.fixed_start_time || "09:00");
+    setFixedEnd(selected.fixed_end_time || "11:00");
+    setMode(selected.scheduling_type === "Fixed" ? "hard" : selected.preferred_days || selected.avoid_days ? "soft" : "none");
+  }, [selected?.id]);
+
+  return (
+    <section className="status-card constraint-studio">
+      <div className="status-card-title">Constraint Builder</div>
+      <div className="constraint-grid">
+        <label>
+          Requirement
+          <select value={sessionId} onChange={(event) => setSessionId(event.target.value ? Number(event.target.value) : "")}>
+            <option value="">Select requirement</option>
+            {sessions.map((session) => (
+              <option key={session.id} value={session.id}>
+                {session.requirement_id ?? `Row ${session.source_row_no ?? session.id}`} - {session.module_code}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Mode
+          <select value={mode} onChange={(event) => setMode(event.target.value as "none" | "soft" | "hard")}>
+            <option value="none">No constraints</option>
+            <option value="soft">Soft preferences</option>
+            <option value="hard">Hard fixed slot</option>
+          </select>
+        </label>
+        {mode === "soft" && (
+          <>
+            <label>
+              Preferred Days
+              <input value={preferredDays} onChange={(event) => setPreferredDays(event.target.value)} />
+            </label>
+            <label>
+              Avoid Days
+              <input value={avoidDays} onChange={(event) => setAvoidDays(event.target.value)} />
+            </label>
+          </>
+        )}
+        {mode === "hard" && (
+          <>
+            <label>
+              Fixed Day
+              <select value={fixedDay} onChange={(event) => setFixedDay(event.target.value)}>
+                {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].map((day) => (
+                  <option key={day} value={day}>
+                    {day}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Fixed Start
+              <input type="time" value={fixedStart} onChange={(event) => setFixedStart(event.target.value)} />
+            </label>
+            <label>
+              Fixed End
+              <input type="time" value={fixedEnd} onChange={(event) => setFixedEnd(event.target.value)} />
+            </label>
+          </>
+        )}
+      </div>
+      <button
+        className="button"
+        disabled={disabled || typeof sessionId !== "number"}
+        type="button"
+        onClick={() =>
+          typeof sessionId === "number" &&
+          onApply(sessionId, {
+            mode,
+            preferred_days: preferredDays,
+            avoid_days: avoidDays,
+            fixed_day: fixedDay,
+            fixed_start_time: fixedStart,
+            fixed_end_time: fixedEnd,
+          })
+        }
+      >
+        Apply Constraints
+      </button>
+    </section>
+  );
+}
+
 export default function UploadPage() {
   const [summary, setSummary] = useState<UploadSummary | null>(null);
+  const [preview, setPreview] = useState<UploadPreview | null>(null);
+  const [demoSamples, setDemoSamples] = useState<DemoSample[]>([]);
   const [busy, setBusy] = useState(false);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [sampleBusy, setSampleBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [refreshSignal, setRefreshSignal] = useState(0);
+
+  useEffect(() => {
+    getDemoSamples().then(setDemoSamples).catch(() => setDemoSamples([]));
+  }, []);
+
+  const handlePreview = async (files: File[]) => {
+    setPreviewBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      setPreview(await previewTemplate(files));
+    } catch (err) {
+      setError(formatApiError(err, "Preview failed"));
+    } finally {
+      setPreviewBusy(false);
+    }
+  };
 
   const handleUpload = async (files: File[]) => {
     setBusy(true);
@@ -537,6 +781,7 @@ export default function UploadPage() {
     try {
       const nextSummary = await uploadTemplate(files);
       setSummary(nextSummary);
+      setPreview(null);
       if (nextSummary.rows_failed > 0) {
         // Failed uploads are all-or-nothing, so keep the old table visible.
         setError("No requirements were imported because validation failed. Fix the row-level errors below and upload again.");
@@ -548,6 +793,24 @@ export default function UploadPage() {
       setError(formatApiError(err, "Upload failed"));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleLoadSample = async (id: string) => {
+    setSampleBusy(id);
+    setError(null);
+    setSuccess(null);
+    try {
+      const nextSummary = await loadDemoSample(id);
+      setSummary(nextSummary);
+      setPreview(null);
+      setSuccess("Sample requirements loaded.");
+      setRefreshSignal((current) => current + 1);
+      notifyWorkflowProgressChange();
+    } catch (err) {
+      setError(formatApiError(err, "Could not load sample"));
+    } finally {
+      setSampleBusy(null);
     }
   };
 
@@ -583,46 +846,44 @@ export default function UploadPage() {
           Reset Requirements
         </button>
       </div>
-      <UploadBox busy={busy} onUpload={handleUpload} />
-      {error && <div className="notice bad">{error}</div>}
-      {success && <div className="notice good">{success}</div>}
-      {summary && (
-        <section className="metric-grid compact">
-          <div className="metric-card">
-            <span>Rows read</span>
-            <strong>{summary.rows_read}</strong>
-          </div>
-          <div className="metric-card">
-            <span>Imported</span>
-            <strong>{summary.rows_imported}</strong>
-          </div>
-          <div className="metric-card">
-            <span>Failed</span>
-            <strong>{summary.rows_failed}</strong>
+      <UploadBox busy={busy} previewBusy={previewBusy} onPreview={handlePreview} onUpload={handleUpload} />
+      {preview && (
+        <FileReport
+          title="Import Preview"
+          rowsRead={preview.rows_read}
+          rowsReady={preview.rows_importable}
+          rowsFailed={preview.rows_failed}
+          files={preview.file_summaries}
+          errors={preview.errors}
+        />
+      )}
+      {demoSamples.length > 0 && (
+        <section className="status-card sample-loader">
+          <div className="status-card-title">Demo Dataset Loader</div>
+          <div className="sample-grid">
+            {demoSamples.map((sample) => (
+              <article className="sample-card" key={sample.id}>
+                <strong>{sample.label}</strong>
+                <span>{sample.description}</span>
+                <button className="button secondary slim" disabled={!sample.available || sampleBusy !== null || busy} type="button" onClick={() => handleLoadSample(sample.id)}>
+                  {sampleBusy === sample.id ? "Loading" : "Load Sample"}
+                </button>
+              </article>
+            ))}
           </div>
         </section>
       )}
-      {summary && summary.errors.length > 0 && (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Row</th>
-                <th>Field</th>
-                <th>Message</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summary.errors.map((item, index) => (
-                <tr key={`${item.row}-${index}`}>
-                  <td>{item.row}</td>
-                  <td>{item.field}</td>
-                  <td>{item.message}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {error && <div className="notice bad">{error}</div>}
+      {success && <div className="notice good">{success}</div>}
+      {summary && (
+        <FileReport
+          title="Import Result"
+          rowsRead={summary.rows_read}
+          rowsReady={summary.rows_imported}
+          rowsFailed={summary.rows_failed}
+          files={summary.file_summaries}
+          errors={summary.errors}
+        />
       )}
       <RequirementsEditor refreshSignal={refreshSignal} />
     </div>

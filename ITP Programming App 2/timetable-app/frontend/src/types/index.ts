@@ -7,6 +7,12 @@ export type ValidationIssue = {
   row: number;
   field: string;
   message: string;
+<<<<<<< Updated upstream
+=======
+  requirement_id?: string | null;
+  conflict_session_ids?: number[];
+  source_file?: string | null;
+>>>>>>> Stashed changes
 };
 
 export type ValidationResult = {
@@ -29,6 +35,30 @@ export type UploadSummary = {
   rows_imported: number;
   rows_failed: number;
   errors: ValidationIssue[];
+  file_summaries?: UploadFileSummary[];
+};
+
+export type UploadFileSummary = {
+  filename: string;
+  rows_read: number;
+  error_count?: number;
+  columns?: string[];
+};
+
+export type UploadPreview = {
+  rows_read: number;
+  rows_importable: number;
+  rows_failed: number;
+  errors: ValidationIssue[];
+  file_summaries: UploadFileSummary[];
+};
+
+export type DemoSample = {
+  id: string;
+  label: string;
+  filename: string;
+  description: string;
+  available: boolean;
 };
 
 export type DatabaseColumn = {
@@ -60,6 +90,22 @@ export type ScheduleRun = {
   message: string | null;
 };
 
+export type ScheduleComparison = ScheduleRun & {
+  scheduled_count: number;
+  stored_hard_issues: number;
+  stored_soft_issues: number;
+  quality_score: number;
+};
+
+export type ScheduleExplanation = {
+  session_id: number;
+  requirement_id: string | null;
+  module_code: string | null;
+  placement: string;
+  reasons: string[];
+  issues: ConstraintViolation[];
+};
+
 export type ScheduleResponse = {
   schedule_run: ScheduleRun;
   scheduled_sessions: ScheduledRow[];
@@ -73,7 +119,21 @@ export type ScheduleGenerateResult = {
   message: string;
 };
 
+<<<<<<< Updated upstream
+=======
+export type TimeSlot = {
+  id: number;
+  day: string;
+  start_time: string;
+  end_time: string;
+  duration_minutes: number;
+  week_pattern: string;
+};
+
+>>>>>>> Stashed changes
 export type ScheduledRow = {
+  scheduled_session_id: number;
+  session_id: number;
   requirement_id: string | null;
   programme: string | null;
   year: number | null;
@@ -89,6 +149,17 @@ export type ScheduledRow = {
   week_pattern: string;
   delivery_mode: string | null;
   campus_mode: string | null;
+};
+
+export type Room = {
+  id: number;
+  room_code: string;
+  room_name: string | null;
+  room_type: string | null;
+  capacity: number | null;
+  is_virtual: boolean;
+  campus_mode: string | null;
+  recording_available: boolean;
 };
 
 export type ConstraintViolation = {
@@ -129,6 +200,29 @@ export type SessionRow = {
   remarks: string | null;
   source_file: string | null;
   source_row_no: number | null;
+};
+
+export type AvailabilityEntry = {
+  session_id: number;
+  requirement_id: string | null;
+  module_code: string | null;
+  day: string;
+  start_time: string;
+  end_time: string;
+};
+
+export type Availability = {
+  schedule_run_id: number | null;
+  slots: TimeSlot[];
+  staff: { name: string; busy: AvailabilityEntry[] }[];
+  rooms: { room_code: string; busy: AvailabilityEntry[] }[];
+};
+
+export type ConstraintInsights = {
+  validation_error_count: number;
+  validation_warning_count: number;
+  latest_schedule_id: number | null;
+  top_issues: { code: string; severity: string; count: number }[];
 };
 
 export type Dashboard = {
