@@ -14,6 +14,7 @@ from app.models.scheduled_session import ScheduledSession
 from app.models.session import Session
 from app.models.time_slot import TimeSlot
 from app.services.constraint_service import ConstraintService
+from app.services.soft_constraint_priority_service import SoftConstraintPriorityService
 from app.services.validation_service import ValidationService
 from app.solver.cp_sat_solver import CpSatTimetableSolver
 
@@ -23,6 +24,7 @@ class ScheduleService:
         self.validation_service = ValidationService()
         self.solver = CpSatTimetableSolver()
         self.constraint_service = ConstraintService()
+        self.priority_service = SoftConstraintPriorityService()
 
     def generate(self, db: DbSession) -> dict:
         validation = self.validation_service.validate_latest(db)
@@ -36,12 +38,13 @@ class ScheduleService:
         sessions = db.query(Session).order_by(Session.id).all()
         time_slots = db.query(TimeSlot).order_by(TimeSlot.day, TimeSlot.start_time).all()
         rooms = db.query(Room).order_by(Room.room_code).all()
+        soft_weights = self.priority_service.weights(db)
 
         run = ScheduleRun(status="RUNNING", message="Solver started")
         db.add(run)
         db.flush()
 
-        result = self.solver.solve(sessions, time_slots, rooms)
+        result = self.solver.solve(sessions, time_slots, rooms, soft_constraint_weights=soft_weights)
         run.solver_status = result["solver_status"]
         run.soft_score = result["soft_score"]
         run.message = result["message"]
@@ -73,9 +76,9 @@ class ScheduleService:
                 )
             )
         db.flush()
-        check = self.constraint_service.check_and_store(db, run.id)
+        check = self.constraint_service.check_and_store(db, run.id, soft_weights)
         run.hard_violation_count = check["hard_violation_count"]
-        run.soft_score = int(run.soft_score or 0) + check["soft_warning_count"]
+        run.soft_score = int(run.soft_score or 0) + check["weighted_soft_score"]
         run.status = "COMPLETED" if run.hard_violation_count == 0 else "COMPLETED_WITH_CONFLICTS"
         db.commit()
 

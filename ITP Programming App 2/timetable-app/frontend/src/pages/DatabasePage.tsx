@@ -254,35 +254,53 @@ export default function DatabasePage({ dataType }: Props) {
       {error && <div className="notice bad">{error}</div>}
       {success && <div className="notice good">{success}</div>}
       {uploadSummary && uploadSummary.errors.length > 0 && (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Row</th>
-                <th>Field</th>
-                <th>Message</th>
-              </tr>
-            </thead>
-            <tbody>
-              {uploadSummary.errors.map((item, index) => (
-                <tr key={`${item.row}-${item.field}-${index}`}>
-                  <td>{item.row}</td>
-                  <td>{item.field}</td>
-                  <td>{item.message}</td>
+        <section className="status-card">
+          <div className="section-heading">
+            <div>
+              <div className="status-card-title">Upload Issues</div>
+              <p>Fix these rows in the workbook and upload again</p>
+            </div>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Row</th>
+                  <th>Field</th>
+                  <th>Message</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {uploadSummary.errors.map((item, index) => (
+                  <tr key={`${item.row}-${item.field}-${index}`}>
+                    <td>{item.row}</td>
+                    <td>{item.field}</td>
+                    <td>{item.message}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
-      <div className="filter-bar database-filter">
-        <Search size={18} />
-        <input placeholder={`Search ${title.toLowerCase()}...`} value={search} onChange={(event) => setSearch(event.target.value)} />
-        <span className="muted">{filteredRows.length} rows</span>
-      </div>
+      <section className="status-card data-section">
+        <div className="section-heading">
+          <div>
+            <div className="status-card-title">{title} Records</div>
+            <p>
+              {filteredRows.length} row{filteredRows.length === 1 ? "" : "s"} shown
+            </p>
+          </div>
+        </div>
 
-      <div className="table-wrap database-table">
+        <div className="filter-bar database-filter">
+          <Search size={18} />
+          <input placeholder={`Search ${title.toLowerCase()}...`} value={search} onChange={(event) => setSearch(event.target.value)} />
+          <span className="muted">{filteredRows.length} rows</span>
+        </div>
+
+        <div className="table-wrap database-table">
         <table>
           <thead>
             <tr>
@@ -352,7 +370,8 @@ export default function DatabasePage({ dataType }: Props) {
             )}
           </tbody>
         </table>
-      </div>
+        </div>
+      </section>
     </div>
   );
 }

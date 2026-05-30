@@ -21,7 +21,12 @@ from app.services.compatibility import (
 
 
 class ConstraintService:
-    def check_and_store(self, db: DbSession, schedule_run_id: int) -> dict:
+    def check_and_store(
+        self,
+        db: DbSession,
+        schedule_run_id: int,
+        soft_constraint_weights: dict[str, int] | None = None,
+    ) -> dict:
         db.query(ConstraintViolation).filter_by(schedule_run_id=schedule_run_id).delete()
         violations = self.check_schedule(db, schedule_run_id)
         for violation in violations:
@@ -37,10 +42,17 @@ class ConstraintService:
         db.flush()
         hard_count = sum(1 for item in violations if item["severity"] == "HARD")
         soft_count = sum(1 for item in violations if item["severity"] == "SOFT")
+        weights = soft_constraint_weights or {}
+        weighted_soft_score = sum(
+            weights.get(item["constraint_code"], 1)
+            for item in violations
+            if item["severity"] == "SOFT"
+        )
         return {
             "violations": violations,
             "hard_violation_count": hard_count,
             "soft_warning_count": soft_count,
+            "weighted_soft_score": weighted_soft_score,
         }
 
     def check_schedule(self, db: DbSession, schedule_run_id: int) -> list[dict]:

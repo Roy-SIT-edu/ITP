@@ -1,17 +1,13 @@
 /*
  * Application shell and workflow navigation.
- * Keeps Dashboard always visible and exposes Database subtabs through the
- * horizontal navbar dropdown.
+ * Uses the workflow stepper as the main navigation and keeps overview/reference
+ * data as secondary utility destinations.
  */
 
 import {
   CalendarClock,
-  Download,
   Gauge,
   Database,
-  TableProperties,
-  Upload,
-  CheckCircle2,
 } from "lucide-react";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
@@ -32,23 +28,11 @@ const databaseItems = [
   { id: "database-time-slots", label: "Time Slots" },
 ];
 
-const workflowItems = [
-  { id: "upload", label: "Import", icon: Upload },
-  { id: "validation", label: "Validate", icon: CheckCircle2 },
-  { id: "review", label: "Review", icon: TableProperties },
-  { id: "export", label: "Export", icon: Download },
-  { id: "database", label: "Database", icon: Database, children: databaseItems },
-];
-
 export default function Layout({ route, onNavigate, children }: Props) {
   useEffect(() => {
-    const nav = document.querySelector(".nav-list");
+    const nav = document.querySelector(".workflow-stepper");
     if (!(nav instanceof HTMLElement)) return;
-    if (route === "dashboard") {
-      nav.scrollTo({ left: 0, behavior: "smooth" });
-      return;
-    }
-    const active = nav.querySelector("a.active");
+    const active = nav.querySelector(".workflow-stage.active a");
     if (active instanceof HTMLElement) {
       // Keep the active workflow tab visible on narrow screens.
       active.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
@@ -58,7 +42,6 @@ export default function Layout({ route, onNavigate, children }: Props) {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <WorkflowProgress route={route} />
         <div className="topbar-nav-row">
           <div className="brand">
             <CalendarClock size={24} />
@@ -67,61 +50,43 @@ export default function Layout({ route, onNavigate, children }: Props) {
               <span>Scheduler</span>
             </div>
           </div>
-          <div className="nav-area">
+          <div className="nav-area utility-nav">
             <a
               className={route === "dashboard" ? "nav-home active" : "nav-home"}
               href="#dashboard"
               onClick={() => onNavigate("dashboard")}
             >
               <Gauge size={18} />
-              <span>Dashboard</span>
+              <span>Overview</span>
             </a>
-            <nav className="nav-list" aria-label="Workflow">
-              {workflowItems.map((item) => {
-                const Icon = item.icon;
-                const active = item.children ? route.startsWith("database-") : route === item.id;
-                if (item.children) {
-                  return (
-                    <div className="nav-dropdown" key={item.id}>
-                      <a
-                        className={active ? "active" : ""}
-                        href="#database-rooms"
-                        onClick={() => onNavigate("database-rooms")}
-                      >
-                        <Icon size={18} />
-                        <span>{item.label}</span>
-                      </a>
-                      <div className="nav-submenu" role="menu">
-                        {item.children.map((child) => (
-                          <a
-                            className={route === child.id ? "active" : ""}
-                            href={`#${child.id}`}
-                            key={child.id}
-                            onClick={() => onNavigate(child.id)}
-                            role="menuitem"
-                          >
-                            {child.label}
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                }
-                return (
-                  <a
-                    className={active ? "active" : ""}
-                    href={`#${item.id}`}
-                    key={item.id}
-                    onClick={() => onNavigate(item.id)}
-                  >
-                    <Icon size={18} />
-                    <span>{item.label}</span>
-                  </a>
-                );
-              })}
+            <nav className="nav-list" aria-label="Secondary navigation">
+              <div className="nav-dropdown">
+                <a
+                  className={route.startsWith("database-") ? "active" : ""}
+                  href="#database-rooms"
+                  onClick={() => onNavigate("database-rooms")}
+                >
+                  <Database size={18} />
+                  <span>Reference Data</span>
+                </a>
+                <div className="nav-submenu" role="menu">
+                  {databaseItems.map((child) => (
+                    <a
+                      className={route === child.id ? "active" : ""}
+                      href={`#${child.id}`}
+                      key={child.id}
+                      onClick={() => onNavigate(child.id)}
+                      role="menuitem"
+                    >
+                      {child.label}
+                    </a>
+                  ))}
+                </div>
+              </div>
             </nav>
           </div>
         </div>
+        <WorkflowProgress route={route} onNavigate={onNavigate} />
       </header>
       <main className="content">{children}</main>
     </div>

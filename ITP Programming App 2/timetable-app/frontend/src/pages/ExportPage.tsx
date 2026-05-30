@@ -24,20 +24,28 @@ export default function ExportPage() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1>Export</h1>
-          <p>Generated timetable files</p>
+          <h1>Export Timetable</h1>
+          <p>Download generated timetable files</p>
         </div>
-        <button className="button secondary" onClick={load}>
-          <RefreshCw size={17} />
-          Refresh
-        </button>
+        <div className="toolbar-row">
+          <button className="button secondary" onClick={load}>
+            <RefreshCw size={17} />
+            Refresh
+          </button>
+        </div>
       </div>
       {error && <div className="notice bad">{error}</div>}
       {schedule && (
-        <>
-          <div className="status-row">
-            <StatusBadge label={`Run ${schedule.schedule_run.id}`} tone="info" />
-            <span>{schedule.scheduled_sessions.length} scheduled sessions</span>
+        <section className="status-card export-card">
+          <div className="section-heading">
+            <div>
+              <div className="status-card-title">Latest Schedule</div>
+              <p>Download the current generated timetable</p>
+            </div>
+            <div className="status-row compact">
+              <StatusBadge label={`Run ${schedule.schedule_run.id}`} tone="info" />
+              <span>{schedule.scheduled_sessions.length} scheduled sessions</span>
+            </div>
           </div>
           <div className="download-row">
             <a className="button" href={exportUrl(schedule.schedule_run.id, "csv")}>
@@ -49,7 +57,7 @@ export default function ExportPage() {
               XLSX
             </a>
           </div>
-        </>
+        </section>
       )}
     </div>
   );

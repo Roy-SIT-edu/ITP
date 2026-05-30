@@ -34,33 +34,28 @@ export default function TimetableGrid({
   onChangeMove,
   onSaveMove,
 }: Props) {
+  if (editable) {
+    return (
+      <div className="review-timetable-workspace">
+        <div className="timetable-board-panel">
+          <TimetableBoard rows={rows} />
+        </div>
+        <EditableSessionList
+          rows={rows}
+          rooms={rooms}
+          timeSlots={timeSlots}
+          moveDrafts={moveDrafts}
+          savingMove={savingMove}
+          onChangeMove={onChangeMove}
+          onSaveMove={onSaveMove}
+        />
+      </div>
+    );
+  }
+
   return (
     <>
-      <div className="timetable-board">
-        {days.map((day) => (
-          <section className="day-column" key={day}>
-            <h3>{day}</h3>
-            <div className="day-events">
-              {rows.filter((row) => row.day === day).length === 0 && <span className="muted">No sessions</span>}
-              {rows
-                .filter((row) => row.day === day)
-                .sort((left, right) => left.start_time.localeCompare(right.start_time))
-                .map((row) => (
-                  <article
-                    className={row.delivery_mode === "Online" || row.room.includes("VIRTUAL") ? "event virtual" : "event"}
-                    key={`${row.requirement_id}-${row.day}-${row.start_time}-${row.room}`}
-                  >
-                    <strong>{row.module_code ?? row.requirement_id}</strong>
-                    <span>
-                      {row.start_time}-{row.end_time} · {row.room}
-                    </span>
-                    <small>{row.student_group_code ?? "No group"} · {row.staff_name ?? "No staff"}</small>
-                  </article>
-                ))}
-            </div>
-          </section>
-        ))}
-      </div>
+      <TimetableBoard rows={rows} />
 
       <div className="table-wrap">
         <table>
@@ -113,6 +108,94 @@ export default function TimetableGrid({
         </table>
       </div>
     </>
+  );
+}
+
+function TimetableBoard({ rows }: { rows: ScheduledRow[] }) {
+  return (
+    <div className="timetable-board">
+      {days.map((day) => (
+        <section className="day-column" key={day}>
+          <h3>{day}</h3>
+          <div className="day-events">
+            {rows.filter((row) => row.day === day).length === 0 && <span className="muted">No sessions</span>}
+            {rows
+              .filter((row) => row.day === day)
+              .sort((left, right) => left.start_time.localeCompare(right.start_time))
+              .map((row) => (
+                <article
+                  className={row.delivery_mode === "Online" || row.room.includes("VIRTUAL") ? "event virtual" : "event"}
+                  key={`${row.requirement_id}-${row.day}-${row.start_time}-${row.room}`}
+                >
+                  <strong>{row.module_code ?? row.requirement_id}</strong>
+                  <span>
+                    {row.start_time}-{row.end_time} | {row.room}
+                  </span>
+                  <small>{row.student_group_code ?? "No group"} | {row.staff_name ?? "No staff"}</small>
+                </article>
+              ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function EditableSessionList({
+  rows,
+  rooms,
+  timeSlots,
+  moveDrafts,
+  savingMove,
+  onChangeMove,
+  onSaveMove,
+}: {
+  rows: ScheduledRow[];
+  rooms: Room[];
+  timeSlots: TimeSlot[];
+  moveDrafts: Record<number, MoveDraft>;
+  savingMove: number | null;
+  onChangeMove?: (sessionId: number, value: MoveDraft) => void;
+  onSaveMove?: (row: ScheduledRow) => void;
+}) {
+  return (
+    <section className="schedule-edit-panel">
+      <div className="schedule-edit-heading">
+        <div>
+          <strong>Edit Sessions</strong>
+          <span>Move scheduled sessions without leaving the timetable.</span>
+        </div>
+        <small>{rows.length} shown</small>
+      </div>
+      {rows.length === 0 ? (
+        <div className="empty-state">No sessions match the current filters.</div>
+      ) : (
+        <div className="schedule-edit-list">
+          {rows.map((row) => (
+            <article className="schedule-edit-card" key={`${row.requirement_id}-${row.day}-${row.start_time}-${row.room}`}>
+              <div className="schedule-edit-main">
+                <strong>{row.module_code ?? row.requirement_id}</strong>
+                <span>
+                  {row.programme ?? "No programme"} | {row.class_type ?? "Class"} | {row.student_group_code ?? "No group"}
+                </span>
+                <small>
+                  {row.staff_name ?? "No staff"} | {row.day} {row.start_time}-{row.end_time} | {row.room}
+                </small>
+              </div>
+              <MoveControls
+                row={row}
+                rooms={rooms}
+                timeSlots={timeSlots}
+                value={moveDrafts[row.session_id]}
+                saving={savingMove === row.session_id}
+                onChange={(value) => onChangeMove?.(row.session_id, value)}
+                onSave={() => onSaveMove?.(row)}
+              />
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

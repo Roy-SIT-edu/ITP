@@ -10,7 +10,6 @@ import type {
   Dashboard,
   DatabaseRow,
   DatabaseTypeInfo,
-  DemoSample,
   Room,
   ScheduleComparison,
   ScheduleExplanation,
@@ -18,11 +17,8 @@ import type {
   ScheduleRun,
   ScheduleResponse,
   SessionRow,
-<<<<<<< Updated upstream
-=======
+  SoftConstraintPriority,
   TimeSlot,
-  UploadPreview,
->>>>>>> Stashed changes
   UploadSummary,
   ValidationResult,
 } from "../types";
@@ -71,8 +67,6 @@ export function getSessions() {
   return request<SessionRow[]>("/api/sessions");
 }
 
-<<<<<<< Updated upstream
-=======
 export function getSession(id: number) {
   return request<SessionRow>(`/api/sessions/${id}`);
 }
@@ -85,32 +79,12 @@ export function getRooms() {
   return request<Room[]>("/api/rooms");
 }
 
->>>>>>> Stashed changes
 export function uploadTemplate(files: File[]) {
   const formData = new FormData();
   files.forEach((file) => formData.append("files", file));
   return request<UploadSummary>("/api/upload/input-template", {
     method: "POST",
     body: formData,
-  });
-}
-
-export function previewTemplate(files: File[]) {
-  const formData = new FormData();
-  files.forEach((file) => formData.append("files", file));
-  return request<UploadPreview>("/api/upload/input-template/preview", {
-    method: "POST",
-    body: formData,
-  });
-}
-
-export function getDemoSamples() {
-  return request<DemoSample[]>("/api/upload/demo-samples");
-}
-
-export function loadDemoSample(id: string) {
-  return request<UploadSummary>(`/api/upload/demo-samples/${id}/load`, {
-    method: "POST",
   });
 }
 
@@ -164,6 +138,18 @@ export function getValidation() {
 export function generateSchedule() {
   return request<ScheduleGenerateResult>("/api/schedules/generate", {
     method: "POST",
+  });
+}
+
+export function getSoftConstraintPriorities() {
+  return request<SoftConstraintPriority[]>("/api/soft-constraints");
+}
+
+export function updateSoftConstraintPriorities(orderedCodes: string[]) {
+  return request<SoftConstraintPriority[]>("/api/soft-constraints", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ordered_codes: orderedCodes }),
   });
 }
 
