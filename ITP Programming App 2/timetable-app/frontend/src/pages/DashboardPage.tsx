@@ -3,7 +3,7 @@
  * Shows current import/validation/generation metrics; the flow chart lives in the global layout.
  */
 
-import { Info, RefreshCw } from "lucide-react";
+import { AlertTriangle, CalendarDays, CalendarCheck, FileSpreadsheet, Info, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getAvailability, getConstraintInsights, getDashboard } from "../api/client";
 import type { Availability, ConstraintInsights, Dashboard } from "../types";
@@ -31,57 +31,94 @@ export default function DashboardPage() {
   if (!dashboard) return <div className="empty-state">Loading dashboard.</div>;
 
   const latest = dashboard.latest_schedule;
-  return (
-    <div className="page">
-      <div className="page-header">
-        <div>
-          <h1>Overview</h1>
-          <p>Academic timetable scheduling status</p>
-        </div>
-        <div className="toolbar-row">
-          <button className="button secondary" onClick={load}>
-            <RefreshCw size={17} />
-            Refresh
-          </button>
-        </div>
-      </div>
+  const kpis = [
+    {
+      label: "Total sessions",
+      value: dashboard.total_sessions,
+      icon: CalendarDays,
+      tone: "blue",
+    },
+    {
+      label: "Imported rows",
+      value: dashboard.imported_rows,
+      icon: FileSpreadsheet,
+      tone: "teal",
+    },
+    {
+      label: "Validation",
+      value: dashboard.validation.error_count,
+      icon: ShieldCheck,
+      tone: dashboard.validation.is_valid ? "success" : "error",
+      badge: (
+        <StatusBadge
+          label={dashboard.validation.is_valid ? "Valid" : "Needs fixes"}
+          tone={dashboard.validation.is_valid ? "good" : "bad"}
+        />
+      ),
+      helper: (
+        <span title={"Input validation checks uploaded session data for missing or invalid fields. Schedule issues are constraint violations detected after generating a timetable (conflicts in scheduled sessions)."}>
+          <Info size={14} />
+        </span>
+      ),
+    },
+    {
+      label: "Schedule",
+      value: latest?.solver_status ?? "None",
+      icon: CalendarCheck,
+      tone: "indigo",
+      badge: <StatusBadge label={latest?.status ?? "No run"} tone={latest ? "info" : "neutral"} />,
+    },
+    {
+      label: "Hard conflicts",
+      value: latest?.hard_violation_count ?? 0,
+      icon: AlertTriangle,
+      tone: (latest?.hard_violation_count ?? 0) > 0 ? "error" : "success",
+    },
+    {
+      label: "Soft score",
+      value: latest?.soft_score ?? 0,
+      icon: Sparkles,
+      tone: "purple",
+    },
+  ];
 
-      <section className="metric-grid">
-        <div className="metric-card">
-          <span>Total sessions</span>
-          <strong>{dashboard.total_sessions}</strong>
+  return (
+    <div className="page dashboard-page">
+      <section className="dashboard-hero">
+        <div className="page-header dashboard-page-header">
+          <div>
+            <h1>Overview</h1>
+            <p>Academic timetable scheduling status</p>
+          </div>
+          <div className="toolbar-row">
+            <button className="button secondary" onClick={load}>
+              <RefreshCw size={17} />
+              Refresh
+            </button>
+          </div>
         </div>
-        <div className="metric-card">
-          <span>Imported rows</span>
-          <strong>{dashboard.imported_rows}</strong>
-        </div>
-        <div className="metric-card">
-          <span>Validation</span>
-          <strong>{dashboard.validation.error_count}</strong>
-          <span title={"Input validation checks uploaded session data for missing or invalid fields. Schedule issues are constraint violations detected after generating a timetable (conflicts in scheduled sessions)."} style={{ marginLeft: 8 }}>
-            <Info size={14} />
-          </span>
-          <StatusBadge
-            label={dashboard.validation.is_valid ? "Valid" : "Needs fixes"}
-            tone={dashboard.validation.is_valid ? "good" : "bad"}
-          />
-        </div>
-        <div className="metric-card">
-          <span>Schedule</span>
-          <strong>{latest?.solver_status ?? "None"}</strong>
-          <StatusBadge label={latest?.status ?? "No run"} tone={latest ? "info" : "neutral"} />
-        </div>
-        <div className="metric-card">
-          <span>Hard conflicts</span>
-          <strong>{latest?.hard_violation_count ?? 0}</strong>
-        </div>
-        <div className="metric-card">
-          <span>Soft score</span>
-          <strong>{latest?.soft_score ?? 0}</strong>
+
+        <div className="metric-grid dashboard-metrics">
+          {kpis.map((item) => {
+            const Icon = item.icon;
+            return (
+              <div className="metric-card" key={item.label}>
+                <div className={`metric-icon ${item.tone}`}>
+                  <Icon size={20} />
+                </div>
+                <span>{item.label}</span>
+                <div className="metric-value-row">
+                  <strong>{item.value}</strong>
+                  {item.helper}
+                </div>
+                {item.badge}
+              </div>
+            );
+          })}
         </div>
       </section>
 
-      <section className="dashboard-grid">
+      <section className="dashboard-grid dashboard-insights">
         <div className="status-card">
           <div className="section-heading">
             <div>
@@ -158,10 +195,17 @@ function AvailabilityList({
           <small key={day}>{label}</small>
         ))}
       </div>
-      {items.slice(0, 8).map((item) => (
+      {items.slice(0, 6).map((item) => (
         <AvailabilityRow days={days} item={item} key={item.label} />
       ))}
-      {items.length > 8 && <span className="muted">Showing 8 of {items.length}</span>}
+      {items.length > 6 && <span className="muted">Showing 6 of {items.length}</span>}
+      <div className="heatmap-legend" aria-label="Teaching load colour legend">
+        <span><i className="heat-0" />0</span>
+        <span><i className="heat-1" />1</span>
+        <span><i className="heat-2" />2</span>
+        <span><i className="heat-4" />3-4</span>
+        <span><i className="heat-5" />5+</span>
+      </div>
     </div>
   );
 }
@@ -176,10 +220,18 @@ function AvailabilityRow({ days, item }: { days: string[][]; item: { label: stri
     <div className="availability-row">
       <span className="availability-name" title={item.label}>{item.label}</span>
       {days.map(([day]) => (
-        <small className={counts[day] ? "busy" : ""} key={day} title={`${day}: ${counts[day] ?? 0}`}>
+        <small className={`heat-cell ${heatClass(counts[day] ?? 0)}`} key={day} title={`${day}: ${counts[day] ?? 0}`}>
           {counts[day] ?? 0}
         </small>
       ))}
     </div>
   );
+}
+
+function heatClass(value: number) {
+  if (value === 0) return "heat-0";
+  if (value === 1) return "heat-1";
+  if (value === 2) return "heat-2";
+  if (value <= 4) return "heat-4";
+  return "heat-5";
 }

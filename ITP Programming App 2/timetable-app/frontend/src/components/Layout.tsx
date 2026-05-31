@@ -6,8 +6,13 @@
 
 import {
   CalendarClock,
-  Gauge,
   Database,
+  Download,
+  FileUp,
+  Gauge,
+  ShieldCheck,
+  SlidersHorizontal,
+  TableProperties,
 } from "lucide-react";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
@@ -28,6 +33,14 @@ const databaseItems = [
   { id: "database-time-slots", label: "Time Slots" },
 ];
 
+const workflowItems = [
+  { id: "upload", label: "Import Data", icon: FileUp },
+  { id: "validation", label: "Validate Data", icon: ShieldCheck },
+  { id: "soft-constraints", label: "Priorities & Generate", icon: SlidersHorizontal },
+  { id: "review", label: "Review Timetable", icon: TableProperties },
+  { id: "export", label: "Export Timetable", icon: Download },
+];
+
 export default function Layout({ route, onNavigate, children }: Props) {
   useEffect(() => {
     const nav = document.querySelector(".workflow-stepper");
@@ -41,54 +54,62 @@ export default function Layout({ route, onNavigate, children }: Props) {
 
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <div className="topbar-nav-row">
-          <div className="brand">
-            <CalendarClock size={24} />
-            <div>
-              <strong>Timetable</strong>
-              <span>Scheduler</span>
-            </div>
-          </div>
-          <div className="nav-area utility-nav">
-            <a
-              className={route === "dashboard" ? "nav-home active" : "nav-home"}
-              href="#dashboard"
-              onClick={() => onNavigate("dashboard")}
-            >
-              <Gauge size={18} />
-              <span>Overview</span>
-            </a>
-            <nav className="nav-list" aria-label="Secondary navigation">
-              <div className="nav-dropdown">
-                <a
-                  className={route.startsWith("database-") ? "active" : ""}
-                  href="#database-rooms"
-                  onClick={() => onNavigate("database-rooms")}
-                >
-                  <Database size={18} />
-                  <span>Reference Data</span>
-                </a>
-                <div className="nav-submenu" role="menu">
-                  {databaseItems.map((child) => (
-                    <a
-                      className={route === child.id ? "active" : ""}
-                      href={`#${child.id}`}
-                      key={child.id}
-                      onClick={() => onNavigate(child.id)}
-                      role="menuitem"
-                    >
-                      {child.label}
-                    </a>
-                  ))}
-                </div>
-              </div>
-            </nav>
+      <aside className="sidebar" aria-label="Application navigation">
+        <div className="brand">
+          <CalendarClock size={24} />
+          <div>
+            <strong>Timetable</strong>
+            <span>Scheduler</span>
           </div>
         </div>
-        <WorkflowProgress route={route} onNavigate={onNavigate} />
-      </header>
-      <main className="content">{children}</main>
+        <nav className="sidebar-nav">
+          <a
+            className={route === "dashboard" ? "sidebar-link active" : "sidebar-link"}
+            href="#dashboard"
+            onClick={() => onNavigate("dashboard")}
+          >
+            <Gauge size={18} />
+            <span>Overview</span>
+          </a>
+          <div className="sidebar-nav-group">
+            <span className="sidebar-nav-label">Workflow</span>
+            {workflowItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <a
+                  className={route === item.id ? "sidebar-link active" : "sidebar-link"}
+                  href={`#${item.id}`}
+                  key={item.id}
+                  onClick={() => onNavigate(item.id)}
+                >
+                  <Icon size={18} />
+                  <span>{item.label}</span>
+                </a>
+              );
+            })}
+          </div>
+          <div className="sidebar-nav-group">
+            <span className="sidebar-nav-label">Reference Data</span>
+            {databaseItems.map((child) => (
+              <a
+                className={route === child.id ? "sidebar-link active" : "sidebar-link"}
+                href={`#${child.id}`}
+                key={child.id}
+                onClick={() => onNavigate(child.id)}
+              >
+                <Database size={18} />
+                <span>{child.label}</span>
+              </a>
+            ))}
+          </div>
+        </nav>
+      </aside>
+      <div className="main-shell">
+        <header className="topbar">
+          <WorkflowProgress route={route} onNavigate={onNavigate} />
+        </header>
+        <main className="content">{children}</main>
+      </div>
     </div>
   );
 }

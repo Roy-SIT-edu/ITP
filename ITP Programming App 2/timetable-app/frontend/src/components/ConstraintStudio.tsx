@@ -20,6 +20,7 @@ export default function ConstraintStudio({
   onApply: (sessionId: number, values: ConstraintPresetValues) => void;
 }) {
   const [sessionId, setSessionId] = useState<number | "">("");
+  const [sessionQuery, setSessionQuery] = useState("");
   const [mode, setMode] = useState<ConstraintPresetValues["mode"]>("soft");
   const [preferredDays, setPreferredDays] = useState("Monday,Tuesday");
   const [avoidDays, setAvoidDays] = useState("Friday");
@@ -37,6 +38,7 @@ export default function ConstraintStudio({
     setFixedStart(selected.fixed_start_time || "09:00");
     setFixedEnd(selected.fixed_end_time || "11:00");
     setMode(selected.scheduling_type === "Fixed" ? "hard" : selected.preferred_days || selected.avoid_days ? "soft" : "none");
+    setSessionQuery(requirementLabel(selected));
   }, [selected?.id]);
 
   return (
@@ -45,14 +47,22 @@ export default function ConstraintStudio({
       <div className="constraint-grid">
         <label>
           Requirement
-          <select value={sessionId} onChange={(event) => setSessionId(event.target.value ? Number(event.target.value) : "")}>
-            <option value="">Select requirement</option>
+          <input
+            list="constraint-requirement-options"
+            placeholder="Search requirement"
+            value={sessionQuery}
+            onChange={(event) => {
+              const value = event.target.value;
+              setSessionQuery(value);
+              const match = sessions.find((session) => requirementLabel(session) === value);
+              setSessionId(match ? match.id : "");
+            }}
+          />
+          <datalist id="constraint-requirement-options">
             {sessions.map((session) => (
-              <option key={session.id} value={session.id}>
-                {session.requirement_id ?? `Row ${session.source_row_no ?? session.id}`} - {session.module_code}
-              </option>
+              <option key={session.id} value={requirementLabel(session)} />
             ))}
-          </select>
+          </datalist>
         </label>
         <label>
           Mode
@@ -117,4 +127,8 @@ export default function ConstraintStudio({
       </button>
     </section>
   );
+}
+
+function requirementLabel(session: SessionRow) {
+  return `${session.requirement_id ?? `Row ${session.source_row_no ?? session.id}`} - ${session.module_code}`;
 }
