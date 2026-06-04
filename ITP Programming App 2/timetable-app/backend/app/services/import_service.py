@@ -1,3 +1,9 @@
+"""Excel import service for requirements workbooks.
+
+This service normalizes varied spreadsheet column names, validates every row
+against the database, and only replaces requirements after the full batch passes.
+"""
+
 from __future__ import annotations
 
 import re
@@ -9,23 +15,11 @@ import pandas as pd
 from sqlalchemy.orm import Session as DbSession
 
 from app.models.constraint_violation import ConstraintViolation
-from app.models.module import Module
-from app.models.programme import Programme
-from app.models.room import Room
 from app.models.schedule_run import ScheduleRun
 from app.models.scheduled_session import ScheduledSession
 from app.models.session import Session
-from app.models.staff import Staff
-from app.models.student_group import StudentGroup
-from app.services.compatibility import (
-    canonical_day,
-    canonical_delivery_mode,
-    canonical_week_pattern,
-    clean_text,
-    minutes_to_time,
-    time_to_minutes,
-)
-from app.services.seed_service import seed_reference_data
+from app.services.compatibility import clean_text
+from app.services.requirement_input_service import RequirementInputService, RequirementUploadRow
 
 
 CANONICAL_COLUMNS = {
@@ -89,6 +83,28 @@ class ImportService:
         data = file.read()
         return self.import_input_template_bytes(db, data, source_filename=filename)
 
+    def import_input_template_files(
+        self,
+        db: DbSession,
+        workbooks: list[tuple[bytes, str]],
+    ) -> dict:
+        frames = [
+            (self._read_workbook_frame(BytesIO(workbook_bytes)), source_filename)
+            for workbook_bytes, source_filename in workbooks
+        ]
+        return self._import_frames(db, frames)
+
+    def preview_input_template_files(
+        self,
+        db: DbSession,
+        workbooks: list[tuple[bytes, str]],
+    ) -> dict:
+        frames = [
+            (self._read_workbook_frame(BytesIO(workbook_bytes)), source_filename)
+            for workbook_bytes, source_filename in workbooks
+        ]
+        return self._preview_frames(db, frames)
+
     def import_input_template_bytes(
         self,
         db: DbSession,
@@ -96,7 +112,7 @@ class ImportService:
         source_filename: str,
     ) -> dict:
         frame = self._read_workbook_frame(BytesIO(workbook_bytes))
-        return self._import_frame(db, frame, source_filename)
+        return self._import_frames(db, [(frame, source_filename)])
 
     def import_input_template(
         self,
@@ -106,7 +122,7 @@ class ImportService:
     ) -> dict:
         source_filename = source_filename or Path(workbook_path).name
         frame = self._read_workbook_frame(workbook_path)
-        return self._import_frame(db, frame, source_filename)
+        return self._import_frames(db, [(frame, source_filename)])
 
     def _read_workbook_frame(self, workbook_source) -> pd.DataFrame:
         with pd.ExcelFile(workbook_source) as xls:
@@ -115,18 +131,23 @@ class ImportService:
         frame = frame.dropna(how="all")
         return self._prepare_frame(frame)
 
-    def _import_frame(self, db: DbSession, frame: pd.DataFrame, source_filename: str) -> dict:
-        self._clear_sessions_and_schedules(db)
-        seed_reference_data(db)
-
+    def _import_frames(self, db: DbSession, frames: list[tuple[pd.DataFrame, str]]) -> dict:
         errors: list[dict] = []
-        rows_imported = 0
-        if frame.empty:
-            db.commit()
+        rows_read = sum(int(len(frame.index)) for frame, _ in frames)
+        file_summaries = [
+            {
+                "filename": source_filename,
+                "rows_read": int(len(frame.index)),
+                "columns": [str(column) for column in frame.columns],
+            }
+            for frame, source_filename in frames
+        ]
+        if not frames or all(frame.empty for frame, _ in frames):
             return {
                 "rows_read": 0,
                 "rows_imported": 0,
                 "rows_failed": 1,
+                "file_summaries": file_summaries,
                 "errors": [
                     {
                         "row": 0,
@@ -136,30 +157,101 @@ class ImportService:
                 ],
             }
 
-        for index, row in frame.iterrows():
-            source_row_no = self._source_row_no(row.get("Source Row No"), int(index))
-            try:
-                count = self._positive_int(row.get("Session Count")) or 1
-                for _ in range(count):
-                    session = self._build_session(db, row, source_filename, source_row_no)
-                    db.add(session)
-                    rows_imported += 1
-            except Exception as exc:  # Defensive: one bad row should not block the whole upload.
+        upload_rows: list[RequirementUploadRow] = []
+        for frame, source_filename in frames:
+            if frame.empty:
                 errors.append(
                     {
-                        "row": source_row_no,
-                        "field": "Row",
-                        "message": f"Could not import row: {exc}",
+                        "row": 0,
+                        "field": "Workbook",
+                        "message": f"{source_filename}: no usable timetable rows found.",
                     }
                 )
+                continue
+
+            for index, row in frame.iterrows():
+                source_row_no = self._source_row_no(row.get("Source Row No"), int(index))
+                upload_rows.append(RequirementUploadRow(row=row, source_filename=source_filename, source_row_no=source_row_no))
+
+        # Validate first, then clear and insert. This keeps uploads all-or-nothing.
+        service = RequirementInputService()
+        session_data, validation_errors = service.validate_upload_rows(db, upload_rows)
+        errors.extend(validation_errors)
+        if errors:
+            db.rollback()
+            return {
+                "rows_read": rows_read,
+                "rows_imported": 0,
+                "rows_failed": len(errors),
+                "file_summaries": self._summaries_with_errors(file_summaries, errors),
+                "errors": errors,
+            }
+
+        self._clear_sessions_and_schedules(db)
+        for data in session_data:
+            db.add(service.session_from_data(data))
 
         db.commit()
         return {
-            "rows_read": int(len(frame.index)),
-            "rows_imported": rows_imported,
+            "rows_read": rows_read,
+            "rows_imported": len(session_data),
             "rows_failed": len(errors),
+            "file_summaries": file_summaries,
             "errors": errors,
         }
+
+    def _preview_frames(self, db: DbSession, frames: list[tuple[pd.DataFrame, str]]) -> dict:
+        rows_read = sum(int(len(frame.index)) for frame, _ in frames)
+        file_summaries = [
+            {
+                "filename": source_filename,
+                "rows_read": int(len(frame.index)),
+                "columns": [str(column) for column in frame.columns],
+            }
+            for frame, source_filename in frames
+        ]
+        if not frames or all(frame.empty for frame, _ in frames):
+            return {
+                "rows_read": 0,
+                "rows_importable": 0,
+                "rows_failed": 1,
+                "file_summaries": file_summaries,
+                "errors": [
+                    {
+                        "row": 0,
+                        "field": "Workbook",
+                        "message": "No usable timetable rows found. Add rows with at least a Module Code, Student Group, Class Type, Staff, class size, and duration.",
+                    }
+                ],
+            }
+
+        upload_rows: list[RequirementUploadRow] = []
+        for frame, source_filename in frames:
+            for index, row in frame.iterrows():
+                upload_rows.append(RequirementUploadRow(row=row, source_filename=source_filename, source_row_no=self._source_row_no(row.get("Source Row No"), int(index))))
+
+        session_data, errors = RequirementInputService().validate_upload_rows(db, upload_rows)
+        return {
+            "rows_read": rows_read,
+            "rows_importable": len(session_data) if not errors else 0,
+            "rows_failed": len(errors),
+            "file_summaries": self._summaries_with_errors(file_summaries, errors),
+            "errors": errors,
+        }
+
+    def _summaries_with_errors(self, file_summaries: list[dict], errors: list[dict]) -> list[dict]:
+        counts = {}
+        for error in errors:
+            source = error.get("source_file")
+            if source:
+                counts[source] = counts.get(source, 0) + 1
+        return [
+            {
+                **summary,
+                "error_count": counts.get(summary["filename"], 0),
+            }
+            for summary in file_summaries
+        ]
 
     def _choose_sheet(self, sheet_names: list[str]) -> str:
         for preferred in ["Input_Template", "Timetable", "Template"]:
@@ -252,151 +344,6 @@ class ImportService:
         db.query(ScheduledSession).delete()
         db.query(ScheduleRun).delete()
         db.query(Session).delete()
-        db.commit()
-
-    def _build_session(
-        self,
-        db: DbSession,
-        row,
-        source_filename: str,
-        source_row_no: int,
-    ) -> Session:
-        programme = self._get_or_create_programme(db, row)
-        module = self._get_or_create_module(db, row)
-        group = self._get_or_create_group(db, row, programme)
-        staff = self._get_or_create_staff(db, row)
-        duration = self._duration_minutes(row)
-        fixed_start = self._time_string(row.get("Fixed Start Time"))
-        fixed_end = self._time_string(row.get("Fixed End Time"))
-
-        return Session(
-            requirement_id=clean_text(row.get("Requirement ID")),
-            programme_id=programme.id if programme else None,
-            module_id=module.id if module else None,
-            student_group_id=group.id if group else None,
-            staff_id=staff.id if staff else None,
-            class_type=clean_text(row.get("Class Type")),
-            delivery_mode=canonical_delivery_mode(row.get("Delivery Mode")),
-            campus_mode=clean_text(row.get("Campus Mode")),
-            venue_type_required=clean_text(row.get("Venue Type Required")),
-            duration_minutes=duration,
-            sessions_per_week=self._positive_int(row.get("Sessions Per Week")),
-            exact_class_size=self._positive_int(row.get("Exact Class Size")),
-            start_week=self._positive_int(row.get("Start Week")),
-            end_week=self._positive_int(row.get("End Week")),
-            week_pattern=canonical_week_pattern(row.get("Week Pattern")),
-            custom_weeks=clean_text(row.get("Custom Weeks")),
-            scheduling_type=clean_text(row.get("Scheduling Type")),
-            fixed_day=canonical_day(row.get("Fixed Day")),
-            fixed_date=clean_text(row.get("Fixed Date")),
-            fixed_start_time=fixed_start,
-            fixed_end_time=fixed_end,
-            preferred_days=clean_text(row.get("Preferred Days")),
-            avoid_days=clean_text(row.get("Avoid Days")),
-            priority=clean_text(row.get("Priority")) or "Normal",
-            common_module_flag=self._to_bool(row.get("Common Module?")),
-            shared_session_group_id=clean_text(row.get("Shared Session Group ID")),
-            combined_with_programmes=clean_text(row.get("Combined With Programmes")),
-            hard_constraint_notes=clean_text(row.get("Hard Constraint Notes")),
-            soft_preference_notes=clean_text(row.get("Soft Preference Notes")),
-            remarks=clean_text(row.get("Remarks")),
-            source_file=clean_text(row.get("Source File")) or source_filename,
-            source_row_no=source_row_no,
-        )
-
-    def _get_or_create_programme(self, db: DbSession, row) -> Programme | None:
-        value = clean_text(row.get("Programme"))
-        if not value:
-            return None
-        code = value.split()[0].strip().upper()
-        programme = db.query(Programme).filter_by(code=code).first()
-        if programme:
-            return programme
-        programme = Programme(code=code, name=value, cluster=None)
-        db.add(programme)
-        db.flush()
-        return programme
-
-    def _get_or_create_module(self, db: DbSession, row) -> Module | None:
-        module_code = clean_text(row.get("Module Code"))
-        if not module_code:
-            return None
-        host_key = clean_text(row.get("Module Host Key"))
-        module = db.query(Module).filter_by(module_code=module_code).first()
-        if module:
-            return module
-        module = Module(
-            module_code=module_code,
-            module_host_key=host_key,
-            module_title=clean_text(row.get("Module Title")) or module_code,
-            term=None,
-        )
-        db.add(module)
-        db.flush()
-        return module
-
-    def _get_or_create_group(
-        self,
-        db: DbSession,
-        row,
-        programme: Programme | None,
-    ) -> StudentGroup | None:
-        group_code = clean_text(row.get("Student Group Code"))
-        if not group_code:
-            return None
-        group = db.query(StudentGroup).filter_by(group_code=group_code).first()
-        if group:
-            if programme and group.programme_id is None:
-                group.programme_id = programme.id
-            year = self._positive_int(row.get("Year"))
-            if year and group.year is None:
-                group.year = year
-            size = self._positive_int(row.get("Exact Class Size"))
-            if size and group.size is None:
-                group.size = size
-            return group
-        group = StudentGroup(
-            group_code=group_code,
-            programme_id=programme.id if programme else None,
-            year=self._positive_int(row.get("Year")),
-            size=self._positive_int(row.get("Exact Class Size")),
-        )
-        db.add(group)
-        db.flush()
-        return group
-
-    def _get_or_create_staff(self, db: DbSession, row) -> Staff | None:
-        staff_id = clean_text(row.get("Staff 1 ID"))
-        staff_name = clean_text(row.get("Staff 1 Name"))
-        if not staff_id and not staff_name:
-            return None
-        staff = None
-        if staff_id:
-            staff = db.query(Staff).filter_by(staff_id=staff_id).first()
-        if not staff and staff_name:
-            staff = db.query(Staff).filter_by(staff_name=staff_name).first()
-        if staff:
-            return staff
-        staff = Staff(staff_id=staff_id, staff_name=staff_name, staff_host_key=None)
-        db.add(staff)
-        db.flush()
-        return staff
-
-    def _duration_minutes(self, row) -> int | None:
-        fixed_start = time_to_minutes(row.get("Fixed Start Time"))
-        fixed_end = time_to_minutes(row.get("Fixed End Time"))
-        if fixed_start is not None and fixed_end is not None and fixed_end > fixed_start:
-            return fixed_end - fixed_start
-        minutes = self._positive_int(row.get("Duration Minutes"))
-        if minutes:
-            return minutes
-        hours = self._positive_float(row.get("Duration Hours"))
-        if hours is None:
-            raw_duration = self._positive_float(row.get("Duration Raw"))
-            if raw_duration is None:
-                return None
-            return int(raw_duration * 20)
-        return int(hours * 60)
 
     def _positive_int(self, value) -> int | None:
         number = self._positive_float(value)
@@ -422,13 +369,3 @@ class ImportService:
             return float(text)
         except ValueError:
             return None
-
-    def _time_string(self, value) -> str | None:
-        minutes = time_to_minutes(value)
-        if minutes is None:
-            return None
-        return minutes_to_time(minutes)
-
-    def _to_bool(self, value) -> bool:
-        text = (clean_text(value) or "").lower()
-        return text in {"yes", "y", "true", "1", "common"}

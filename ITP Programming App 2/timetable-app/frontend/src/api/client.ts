@@ -1,9 +1,24 @@
+/*
+ * Frontend API client.
+ * Centralizes fetch calls, error parsing, upload form-data, and export URLs.
+ */
+
 import type {
   ConstraintViolation,
+  Availability,
+  ConstraintInsights,
   Dashboard,
+  DatabaseRow,
+  DatabaseTypeInfo,
+  Room,
+  ScheduleComparison,
+  ScheduleExplanation,
   ScheduleGenerateResult,
+  ScheduleRun,
   ScheduleResponse,
   SessionRow,
+  SoftConstraintPriority,
+  TimeSlot,
   UploadSummary,
   ValidationResult,
 } from "../types";
@@ -27,12 +42,15 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const payload = contentType.includes("application/json") ? await response.json() : await response.text();
 
   if (!response.ok) {
+    // FastAPI may return strings, Pydantic errors, or row-level validation arrays.
     const detail = typeof payload === "object" && payload && "detail" in payload ? payload.detail : payload;
     const message =
       typeof detail === "string"
         ? detail
         : Array.isArray(detail) && detail.length > 0 && typeof detail[0] === "object" && detail[0] && "msg" in detail[0]
           ? String(detail[0].msg)
+          : Array.isArray(detail) && detail.length > 0 && typeof detail[0] === "object" && detail[0] && "message" in detail[0]
+            ? String(detail[0].message)
           : typeof detail === "object" && detail && "message" in detail
             ? String(detail.message)
             : `Request failed with status ${response.status}`;
@@ -49,13 +67,68 @@ export function getSessions() {
   return request<SessionRow[]>("/api/sessions");
 }
 
-export function uploadTemplate(file: File) {
+export function getSession(id: number) {
+  return request<SessionRow>(`/api/sessions/${id}`);
+}
+
+export function getTimeSlots() {
+  return request<TimeSlot[]>("/api/timeslots");
+}
+
+export function getRooms() {
+  return request<Room[]>("/api/rooms");
+}
+
+export function uploadTemplate(files: File[]) {
   const formData = new FormData();
-  formData.append("file", file);
+  files.forEach((file) => formData.append("files", file));
   return request<UploadSummary>("/api/upload/input-template", {
     method: "POST",
     body: formData,
   });
+}
+
+export function getDatabaseTypes() {
+  return request<DatabaseTypeInfo[]>("/api/database/types");
+}
+
+export function getDatabaseRows(dataType: string) {
+  return request<DatabaseRow[]>(`/api/database/${dataType}`);
+}
+
+export function createDatabaseRow(dataType: string, data: Record<string, unknown>) {
+  return request<DatabaseRow>(`/api/database/${dataType}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateDatabaseRow(dataType: string, id: number, data: Record<string, unknown>) {
+  return request<DatabaseRow>(`/api/database/${dataType}/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteDatabaseRow(dataType: string, id: number) {
+  return request<{ message: string }>(`/api/database/${dataType}/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export function uploadDatabaseFile(dataType: string, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<UploadSummary>(`/api/database/${dataType}/upload`, {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export function databaseExampleUrl(dataType: string) {
+  return `${API_BASE}/api/database/${dataType}/example.xlsx`;
 }
 
 export function getValidation() {
@@ -68,8 +141,52 @@ export function generateSchedule() {
   });
 }
 
+export function getSoftConstraintPriorities() {
+  return request<SoftConstraintPriority[]>("/api/soft-constraints");
+}
+
+export function updateSoftConstraintPriorities(orderedCodes: string[]) {
+  return request<SoftConstraintPriority[]>("/api/soft-constraints", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ordered_codes: orderedCodes }),
+  });
+}
+
+export function getScheduleRuns() {
+  return request<ScheduleRun[]>("/api/schedules");
+}
+
+export function compareSchedules(ids?: number[]) {
+  const query = ids?.length ? `?${ids.map((id) => `ids=${id}`).join("&")}` : "";
+  return request<ScheduleComparison[]>(`/api/schedules/compare${query}`);
+}
+
 export function getLatestSchedule() {
   return request<ScheduleResponse>("/api/schedules/latest");
+}
+
+export function getSchedule(id: number) {
+  return request<ScheduleResponse>(`/api/schedules/${id}`);
+}
+
+export function getScheduleExplanations(scheduleRunId: number) {
+  return request<ScheduleExplanation[]>(`/api/schedules/${scheduleRunId}/explanations`);
+}
+
+export function moveScheduledSession(
+  scheduleRunId: number,
+  sessionId: number,
+  data: { day: string; start_time: string; end_time: string; room_code: string },
+) {
+  return request<{ message: string; schedule_run: ScheduleRun | null; violations: ConstraintViolation[] }>(
+    `/api/schedules/${scheduleRunId}/sessions/${sessionId}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    },
+  );
 }
 
 export function getViolations(scheduleRunId: number) {
@@ -100,4 +217,18 @@ export function deleteSession(id: number) {
   return request<{ message: string }>(`/api/sessions/${id}`, {
     method: "DELETE",
   });
+}
+
+export function resetRequirementInputs() {
+  return request<{ message: string; rows_deleted: number }>("/api/sessions", {
+    method: "DELETE",
+  });
+}
+
+export function getAvailability() {
+  return request<Availability>("/api/availability");
+}
+
+export function getConstraintInsights() {
+  return request<ConstraintInsights>("/api/constraint-insights");
 }

@@ -1,5 +1,7 @@
 from app.models.room import Room
 from app.models.schedule_run import ScheduleRun
+"""Tests for post-generation constraint detection."""
+
 from app.models.scheduled_session import ScheduledSession
 from app.models.session import Session
 from app.models.time_slot import TimeSlot

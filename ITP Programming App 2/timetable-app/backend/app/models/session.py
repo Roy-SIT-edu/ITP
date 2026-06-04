@@ -1,3 +1,5 @@
+"""SQLAlchemy model for requirement/session rows imported from Excel or forms."""
+
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 

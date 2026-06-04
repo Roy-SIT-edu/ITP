@@ -1,3 +1,5 @@
+"""SQLAlchemy model for valid timetable slots."""
+
 from sqlalchemy import Column, Integer, String, UniqueConstraint
 from sqlalchemy.orm import relationship
 

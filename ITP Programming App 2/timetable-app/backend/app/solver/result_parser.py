@@ -1,3 +1,5 @@
+"""Converts selected CP-SAT variables into persisted schedule rows."""
+
 from __future__ import annotations
 
 from ortools.sat.python import cp_model

@@ -1,3 +1,5 @@
+"""Serializer helpers that convert SQLAlchemy models into API dictionaries."""
+
 from __future__ import annotations
 
 from app.models.constraint_violation import ConstraintViolation
@@ -88,6 +90,7 @@ def session_to_dict(item: Session) -> dict:
         "start_week": item.start_week,
         "end_week": item.end_week,
         "week_pattern": item.week_pattern,
+        "custom_weeks": item.custom_weeks,
         "scheduling_type": item.scheduling_type,
         "fixed_day": item.fixed_day,
         "fixed_start_time": item.fixed_start_time,
@@ -95,6 +98,7 @@ def session_to_dict(item: Session) -> dict:
         "preferred_days": item.preferred_days,
         "avoid_days": item.avoid_days,
         "priority": item.priority,
+        "remarks": item.remarks,
         "source_file": item.source_file,
         "source_row_no": item.source_row_no,
     }

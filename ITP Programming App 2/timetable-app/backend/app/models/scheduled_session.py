@@ -1,3 +1,5 @@
+"""SQLAlchemy model for solver assignments of sessions to rooms and slots."""
+
 from sqlalchemy import Column, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 

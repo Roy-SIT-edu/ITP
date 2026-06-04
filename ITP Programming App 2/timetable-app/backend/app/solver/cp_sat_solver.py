@@ -1,3 +1,9 @@
+"""CP-SAT solver facade for timetable generation.
+
+This class keeps solver setup small: build candidate variables, run OR-Tools,
+and return normalized assignment dictionaries for persistence.
+"""
+
 from __future__ import annotations
 
 from ortools.sat.python import cp_model
@@ -19,6 +25,7 @@ class CpSatTimetableSolver:
         sessions: list[Session],
         time_slots: list[TimeSlot],
         rooms: list[Room],
+        soft_constraint_weights: dict[str, int] | None = None,
         max_seconds: float = 20.0,
     ) -> dict:
         if not sessions:
@@ -29,7 +36,7 @@ class CpSatTimetableSolver:
                 "message": "No sessions are available to schedule.",
             }
 
-        built = self.model_builder.build(sessions, time_slots, rooms)
+        built = self.model_builder.build(sessions, time_slots, rooms, soft_constraint_weights)
         if built.no_candidate_reasons:
             return {
                 "solver_status": "INFEASIBLE",
@@ -40,6 +47,7 @@ class CpSatTimetableSolver:
 
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = max_seconds
+        # Multiple workers usually improves feasibility search on timetable grids.
         solver.parameters.num_search_workers = 8
         status = solver.Solve(built.model)
         status_name = solver.StatusName(status)

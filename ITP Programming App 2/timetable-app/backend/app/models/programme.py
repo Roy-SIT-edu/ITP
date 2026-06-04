@@ -1,3 +1,5 @@
+"""SQLAlchemy model for academic programme records."""
+
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.orm import relationship
 

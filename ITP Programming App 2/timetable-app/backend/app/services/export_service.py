@@ -1,3 +1,5 @@
+"""Export service for converting generated schedules to CSV or Excel files."""
+
 from __future__ import annotations
 
 from io import BytesIO, StringIO
@@ -21,6 +23,8 @@ class ExportService:
             session = item.session
             rows.append(
                 {
+                    "scheduled_session_id": item.id,
+                    "session_id": session.id,
                     "requirement_id": session.requirement_id,
                     "programme": session.programme.code if session.programme else None,
                     "year": session.student_group.year if session.student_group else None,

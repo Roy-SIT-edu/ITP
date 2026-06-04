@@ -1,3 +1,5 @@
+"""Shared pytest fixtures and workbook helpers for backend tests."""
+
 from pathlib import Path
 
 import pandas as pd
@@ -34,9 +36,9 @@ def valid_row(**overrides) -> dict:
     row = {
         "Requirement ID": "REQ-TEST-001",
         "Programme": "DSC",
-        "Year": 1,
-        "Student Group Code": "DSC-Y1-G2",
-        "Module Code": "TST1001",
+        "Year": 2,
+        "Student Group Code": "DSC-Y2-G1",
+        "Module Code": "DSC2204",
         "Module Host Key": "DSC",
         "Class Type": "Tutorial",
         "Session Count": 1,
@@ -45,9 +47,9 @@ def valid_row(**overrides) -> dict:
         "Delivery Mode": "Face-to-face",
         "Venue Type Required": "classroom",
         "Campus Mode": "Physical",
-        "Exact Class Size": 30,
-        "Staff 1 Name": "Dr Test",
-        "Staff 1 ID": "T001",
+        "Exact Class Size": 40,
+        "Staff 1 Name": "Dr Tan",
+        "Staff 1 ID": "S001",
         "Start Week": 1,
         "End Week": 13,
         "Week Pattern": "Weekly",

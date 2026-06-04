@@ -1,3 +1,9 @@
+"""Shared normalization and compatibility helpers.
+
+Import validation, saved-data validation, constraint checks, and the solver all
+use these helpers so day/time/week/room decisions stay consistent.
+"""
+
 from __future__ import annotations
 
 import math
@@ -9,6 +15,8 @@ ALLOWED_DELIVERY_MODES = {
     "face-to-face",
     "face to face",
     "f2f",
+    "physical",
+    "in person",
     "online",
     "online synchronous",
     "hybrid",

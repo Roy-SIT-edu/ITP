@@ -1,3 +1,9 @@
+"""Development seed data for empty split databases.
+
+Startup seeds minimal reference records and sample sessions only when tables are
+empty, which keeps imported user data intact.
+"""
+
 from __future__ import annotations
 
 from sqlalchemy.orm import Session as DbSession

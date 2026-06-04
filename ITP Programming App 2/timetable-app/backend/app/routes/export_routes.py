@@ -1,3 +1,5 @@
+"""API route for exporting generated schedules as CSV or Excel."""
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session as DbSession
