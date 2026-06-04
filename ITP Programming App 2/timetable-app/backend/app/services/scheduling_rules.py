@@ -18,6 +18,7 @@ from app.services.compatibility import (
     parse_custom_weeks,
     parse_day_list,
     room_capacity_fits,
+    time_to_minutes,
     venue_room_compatible,
     weeks_conflict,
 )
@@ -27,6 +28,18 @@ def candidate_slot_allowed(session: Session, slot: TimeSlot) -> bool:
     """Return whether a saved requirement can be assigned to a time slot."""
 
     if session.duration_minutes and slot.duration_minutes != session.duration_minutes:
+        return False
+
+    start_min = time_to_minutes(slot.start_time) or 0
+    end_min = time_to_minutes(slot.end_time) or 0
+
+    if slot.day == "Wednesday" and end_min > 780:
+        return False
+    if slot.day == "Friday" and start_min < 840 and end_min > 720:
+        return False
+    if start_min < 780 and end_min > 720:
+        return False
+    if slot.day == "Friday" and end_min > 1020:
         return False
 
     session_week = normalize_token(session.week_pattern or "Weekly")

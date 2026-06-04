@@ -129,6 +129,21 @@ class TimetableModelBuilder:
             penalty += weights.get("ONLINE_NOT_MON_TUE", 5)
         if not room.is_virtual and (slot.duration_minutes or 0) <= 120:
             penalty += weights.get("SHORT_CAMPUS_DAY", 10)
+            
+        if not room.is_virtual and room.capacity > 0:
+            class_size = session.exact_class_size or 0
+            if class_size / room.capacity < 0.6:
+                penalty += weights.get("LOW_ROOM_UTILISATION", 10)
+                
+        if session.student_group_id:
+            start_min = time_to_minutes(slot.start_time) or 0
+            end_min = time_to_minutes(slot.end_time) or 0
+            if start_min <= 540 or end_min >= 1080:
+                penalty += weights.get("EXTREME_TIME_SLOT", 15)
+                
+        if (time_to_minutes(slot.end_time) or 0) > 1020:
+            penalty += weights.get("CLASS_AFTER_1700", 10)
+            
         return penalty
 
     def _pair_soft_penalties(
@@ -150,8 +165,9 @@ class TimetableModelBuilder:
         weights: dict[str, int],
         penalties: list[cp_model.LinearExpr],
     ) -> None:
-        weight = weights.get("TUTOR_IDLE_GAP", 25)
-        if weight <= 0:
+        weight_idle = weights.get("TUTOR_IDLE_GAP", 25)
+        weight_wasted = weights.get("WASTED_FREE_SLOT", 5)
+        if weight_idle <= 0 and weight_wasted <= 0:
             return
         grouped = self._group_assignments(assignments, lambda item: (item["session"].staff_id, item["time_slot"].day))
         for items in grouped.values():
@@ -159,8 +175,10 @@ class TimetableModelBuilder:
                 if not self._compatible_pair(left, right):
                     continue
                 gap = self._gap_minutes(left["time_slot"], right["time_slot"])
-                if gap > 120:
-                    penalties.append(self._both_selected(model, left, right, "TUTOR_IDLE_GAP") * weight)
+                if gap > 120 and weight_idle > 0:
+                    penalties.append(self._both_selected(model, left, right, "TUTOR_IDLE_GAP") * weight_idle)
+                elif gap > 0 and weight_wasted > 0:
+                    penalties.append(self._both_selected(model, left, right, "WASTED_FREE_SLOT") * weight_wasted)
 
     def _add_student_day_penalties(
         self,
@@ -170,14 +188,21 @@ class TimetableModelBuilder:
         penalties: list[cp_model.LinearExpr],
     ) -> None:
         long_weight = weights.get("LONG_CONSECUTIVE_DAY", 20)
+        three_hr_weight = weights.get("THREE_HR_CONSECUTIVE", 15)
+        if long_weight <= 0 and three_hr_weight <= 0:
+            return
         grouped = self._group_assignments(assignments, lambda item: (item["session"].student_group_id, item["time_slot"].day))
         for items in grouped.values():
             for left, right in self._assignment_pairs(items):
                 if not self._compatible_pair(left, right):
                     continue
                 span = self._span_minutes(left["time_slot"], right["time_slot"])
-                if long_weight > 0 and self._gap_minutes(left["time_slot"], right["time_slot"]) == 0 and span > 240:
-                    penalties.append(self._both_selected(model, left, right, "LONG_CONSECUTIVE_DAY") * long_weight)
+                gap = self._gap_minutes(left["time_slot"], right["time_slot"])
+                if gap == 0:
+                    if span > 240 and long_weight > 0:
+                        penalties.append(self._both_selected(model, left, right, "LONG_CONSECUTIVE_DAY") * long_weight)
+                    elif span > 180 and three_hr_weight > 0:
+                        penalties.append(self._both_selected(model, left, right, "THREE_HR_CONSECUTIVE") * three_hr_weight)
 
     def _add_online_switch_penalties(
         self,

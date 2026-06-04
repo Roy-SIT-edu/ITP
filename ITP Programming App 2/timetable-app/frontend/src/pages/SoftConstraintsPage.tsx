@@ -29,7 +29,9 @@ function previewWeight(index: number, total: number) {
 function softConstraintHints(session: SessionRow): SoftPreferenceHint[] {
   const hints: SoftPreferenceHint[] = [];
   if (session.preferred_days) hints.push({ label: "Preferred", value: session.preferred_days, tone: "preferred" });
-  if (session.avoid_days) hints.push({ label: "Avoid", value: session.avoid_days, tone: "avoid" });
+  if (session.avoid_days && (session.priority || "").toLowerCase() !== "hard") {
+    hints.push({ label: "Avoid", value: session.avoid_days, tone: "avoid" });
+  }
   if ((session.delivery_mode || "").toLowerCase().includes("online")) {
     hints.push({ label: "Delivery", value: "Online placement preference", tone: "online" });
   }

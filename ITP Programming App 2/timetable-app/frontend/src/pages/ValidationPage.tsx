@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ApiError,
   getSession,
+  getSessions,
   getTimeSlots,
   getValidation,
   updateSession,
@@ -52,6 +53,14 @@ export default function ValidationPage() {
     fixed_end_time: "",
     scheduling_type: "Flexible",
     student_group_code: "",
+    delivery_mode: "",
+    campus_mode: "",
+    venue_type_required: "",
+    exact_class_size: "",
+    duration_minutes: "",
+    priority: "",
+    avoid_days: "",
+    preferred_days: "",
   });
   const [saveError, setSaveError] = useSessionState<string | null>("validation.saveError", null);
   const [isSaving, setIsSaving] = useState(false);
@@ -128,6 +137,14 @@ export default function ValidationPage() {
       fixed_end_time: "",
       scheduling_type: "Flexible",
       student_group_code: "",
+      delivery_mode: "",
+      campus_mode: "",
+      venue_type_required: "",
+      exact_class_size: "",
+      duration_minutes: "",
+      priority: "",
+      avoid_days: "",
+      preferred_days: "",
     });
   };
 
@@ -146,28 +163,45 @@ export default function ValidationPage() {
     setSaveError(null);
     setActiveIssue(item);
 
-    if (!item.conflict_session_ids?.length) {
-      setConflictSessions(null);
-      return;
-    }
-
     try {
-      const sessions = await Promise.all(item.conflict_session_ids.map(getSession));
-      const target =
-        sessions.find(
+      let target: SessionRow | undefined;
+      let anchor: SessionRow | undefined;
+
+      if (item.conflict_session_ids?.length) {
+        const sessions = await Promise.all(item.conflict_session_ids.map(getSession));
+        target =
+          sessions.find(
+            (session) => session.requirement_id === item.requirement_id || session.source_row_no === item.row,
+          ) ?? sessions[0];
+        anchor = sessions.find((session) => session.id !== target?.id);
+      } else {
+        const allSessions = await getSessions();
+        target = allSessions.find(
           (session) => session.requirement_id === item.requirement_id || session.source_row_no === item.row,
-        ) ?? sessions[0];
-      const anchor = sessions.find((session) => session.id !== target.id);
+        );
+      }
+
       setConflictSessions({ anchor, target });
-      setEditValues({
-        fixed_day: target.fixed_day ?? "",
-        fixed_start_time: target.fixed_start_time ?? "",
-        fixed_end_time: target.fixed_end_time ?? "",
-        scheduling_type: target.scheduling_type ?? "Flexible",
-        student_group_code: target.student_group_code ?? "",
-      });
+      
+      if (target) {
+        setEditValues({
+          fixed_day: target.fixed_day ?? "",
+          fixed_start_time: target.fixed_start_time ?? "",
+          fixed_end_time: target.fixed_end_time ?? "",
+          scheduling_type: target.scheduling_type ?? "Flexible",
+          student_group_code: target.student_group_code ?? "",
+          delivery_mode: target.delivery_mode ?? "",
+          campus_mode: target.campus_mode ?? "",
+          venue_type_required: target.venue_type_required ?? "",
+          exact_class_size: (target.exact_class_size ?? "").toString(),
+          duration_minutes: (target.duration_minutes ?? "").toString(),
+          priority: target.priority ?? "",
+          avoid_days: target.avoid_days ?? "",
+          preferred_days: target.preferred_days ?? "",
+        });
+      }
     } catch (err) {
-      setSaveError("Unable to load conflicting rows for quick edit.");
+      setSaveError("Unable to load row(s) for quick edit.");
     }
   };
 
@@ -186,6 +220,14 @@ export default function ValidationPage() {
         fixed_end_time: editValues.fixed_end_time || null,
         scheduling_type: editValues.scheduling_type || null,
         student_group_code: editValues.student_group_code || null,
+        delivery_mode: editValues.delivery_mode || null,
+        campus_mode: editValues.campus_mode || null,
+        venue_type_required: editValues.venue_type_required || null,
+        exact_class_size: editValues.exact_class_size ? parseInt(editValues.exact_class_size, 10) : null,
+        duration_minutes: editValues.duration_minutes ? parseInt(editValues.duration_minutes, 10) : null,
+        priority: editValues.priority || null,
+        avoid_days: editValues.avoid_days || null,
+        preferred_days: editValues.preferred_days || null,
       };
 
       await updateSession(conflictSessions.target.id, payload);
@@ -331,19 +373,9 @@ export default function ValidationPage() {
                       <td>{item.requirement_id ?? `Row ${item.row}`}</td>
                       <td>{item.message}</td>
                       <td>
-                        {item.conflict_session_ids?.length ? (
-                          <button className="button secondary slim" type="button" onClick={() => void openQuickEdit(item)}>
-                            Quick Edit
-                          </button>
-                        ) : (
-                          <button
-                            className="button secondary slim"
-                            type="button"
-                            onClick={() => document.getElementById("requirements-editor")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                          >
-                            Edit Below
-                          </button>
-                        )}
+                        <button className="button secondary slim" type="button" onClick={() => void openQuickEdit(item)}>
+                          Quick Edit
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -408,8 +440,9 @@ export default function ValidationPage() {
                 ))}
               </div>
 
-              {conflictSessions?.anchor && conflictSessions?.target ? (
-                <div className="quick-edit-grid">
+              {conflictSessions?.target ? (
+                <div className="quick-edit-grid" style={{ gridTemplateColumns: conflictSessions.anchor ? "repeat(2, minmax(0, 1fr))" : "1fr" }}>
+                  {conflictSessions.anchor && (
                   <div>
                     <h3>Other conflicting row</h3>
                     <div className="detail-row">
@@ -440,6 +473,7 @@ export default function ValidationPage() {
                       <span>{conflictSessions.anchor.scheduling_type ?? "Flexible"}</span>
                     </div>
                   </div>
+                  )}
 
                   <div>
                     <h3>Editable row</h3>
@@ -519,11 +553,103 @@ export default function ValidationPage() {
                         </select>
                       </label>
                     </div>
+                    <div className="detail-row">
+                      <label>
+                        <strong>Delivery Mode</strong>
+                        <select
+                          value={editValues.delivery_mode}
+                          onChange={(event) => setEditValues((prev) => ({ ...prev, delivery_mode: event.target.value }))}
+                        >
+                          <option value="">Select Delivery Mode</option>
+                          <option value="Face-to-face">Face-to-face</option>
+                          <option value="Online">Online</option>
+                          <option value="Hybrid">Hybrid</option>
+                          <option value="Asynchronous">Asynchronous</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div className="detail-row">
+                      <label>
+                        <strong>Campus Mode</strong>
+                        <select
+                          value={editValues.campus_mode}
+                          onChange={(event) => setEditValues((prev) => ({ ...prev, campus_mode: event.target.value }))}
+                        >
+                          <option value="">Select Campus Mode</option>
+                          <option value="Physical">Physical</option>
+                          <option value="Virtual">Virtual</option>
+                          <option value="Remote">Remote</option>
+                          <option value="Online">Online</option>
+                          <option value="On Campus">On Campus</option>
+                          <option value="Face to face">Face to face</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div className="detail-row">
+                      <label>
+                        <strong>Venue Type Required</strong>
+                        <input
+                          value={editValues.venue_type_required}
+                          onChange={(event) => setEditValues((prev) => ({ ...prev, venue_type_required: event.target.value }))}
+                        />
+                      </label>
+                    </div>
+                    <div className="detail-row">
+                      <label>
+                        <strong>Exact Class Size</strong>
+                        <input
+                          type="number"
+                          value={editValues.exact_class_size}
+                          onChange={(event) => setEditValues((prev) => ({ ...prev, exact_class_size: event.target.value }))}
+                        />
+                      </label>
+                    </div>
+                    <div className="detail-row">
+                      <label>
+                        <strong>Duration (mins)</strong>
+                        <input
+                          type="number"
+                          value={editValues.duration_minutes}
+                          onChange={(event) => setEditValues((prev) => ({ ...prev, duration_minutes: event.target.value }))}
+                        />
+                      </label>
+                    </div>
+                    <div className="detail-row">
+                      <label>
+                        <strong>Priority</strong>
+                        <select
+                          value={editValues.priority}
+                          onChange={(event) => setEditValues((prev) => ({ ...prev, priority: event.target.value }))}
+                        >
+                          <option value="">Select Priority</option>
+                          <option value="Hard">Hard</option>
+                          <option value="Soft">Soft</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div className="detail-row">
+                      <label>
+                        <strong>Avoid Days</strong>
+                        <input
+                          value={editValues.avoid_days}
+                          onChange={(event) => setEditValues((prev) => ({ ...prev, avoid_days: event.target.value }))}
+                        />
+                      </label>
+                    </div>
+                    <div className="detail-row">
+                      <label>
+                        <strong>Preferred Days</strong>
+                        <input
+                          value={editValues.preferred_days}
+                          onChange={(event) => setEditValues((prev) => ({ ...prev, preferred_days: event.target.value }))}
+                        />
+                      </label>
+                    </div>
                   </div>
                 </div>
               ) : (
                 <div className="detail-row">
-                  <span>Conflict rows are unavailable for editing.</span>
+                  <span>Row unavailable for editing.</span>
                 </div>
               )}
 

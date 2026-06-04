@@ -26,6 +26,7 @@ from app.services.compatibility import (
 from app.services.requirement_input_service import RequirementInputService
 from app.services.scheduling_rules import (
     candidate_room_allowed,
+    candidate_slot_allowed,
     fixed_sessions_conflict,
     session_label,
     staff_label,
@@ -375,19 +376,31 @@ class ValidationService:
                 }
             )
 
+        all_slots = db.query(TimeSlot).all()
+        if all_slots and not any(candidate_slot_allowed(session, slot) for slot in all_slots):
+            errors.append(
+                {
+                    "row": row,
+                    "field": "Time Constraints",
+                    "message": "No available time slot can satisfy this session's time constraints (duration, day, week pattern, or avoid days).",
+                }
+            )
+
         for field_name, values in [
             ("Preferred Days", parse_day_list(session.preferred_days)),
             ("Avoid Days", parse_day_list(session.avoid_days)),
         ]:
             invalid_days = [day for day in values if day not in {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday"}]
             if invalid_days:
-                warnings.append(
-                    {
-                        "row": row,
-                        "field": field_name,
-                        "message": f"Unrecognised day values: {', '.join(invalid_days)}",
-                    }
-                )
+                msg = {
+                    "row": row,
+                    "field": field_name,
+                    "message": f"Unrecognised day values: {', '.join(invalid_days)}",
+                }
+                if field_name == "Avoid Days" and normalize_token(session.priority) == "hard":
+                    errors.append(msg)
+                else:
+                    warnings.append(msg)
 
         remarks = clean_text(session.remarks) or ""
         if any(token in remarks.lower() for token in ["avoid", "prefer", "fixed", "before", "after"]):

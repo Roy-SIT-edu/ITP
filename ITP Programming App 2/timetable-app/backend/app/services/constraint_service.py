@@ -140,17 +140,90 @@ class ConstraintService:
                         }
                     )
 
+            start_min = time_to_minutes(item.start_time) or 0
+            end_min = time_to_minutes(item.end_time) or 0
+
+            if item.day == "Wednesday" and end_min > 780:
+                violations.append(
+                    {
+                        "constraint_code": "WEDNESDAY_AFTERNOON_BLOCKED",
+                        "severity": "HARD",
+                        "message": f"Session {self._module_label(item)} is scheduled on Wednesday afternoon.",
+                        "affected_session_ids": [item.session_id],
+                    }
+                )
+            if item.day == "Friday" and start_min < 840 and end_min > 720:
+                violations.append(
+                    {
+                        "constraint_code": "FRIDAY_PROTECTED_WINDOW",
+                        "severity": "HARD",
+                        "message": f"Session {self._module_label(item)} overlaps with the Friday 12:00-14:00 protected window.",
+                        "affected_session_ids": [item.session_id],
+                    }
+                )
+            if start_min < 780 and end_min > 720:
+                if not (item.day == "Friday" and start_min < 840 and end_min > 720):
+                    violations.append(
+                        {
+                            "constraint_code": "LUNCH_BREAK_OVERLAP",
+                            "severity": "HARD",
+                            "message": f"Session {self._module_label(item)} overlaps with the 12:00-13:00 lunch break.",
+                            "affected_session_ids": [item.session_id],
+                        }
+                    )
+            if item.day == "Friday" and end_min > 1020:
+                violations.append(
+                    {
+                        "constraint_code": "FRIDAY_LATE_CLASS",
+                        "severity": "HARD",
+                        "message": f"Session {self._module_label(item)} is scheduled on Friday after 17:00.",
+                        "affected_session_ids": [item.session_id],
+                    }
+                )
+
     def _soft_checks(self, scheduled: list[ScheduledSession], violations: list[dict]) -> None:
         self._tutor_gap_checks(scheduled, violations)
         self._student_day_checks(scheduled, violations)
         self._adjacent_switch_checks(scheduled, violations)
         for item in scheduled:
+            start_min = time_to_minutes(item.start_time) or 0
+            end_min = time_to_minutes(item.end_time) or 0
+            
             if is_online_mode(item.session.delivery_mode) and item.day not in {"Monday", "Tuesday"}:
                 violations.append(
                     {
                         "constraint_code": "ONLINE_NOT_MON_TUE",
                         "severity": "SOFT",
                         "message": f"Online session {self._module_label(item)} is scheduled on {item.day}.",
+                        "affected_session_ids": [item.session_id],
+                    }
+                )
+            if not item.room.is_virtual and item.room.capacity > 0:
+                class_size = item.session.exact_class_size or 0
+                if class_size / item.room.capacity < 0.6:
+                    violations.append(
+                        {
+                            "constraint_code": "LOW_ROOM_UTILISATION",
+                            "severity": "SOFT",
+                            "message": f"Room {item.room.room_code} utilisation is below 60% for session {self._module_label(item)}.",
+                            "affected_session_ids": [item.session_id],
+                        }
+                    )
+            if item.session.student_group_id and (start_min <= 540 or end_min >= 1080):
+                violations.append(
+                    {
+                        "constraint_code": "EXTREME_TIME_SLOT",
+                        "severity": "SOFT",
+                        "message": f"Student group session {self._module_label(item)} is scheduled in the very first or last slot of the day.",
+                        "affected_session_ids": [item.session_id],
+                    }
+                )
+            if end_min > 1020:
+                violations.append(
+                    {
+                        "constraint_code": "CLASS_AFTER_1700",
+                        "severity": "SOFT",
+                        "message": f"Session {self._module_label(item)} ends after 17:00.",
                         "affected_session_ids": [item.session_id],
                     }
                 )
@@ -170,6 +243,15 @@ class ConstraintService:
                             "constraint_code": "TUTOR_IDLE_GAP",
                             "severity": "SOFT",
                             "message": f"Tutor has an idle gap longer than 2 hours on {left.day}.",
+                            "affected_session_ids": [left.session_id, right.session_id],
+                        }
+                    )
+                elif gap > 0:
+                    violations.append(
+                        {
+                            "constraint_code": "WASTED_FREE_SLOT",
+                            "severity": "SOFT",
+                            "message": f"Tutor has a wasted free slot between classes on {left.day}.",
                             "affected_session_ids": [left.session_id, right.session_id],
                         }
                     )
@@ -210,16 +292,27 @@ class ConstraintService:
                 else:
                     current_end = max(current_end, end)
                     current_ids.append(item.session_id)
-                if current_start is not None and current_end - current_start > 240:
-                    violations.append(
-                        {
-                            "constraint_code": "LONG_CONSECUTIVE_DAY",
-                            "severity": "SOFT",
-                            "message": f"Student group has more than 4 consecutive teaching hours on {item.day}.",
-                            "affected_session_ids": current_ids,
-                        }
-                    )
-                    break
+                if current_start is not None:
+                    span = current_end - current_start
+                    if span > 240:
+                        violations.append(
+                            {
+                                "constraint_code": "LONG_CONSECUTIVE_DAY",
+                                "severity": "SOFT",
+                                "message": f"Student group has more than 4 consecutive teaching hours on {item.day}.",
+                                "affected_session_ids": current_ids,
+                            }
+                        )
+                        break
+                    elif span > 180:
+                        violations.append(
+                            {
+                                "constraint_code": "THREE_HR_CONSECUTIVE",
+                                "severity": "SOFT",
+                                "message": f"Student group has more than 3 consecutive teaching hours on {item.day}.",
+                                "affected_session_ids": current_ids,
+                            }
+                        )
 
     def _adjacent_switch_checks(self, scheduled: list[ScheduledSession], violations: list[dict]) -> None:
         def add_checks(grouped: dict[tuple[int, str], list[ScheduledSession]], label: str) -> None:

@@ -35,15 +35,19 @@ export default function TimetableGrid({
   onChangeMove,
   onSaveMove,
 }: Props) {
+  const slots = useMemo(() => buildPlannerSlots(rows, timeSlots), [rows, timeSlots]);
+  const grouped = useMemo(() => groupRowsBySlot(rows, slots), [rows, slots]);
+
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(rows[0]?.session_id ?? null);
-  const [selectedSlotKey, setSelectedSlotKey] = useState<string | null>(rows[0] ? slotKey(rows[0]) : null);
+  const [selectedSlotKey, setSelectedSlotKey] = useState<string | null>(rows[0] ? getFirstOverlapKey(rows[0], slots) : null);
+  
   const selectedRow = useMemo(
     () => rows.find((row) => row.session_id === selectedSessionId) ?? rows[0] ?? null,
     [rows, selectedSessionId],
   );
   const selectedSlotRows = useMemo(
-    () => rows.filter((row) => slotKey(row) === selectedSlotKey),
-    [rows, selectedSlotKey],
+    () => grouped.get(selectedSlotKey ?? "") ?? [],
+    [grouped, selectedSlotKey],
   );
 
   useEffect(() => {
@@ -55,10 +59,11 @@ export default function TimetableGrid({
     if (!rows.some((row) => row.session_id === selectedSessionId)) {
       setSelectedSessionId(rows[0].session_id);
     }
-    if (!rows.some((row) => slotKey(row) === selectedSlotKey)) {
-      setSelectedSlotKey(slotKey(rows[0]));
+    const currentOverlaps = rows.some((row) => getFirstOverlapKey(row, slots) === selectedSlotKey);
+    if (!selectedSlotKey || !currentOverlaps) {
+      setSelectedSlotKey(getFirstOverlapKey(rows[0], slots));
     }
-  }, [rows, selectedSessionId, selectedSlotKey]);
+  }, [rows, selectedSessionId, selectedSlotKey, slots]);
 
   if (editable) {
     return (
@@ -66,8 +71,9 @@ export default function TimetableGrid({
         <div className="timetable-board-panel">
           <TimetablePlanner
             rows={rows}
+            slots={slots}
+            grouped={grouped}
             selectedSlotKey={selectedSlotKey}
-            timeSlots={timeSlots}
             onSelectSlot={(key, slotRows) => {
               setSelectedSlotKey(key);
               setSelectedSessionId(slotRows[0]?.session_id ?? null);
@@ -94,7 +100,7 @@ export default function TimetableGrid({
 
   return (
     <>
-      <TimetablePlanner rows={rows} timeSlots={timeSlots} />
+      <TimetablePlanner rows={rows} slots={slots} grouped={grouped} />
 
       <div className="table-wrap">
         <table>
@@ -152,18 +158,17 @@ export default function TimetableGrid({
 
 function TimetablePlanner({
   rows,
-  timeSlots = [],
+  slots,
+  grouped,
   selectedSlotKey,
   onSelectSlot,
 }: {
   rows: ScheduledRow[];
-  timeSlots?: TimeSlot[];
+  slots: { key: string; start_time: string; end_time: string; label: string }[];
+  grouped: Map<string, ScheduledRow[]>;
   selectedSlotKey?: string | null;
   onSelectSlot?: (key: string, rows: ScheduledRow[]) => void;
 }) {
-  const slots = buildPlannerSlots(rows, timeSlots);
-  const grouped = groupRowsBySlot(rows);
-
   return (
     <div className="planner-shell">
       <div className="planner-grid" role="grid" aria-label="Timetable planner summary">
@@ -403,42 +408,69 @@ function duration(row: ScheduledRow) {
   return endHour * 60 + endMinute - (startHour * 60 + startMinute);
 }
 
-function slotKey(row: ScheduledRow) {
-  return `${row.day}|${row.start_time}|${row.end_time}`;
+function timeToMinutes(timeStr: string) {
+  const [h, m] = timeStr.split(":").map(Number);
+  return h * 60 + (m || 0);
 }
 
-function groupRowsBySlot(rows: ScheduledRow[]) {
-  return rows.reduce<Map<string, ScheduledRow[]>>((current, row) => {
-    const key = slotKey(row);
-    current.set(key, [...(current.get(key) ?? []), row]);
-    return current;
-  }, new Map());
+function intervalsOverlap(startA: string, endA: string, startB: string, endB: string) {
+  return timeToMinutes(startA) < timeToMinutes(endB) && timeToMinutes(startB) < timeToMinutes(endA);
 }
 
-function buildPlannerSlots(rows: ScheduledRow[], timeSlots: TimeSlot[]) {
-  const keyedSlots = new Map<string, { key: string; start_time: string; end_time: string; label: string }>();
+export function getFirstOverlapKey(row: ScheduledRow, plannerSlots: {start_time: string, end_time: string}[]) {
+  for (const slot of plannerSlots) {
+    if (intervalsOverlap(row.start_time, row.end_time, slot.start_time, slot.end_time)) {
+      return `${row.day}|${slot.start_time}|${slot.end_time}`;
+    }
+  }
+  return null;
+}
 
-  timeSlots.forEach((slot) => {
-    const key = `${slot.start_time}|${slot.end_time}`;
-    keyedSlots.set(key, {
-      key,
-      start_time: slot.start_time,
-      end_time: slot.end_time,
-      label: `${slot.start_time}-${slot.end_time}`,
-    });
+export function buildPlannerSlots(rows: ScheduledRow[], timeSlots: TimeSlot[]) {
+  let minHour = 9;
+  let maxHour = 17;
+
+  const allTimes = [
+    ...timeSlots.flatMap((s) => [s.start_time, s.end_time]),
+    ...rows.flatMap((r) => [r.start_time, r.end_time]),
+  ];
+
+  allTimes.forEach((time) => {
+    if (!time) return;
+    const hour = parseInt(time.split(":")[0], 10);
+    if (!isNaN(hour)) {
+      if (hour < minHour) minHour = hour;
+      const minutes = parseInt(time.split(":")[1], 10);
+      const effectiveHour = minutes > 0 ? hour + 1 : hour;
+      if (effectiveHour > maxHour) maxHour = effectiveHour;
+    }
   });
 
+  const slots = [];
+  for (let h = minHour; h < maxHour; h++) {
+    const start = `${h.toString().padStart(2, "0")}:00`;
+    const end = `${(h + 1).toString().padStart(2, "0")}:00`;
+    slots.push({
+      key: `${start}|${end}`,
+      start_time: start,
+      end_time: end,
+      label: `${start}-${end}`,
+    });
+  }
+  return slots;
+}
+
+export function groupRowsBySlot(rows: ScheduledRow[], plannerSlots: {start_time: string, end_time: string}[]) {
+  const map = new Map<string, ScheduledRow[]>();
   rows.forEach((row) => {
-    const key = `${row.start_time}|${row.end_time}`;
-    keyedSlots.set(key, {
-      key,
-      start_time: row.start_time,
-      end_time: row.end_time,
-      label: `${row.start_time}-${row.end_time}`,
+    plannerSlots.forEach((slot) => {
+      if (intervalsOverlap(row.start_time, row.end_time, slot.start_time, slot.end_time)) {
+        const key = `${row.day}|${slot.start_time}|${slot.end_time}`;
+        map.set(key, [...(map.get(key) ?? []), row]);
+      }
     });
   });
-
-  return Array.from(keyedSlots.values()).sort((left, right) => left.start_time.localeCompare(right.start_time));
+  return map;
 }
 
 function heatClass(value: number) {
