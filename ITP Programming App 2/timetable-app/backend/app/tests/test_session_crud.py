@@ -82,6 +82,24 @@ def test_create_session(tmp_path):
     db.close()
 
 
+def test_get_session_by_id(tmp_path):
+    db = _route_db(tmp_path)
+    client = _client_for(db)
+
+    create_resp = client.post("/api/sessions", json=_valid_payload(requirement_id="REQ-GET"))
+    session_id = create_resp.json()["id"]
+
+    try:
+        response = client.get(f"/api/sessions/{session_id}")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["id"] == session_id
+    assert response.json()["requirement_id"] == "REQ-GET"
+    db.close()
+
+
 def test_update_session(tmp_path):
     db = _route_db(tmp_path)
     

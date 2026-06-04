@@ -7,12 +7,9 @@ export type ValidationIssue = {
   row: number;
   field: string;
   message: string;
-<<<<<<< Updated upstream
-=======
   requirement_id?: string | null;
   conflict_session_ids?: number[];
   source_file?: string | null;
->>>>>>> Stashed changes
 };
 
 export type ValidationResult = {
@@ -43,22 +40,6 @@ export type UploadFileSummary = {
   rows_read: number;
   error_count?: number;
   columns?: string[];
-};
-
-export type UploadPreview = {
-  rows_read: number;
-  rows_importable: number;
-  rows_failed: number;
-  errors: ValidationIssue[];
-  file_summaries: UploadFileSummary[];
-};
-
-export type DemoSample = {
-  id: string;
-  label: string;
-  filename: string;
-  description: string;
-  available: boolean;
 };
 
 export type DatabaseColumn = {
@@ -119,8 +100,15 @@ export type ScheduleGenerateResult = {
   message: string;
 };
 
-<<<<<<< Updated upstream
-=======
+export type SoftConstraintPriority = {
+  constraint_code: string;
+  label: string;
+  description: string;
+  default_rank: number;
+  rank: number;
+  weight: number;
+};
+
 export type TimeSlot = {
   id: number;
   day: string;
@@ -130,7 +118,6 @@ export type TimeSlot = {
   week_pattern: string;
 };
 
->>>>>>> Stashed changes
 export type ScheduledRow = {
   scheduled_session_id: number;
   session_id: number;

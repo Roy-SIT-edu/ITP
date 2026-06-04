@@ -18,7 +18,7 @@ const FRIENDLY_NAMES: Record<string, string> = {
   TUTOR_IDLE_GAP: "Tutor idle gaps (>2hrs)",
   LONG_CONSECUTIVE_DAY: "Consecutive hours (>4)",
   SHORT_CAMPUS_DAY: "Short campus day (<=2hrs)",
-  ONLINE_F2F_ADJACENT_SWITCH: "Online ↔ F2F adjacent switch",
+  ONLINE_F2F_ADJACENT_SWITCH: "Online/F2F adjacent switch",
   ONLINE_NOT_MON_TUE: "Online not on Mon/Tue",
 };
 
@@ -147,7 +147,7 @@ export default function IssueBreakdown({ scheduleIssues }: { scheduleIssues: Val
       </div>
 
       <div style={{ marginTop: 16 }}>
-        {loading && <div className="empty-state">Loading violations…</div>}
+        {loading && <div className="empty-state">Loading violations...</div>}
         {!loading && expanded && (
           <div>
             <h4>Violations for {FRIENDLY_NAMES[expanded] ?? expanded}</h4>

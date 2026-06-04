@@ -2,6 +2,7 @@
  * Timetable grid for reviewing and manually adjusting generated scheduled sessions.
  */
 
+import { useEffect, useMemo, useState } from "react";
 import type { Room, ScheduledRow, TimeSlot } from "../types";
 
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -34,33 +35,66 @@ export default function TimetableGrid({
   onChangeMove,
   onSaveMove,
 }: Props) {
+  const [selectedSessionId, setSelectedSessionId] = useState<number | null>(rows[0]?.session_id ?? null);
+  const [selectedSlotKey, setSelectedSlotKey] = useState<string | null>(rows[0] ? slotKey(rows[0]) : null);
+  const selectedRow = useMemo(
+    () => rows.find((row) => row.session_id === selectedSessionId) ?? rows[0] ?? null,
+    [rows, selectedSessionId],
+  );
+  const selectedSlotRows = useMemo(
+    () => rows.filter((row) => slotKey(row) === selectedSlotKey),
+    [rows, selectedSlotKey],
+  );
+
+  useEffect(() => {
+    if (rows.length === 0) {
+      setSelectedSessionId(null);
+      setSelectedSlotKey(null);
+      return;
+    }
+    if (!rows.some((row) => row.session_id === selectedSessionId)) {
+      setSelectedSessionId(rows[0].session_id);
+    }
+    if (!rows.some((row) => slotKey(row) === selectedSlotKey)) {
+      setSelectedSlotKey(slotKey(rows[0]));
+    }
+  }, [rows, selectedSessionId, selectedSlotKey]);
+
+  if (editable) {
+    return (
+      <div className="review-timetable-workspace">
+        <div className="timetable-board-panel">
+          <TimetablePlanner
+            rows={rows}
+            selectedSlotKey={selectedSlotKey}
+            timeSlots={timeSlots}
+            onSelectSlot={(key, slotRows) => {
+              setSelectedSlotKey(key);
+              setSelectedSessionId(slotRows[0]?.session_id ?? null);
+            }}
+          />
+        </div>
+        <SlotSessionList
+          rows={selectedSlotRows}
+          selectedSessionId={selectedRow?.session_id ?? null}
+          onSelect={setSelectedSessionId}
+        />
+        <SelectedSessionEditor
+          row={selectedRow}
+          rooms={rooms}
+          timeSlots={timeSlots}
+          moveDrafts={moveDrafts}
+          savingMove={savingMove}
+          onChangeMove={onChangeMove}
+          onSaveMove={onSaveMove}
+        />
+      </div>
+    );
+  }
+
   return (
     <>
-      <div className="timetable-board">
-        {days.map((day) => (
-          <section className="day-column" key={day}>
-            <h3>{day}</h3>
-            <div className="day-events">
-              {rows.filter((row) => row.day === day).length === 0 && <span className="muted">No sessions</span>}
-              {rows
-                .filter((row) => row.day === day)
-                .sort((left, right) => left.start_time.localeCompare(right.start_time))
-                .map((row) => (
-                  <article
-                    className={row.delivery_mode === "Online" || row.room.includes("VIRTUAL") ? "event virtual" : "event"}
-                    key={`${row.requirement_id}-${row.day}-${row.start_time}-${row.room}`}
-                  >
-                    <strong>{row.module_code ?? row.requirement_id}</strong>
-                    <span>
-                      {row.start_time}-{row.end_time} · {row.room}
-                    </span>
-                    <small>{row.student_group_code ?? "No group"} · {row.staff_name ?? "No staff"}</small>
-                  </article>
-                ))}
-            </div>
-          </section>
-        ))}
-      </div>
+      <TimetablePlanner rows={rows} timeSlots={timeSlots} />
 
       <div className="table-wrap">
         <table>
@@ -116,6 +150,185 @@ export default function TimetableGrid({
   );
 }
 
+function TimetablePlanner({
+  rows,
+  timeSlots = [],
+  selectedSlotKey,
+  onSelectSlot,
+}: {
+  rows: ScheduledRow[];
+  timeSlots?: TimeSlot[];
+  selectedSlotKey?: string | null;
+  onSelectSlot?: (key: string, rows: ScheduledRow[]) => void;
+}) {
+  const slots = buildPlannerSlots(rows, timeSlots);
+  const grouped = groupRowsBySlot(rows);
+
+  return (
+    <div className="planner-shell">
+      <div className="planner-grid" role="grid" aria-label="Timetable planner summary">
+        <div className="planner-corner">Time</div>
+        {days.map((day) => (
+          <div className="planner-day-heading" key={day}>
+            {day}
+          </div>
+        ))}
+        {slots.map((slot) => (
+          <div className="planner-row" key={slot.key}>
+            <div className="planner-time">{slot.label}</div>
+            {days.map((day) => {
+              const key = `${day}|${slot.start_time}|${slot.end_time}`;
+              const slotRows = grouped.get(key) ?? [];
+              const selected = key === selectedSlotKey;
+              const count = slotRows.length;
+              return (
+                <button
+                  className={`planner-cell ${count ? heatClass(count) : "empty"} ${selected ? "selected" : ""}`}
+                  disabled={!count && !onSelectSlot}
+                  key={key}
+                  onClick={() => onSelectSlot?.(key, slotRows)}
+                  type="button"
+                >
+                  <span className="planner-cell-count">{count}</span>
+                  <span className="planner-cell-label">{count === 1 ? "session" : "sessions"}</span>
+                  {slotRows.slice(0, 2).map((row) => (
+                    <small key={row.session_id}>{row.module_code ?? row.requirement_id}</small>
+                  ))}
+                  {count > 2 && <em>+{count - 2} more</em>}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      <div className="planner-legend">
+        <span><i className="load-0" />0</span>
+        <span><i className="load-1" />1</span>
+        <span><i className="load-2" />2</span>
+        <span><i className="load-4" />3-4</span>
+        <span><i className="load-5" />5+</span>
+      </div>
+    </div>
+  );
+}
+
+function SlotSessionList({
+  rows,
+  selectedSessionId,
+  onSelect,
+}: {
+  rows: ScheduledRow[];
+  selectedSessionId: number | null;
+  onSelect: (sessionId: number) => void;
+}) {
+  const label = rows[0] ? `${rows[0].day}, ${rows[0].start_time}-${rows[0].end_time}` : "No slot selected";
+
+  return (
+    <section className="slot-detail-panel">
+      <div className="schedule-edit-heading">
+        <div>
+          <strong>Slot Details</strong>
+          <span>{label}</span>
+        </div>
+        <small>{rows.length} sessions</small>
+      </div>
+      {rows.length === 0 ? (
+        <div className="empty-state">Select a busy time cell to inspect its sessions.</div>
+      ) : (
+        <div className="slot-session-list">
+          {rows
+            .slice()
+            .sort((left, right) => (left.module_code ?? "").localeCompare(right.module_code ?? ""))
+            .map((row) => (
+              <button
+                className={`slot-session-card ${selectedSessionId === row.session_id ? "selected" : ""}`}
+                key={row.session_id}
+                onClick={() => onSelect(row.session_id)}
+                type="button"
+              >
+                <strong>{row.module_code ?? row.requirement_id}</strong>
+                <span>{row.programme ?? "No programme"} | {row.class_type ?? "Class"} | {row.student_group_code ?? "No group"}</span>
+                <small>{row.room} | {row.staff_name ?? "No staff"}</small>
+              </button>
+            ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SelectedSessionEditor({
+  row,
+  rooms,
+  timeSlots,
+  moveDrafts,
+  savingMove,
+  onChangeMove,
+  onSaveMove,
+}: {
+  row: ScheduledRow | null;
+  rooms: Room[];
+  timeSlots: TimeSlot[];
+  moveDrafts: Record<number, MoveDraft>;
+  savingMove: number | null;
+  onChangeMove?: (sessionId: number, value: MoveDraft) => void;
+  onSaveMove?: (row: ScheduledRow) => void;
+}) {
+  if (!row) {
+    return (
+      <section className="schedule-edit-panel selected-session-panel">
+        <div className="empty-state">No sessions match the current filters.</div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="schedule-edit-panel selected-session-panel">
+      <div className="schedule-edit-heading">
+        <div>
+          <strong>Selected Session</strong>
+          <span>Click a timetable card to inspect or move that session.</span>
+        </div>
+        <small>{row.requirement_id}</small>
+      </div>
+      <div className="selected-session-body">
+        <div className="selected-session-main">
+          <strong>{row.module_code ?? row.requirement_id}</strong>
+          <span>
+            {row.programme ?? "No programme"} | {row.class_type ?? "Class"} | {row.student_group_code ?? "No group"}
+          </span>
+          <small>
+            {row.staff_name ?? "No staff"} | {row.delivery_mode ?? "Mode not set"} | {row.week_pattern ?? "Weeks not set"}
+          </small>
+        </div>
+        <div className="selected-session-facts">
+          <span>
+            <strong>Current slot</strong>
+            {row.day}, {row.start_time}-{row.end_time}
+          </span>
+          <span>
+            <strong>Room</strong>
+            {row.room}
+          </span>
+          <span>
+            <strong>Session ID</strong>
+            {row.session_id}
+          </span>
+        </div>
+        <MoveControls
+          row={row}
+          rooms={rooms}
+          timeSlots={timeSlots}
+          value={moveDrafts[row.session_id]}
+          saving={savingMove === row.session_id}
+          onChange={(value) => onChangeMove?.(row.session_id, value)}
+          onSave={() => onSaveMove?.(row)}
+        />
+      </div>
+    </section>
+  );
+}
+
 function MoveControls({
   row,
   rooms,
@@ -164,13 +377,19 @@ function MoveControls({
           </option>
         ))}
       </select>
-      <select value={draft.room_code} onChange={(event) => update({ room_code: event.target.value })}>
+      <input
+        list={`room-options-${row.session_id}`}
+        value={draft.room_code}
+        onChange={(event) => update({ room_code: event.target.value })}
+        placeholder="Search room"
+      />
+      <datalist id={`room-options-${row.session_id}`}>
         {rooms.map((room) => (
           <option key={room.id} value={room.room_code}>
             {room.room_code}
           </option>
         ))}
-      </select>
+      </datalist>
       <button className="button secondary slim" disabled={saving} type="button" onClick={onSave}>
         {saving ? "Saving" : "Move"}
       </button>
@@ -182,4 +401,50 @@ function duration(row: ScheduledRow) {
   const [startHour, startMinute] = row.start_time.split(":").map(Number);
   const [endHour, endMinute] = row.end_time.split(":").map(Number);
   return endHour * 60 + endMinute - (startHour * 60 + startMinute);
+}
+
+function slotKey(row: ScheduledRow) {
+  return `${row.day}|${row.start_time}|${row.end_time}`;
+}
+
+function groupRowsBySlot(rows: ScheduledRow[]) {
+  return rows.reduce<Map<string, ScheduledRow[]>>((current, row) => {
+    const key = slotKey(row);
+    current.set(key, [...(current.get(key) ?? []), row]);
+    return current;
+  }, new Map());
+}
+
+function buildPlannerSlots(rows: ScheduledRow[], timeSlots: TimeSlot[]) {
+  const keyedSlots = new Map<string, { key: string; start_time: string; end_time: string; label: string }>();
+
+  timeSlots.forEach((slot) => {
+    const key = `${slot.start_time}|${slot.end_time}`;
+    keyedSlots.set(key, {
+      key,
+      start_time: slot.start_time,
+      end_time: slot.end_time,
+      label: `${slot.start_time}-${slot.end_time}`,
+    });
+  });
+
+  rows.forEach((row) => {
+    const key = `${row.start_time}|${row.end_time}`;
+    keyedSlots.set(key, {
+      key,
+      start_time: row.start_time,
+      end_time: row.end_time,
+      label: `${row.start_time}-${row.end_time}`,
+    });
+  });
+
+  return Array.from(keyedSlots.values()).sort((left, right) => left.start_time.localeCompare(right.start_time));
+}
+
+function heatClass(value: number) {
+  if (value === 0) return "load-0";
+  if (value === 1) return "load-1";
+  if (value === 2) return "load-2";
+  if (value <= 4) return "load-4";
+  return "load-5";
 }

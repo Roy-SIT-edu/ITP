@@ -14,6 +14,7 @@ from app.services.compatibility import is_online_mode, parse_day_list
 from app.services.constraint_service import ConstraintService
 from app.services.export_service import ExportService
 from app.services.schedule_service import ScheduleService
+from app.services.soft_constraint_priority_service import SoftConstraintPriorityService
 from app.services.serializers import schedule_run_to_dict, violation_to_dict
 
 router = APIRouter(prefix="/api/schedules", tags=["schedules"])
@@ -107,11 +108,12 @@ def move_scheduled_session(schedule_run_id: int, session_id: int, data: ManualMo
     item.end_time = slot.end_time
     item.week_pattern = slot.week_pattern
 
-    check = ConstraintService().check_and_store(db, schedule_run_id)
+    soft_weights = SoftConstraintPriorityService().weights(db)
+    check = ConstraintService().check_and_store(db, schedule_run_id, soft_weights)
     run = db.query(ScheduleRun).filter_by(id=schedule_run_id).first()
     if run:
         run.hard_violation_count = check["hard_violation_count"]
-        run.soft_score = check["soft_warning_count"]
+        run.soft_score = check["weighted_soft_score"]
         run.status = "COMPLETED" if run.hard_violation_count == 0 else "COMPLETED_WITH_CONFLICTS"
     db.commit()
     return {

@@ -11,6 +11,7 @@ import ExportPage from "./pages/ExportPage";
 import TimetableReviewPage from "./pages/TimetableReviewPage";
 import UploadPage from "./pages/UploadPage";
 import ValidationPage from "./pages/ValidationPage";
+import SoftConstraintsPage from "./pages/SoftConstraintsPage";
 
 const routeMap = {
   dashboard: DashboardPage,
@@ -22,6 +23,7 @@ const routeMap = {
   "database-student-groups": () => <DatabasePage dataType="student-groups" />,
   "database-time-slots": () => <DatabasePage dataType="time-slots" />,
   validation: ValidationPage,
+  "soft-constraints": SoftConstraintsPage,
   review: TimetableReviewPage,
   export: ExportPage,
 };
@@ -37,8 +39,8 @@ function currentRoute(): RouteKey {
     return "upload";
   }
   if (hash === "generate") {
-    window.history.replaceState(null, "", "#validation");
-    return "validation";
+    window.history.replaceState(null, "", "#soft-constraints");
+    return "soft-constraints";
   }
   return hash in routeMap ? (hash as RouteKey) : "dashboard";
 }

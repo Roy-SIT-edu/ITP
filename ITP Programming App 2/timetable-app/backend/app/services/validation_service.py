@@ -12,6 +12,7 @@ from sqlalchemy import func
 from app.models.schedule_run import ScheduleRun
 from app.models.constraint_violation import ConstraintViolation
 
+from app.models.room import Room
 from app.models.session import Session
 from app.models.time_slot import TimeSlot
 from app.services.compatibility import (
@@ -23,6 +24,13 @@ from app.services.compatibility import (
     weeks_conflict,
 )
 from app.services.requirement_input_service import RequirementInputService
+from app.services.scheduling_rules import (
+    candidate_room_allowed,
+    fixed_sessions_conflict,
+    session_label,
+    staff_label,
+    student_group_label,
+)
 
 
 class ValidationService:
@@ -56,6 +64,7 @@ class ValidationService:
             row = session.source_row_no or session.id
             self._required_checks(session, row, errors)
             self._value_checks(db, session, row, errors, warnings)
+        self._fixed_hard_clash_checks(db, sessions, errors)
 
         result = {
             "is_valid": len(errors) == 0,
@@ -63,47 +72,47 @@ class ValidationService:
             "warning_count": len(warnings),
             "errors": errors,
             "warnings": warnings,
+            "schedule_issues": self._schedule_issue_summary(db),
         }
 
-        # Add latest schedule violation counts (hard/soft)
-        latest_run = db.query(ScheduleRun).order_by(ScheduleRun.id.desc()).first()
-        if latest_run:
-            counts = (
-                db.query(ConstraintViolation.severity, func.count(ConstraintViolation.id))
-                .filter(ConstraintViolation.schedule_run_id == latest_run.id)
-                .group_by(ConstraintViolation.severity)
-                .all()
-            )
-            hard = 0
-            soft = 0
-            for severity, cnt in counts:
-                if (severity or "").upper() == "HARD":
-                    hard = cnt
-                else:
-                    soft = cnt
-
-            # breakdown by constraint code
-            breakdown = (
-                db.query(ConstraintViolation.constraint_code, ConstraintViolation.severity, func.count(ConstraintViolation.id))
-                .filter(ConstraintViolation.schedule_run_id == latest_run.id)
-                .group_by(ConstraintViolation.constraint_code, ConstraintViolation.severity)
-                .all()
-            )
-            breakdown_list: list[dict] = []
-            for code, severity, cnt in breakdown:
-                breakdown_list.append({"constraint_code": code, "severity": severity, "count": int(cnt)})
-
-            result["schedule_issues"] = {
-                "schedule_run_id": latest_run.id,
-                "hard_count": int(hard),
-                "soft_count": int(soft),
-                "total": int(hard + soft),
-                "breakdown": breakdown_list,
-            }
-        else:
-            result["schedule_issues"] = {"schedule_run_id": None, "hard_count": 0, "soft_count": 0, "total": 0, "breakdown": []}
-
         return result
+
+    def _schedule_issue_summary(self, db: DbSession) -> dict:
+        latest_run = db.query(ScheduleRun).order_by(ScheduleRun.id.desc()).first()
+        if not latest_run:
+            return {"schedule_run_id": None, "hard_count": 0, "soft_count": 0, "total": 0, "breakdown": []}
+
+        counts = (
+            db.query(ConstraintViolation.severity, func.count(ConstraintViolation.id))
+            .filter(ConstraintViolation.schedule_run_id == latest_run.id)
+            .group_by(ConstraintViolation.severity)
+            .all()
+        )
+        hard = 0
+        soft = 0
+        for severity, count in counts:
+            if (severity or "").upper() == "HARD":
+                hard = count
+            else:
+                soft = count
+
+        breakdown = (
+            db.query(ConstraintViolation.constraint_code, ConstraintViolation.severity, func.count(ConstraintViolation.id))
+            .filter(ConstraintViolation.schedule_run_id == latest_run.id)
+            .group_by(ConstraintViolation.constraint_code, ConstraintViolation.severity)
+            .all()
+        )
+
+        return {
+            "schedule_run_id": latest_run.id,
+            "hard_count": int(hard),
+            "soft_count": int(soft),
+            "total": int(hard + soft),
+            "breakdown": [
+                {"constraint_code": code, "severity": severity, "count": int(count)}
+                for code, severity, count in breakdown
+            ],
+        }
 
     def _required_checks(self, session: Session, row: int, errors: list[dict]) -> None:
         for field_name, attr in self.REQUIRED_FIELDS:
@@ -135,6 +144,106 @@ class ValidationService:
                 )
             else:
                 seen[key] = row
+
+    def _fixed_hard_clash_checks(self, db: DbSession, sessions: list[Session], errors: list[dict]) -> None:
+        fixed_sessions = [
+            session
+            for session in sessions
+            if normalize_token(session.scheduling_type) == "fixed"
+            and session.fixed_day
+            and session.fixed_start_time
+            and session.fixed_end_time
+        ]
+        seen_pairs: set[tuple[str, int, int]] = set()
+        for index, left in enumerate(fixed_sessions):
+            for right in fixed_sessions[index + 1 :]:
+                if not fixed_sessions_conflict(left, right):
+                    continue
+                if left.staff_id and left.staff_id == right.staff_id:
+                    self._append_fixed_clash(
+                        errors,
+                        "STAFF_DOUBLE_BOOKING",
+                        "Fixed Time",
+                        left,
+                        right,
+                        f"Staff {staff_label(left)} is fixed for both {session_label(left)} and {session_label(right)} at overlapping times.",
+                        seen_pairs,
+                    )
+                if left.student_group_id and left.student_group_id == right.student_group_id:
+                    self._append_fixed_clash(
+                        errors,
+                        "STUDENT_GROUP_DOUBLE_BOOKING",
+                        "Fixed Time",
+                        left,
+                        right,
+                        f"Student group {student_group_label(left)} is fixed for both {session_label(left)} and {session_label(right)} at overlapping times.",
+                        seen_pairs,
+                    )
+        self._fixed_room_capacity_checks(db, fixed_sessions, errors)
+
+    def _fixed_room_capacity_checks(self, db: DbSession, sessions: list[Session], errors: list[dict]) -> None:
+        rooms = db.query(Room).all()
+        groups: dict[tuple[str, str, str], list[Session]] = {}
+        for session in sessions:
+            groups.setdefault(
+                (session.fixed_day or "", session.fixed_start_time or "", session.fixed_end_time or ""),
+                [],
+            ).append(session)
+
+        seen_groups: set[tuple[int, ...]] = set()
+        for group in groups.values():
+            weekly = [session for session in group if normalize_token(session.week_pattern or "Weekly") not in {"odd", "even"}]
+            odd = [session for session in group if normalize_token(session.week_pattern or "Weekly") == "odd"]
+            even = [session for session in group if normalize_token(session.week_pattern or "Weekly") == "even"]
+            for overlapping in [weekly, weekly + odd, weekly + even]:
+                if len(overlapping) < 2:
+                    continue
+                key = tuple(sorted(session.id for session in overlapping))
+                if key in seen_groups:
+                    continue
+                seen_groups.add(key)
+                compatible_room_ids = {
+                    room.id
+                    for session in overlapping
+                    for room in rooms
+                    if candidate_room_allowed(session, room)
+                }
+                if len(overlapping) > len(compatible_room_ids):
+                    first = overlapping[0]
+                    labels = ", ".join(session_label(session) for session in overlapping)
+                    errors.append(
+                        {
+                            "row": first.source_row_no or first.id,
+                            "field": "Fixed Time",
+                            "message": f"{len(overlapping)} fixed sessions overlap at {first.fixed_day} {first.fixed_start_time}-{first.fixed_end_time}, but only {len(compatible_room_ids)} compatible room(s) are available: {labels}.",
+                            "requirement_id": first.requirement_id,
+                            "conflict_session_ids": [session.id for session in overlapping],
+                        }
+                    )
+
+    def _append_fixed_clash(
+        self,
+        errors: list[dict],
+        code: str,
+        field: str,
+        left: Session,
+        right: Session,
+        message: str,
+        seen_pairs: set[tuple[str, int, int]],
+    ) -> None:
+        pair = (code, min(left.id, right.id), max(left.id, right.id))
+        if pair in seen_pairs:
+            return
+        seen_pairs.add(pair)
+        errors.append(
+            {
+                "row": left.source_row_no or left.id,
+                "field": field,
+                "message": message,
+                "requirement_id": left.requirement_id,
+                "conflict_session_ids": [left.id, right.id],
+            }
+        )
 
     def _value_checks(
         self,

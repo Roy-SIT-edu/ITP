@@ -4,18 +4,25 @@
  */
 
 import { Upload, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect } from "react";
+import { useSessionState } from "../sessionState";
 
 type Props = {
   busy: boolean;
   onUpload: (files: File[]) => void;
-  onPreview?: (files: File[]) => void;
-  previewBusy?: boolean;
+  resetSignal?: number;
 };
 
-export default function UploadBox({ busy, onUpload, onPreview, previewBusy = false }: Props) {
-  const [files, setFiles] = useState<File[]>([]);
+export default function UploadBox({ busy, onUpload, resetSignal = 0 }: Props) {
+  const [files, setFiles] = useSessionState<File[]>("upload.selectedFiles", []);
   const fileKey = (file: File) => `${file.name}-${file.size}-${file.lastModified}`;
+
+  useEffect(() => {
+    if (resetSignal > 0) {
+      setFiles([]);
+    }
+  }, [resetSignal, setFiles]);
+
   const handleSelectFiles = (selectedFiles: FileList | null) => {
     const nextFiles = Array.from(selectedFiles ?? []);
     setFiles((currentFiles) => {
@@ -51,36 +58,32 @@ export default function UploadBox({ busy, onUpload, onPreview, previewBusy = fal
           }}
         />
       </label>
-      {onPreview && (
-        <button className="button secondary" disabled={files.length === 0 || busy || previewBusy} onClick={() => onPreview(files)}>
-          <Upload size={17} />
-          {previewBusy ? "Checking" : "Preview"}
-        </button>
-      )}
-      <button className="button" disabled={files.length === 0 || busy || previewBusy} onClick={() => onUpload(files)}>
-        <Upload size={17} />
-        {busy ? "Uploading" : files.length > 1 ? "Import Files" : "Import"}
-      </button>
       {files.length > 0 && (
-        <ul className="selected-files" aria-label="Selected Excel files">
-          {files.map((file) => {
-            const key = fileKey(file);
-            return (
-              <li key={key}>
-                <span>{file.name}</span>
-                <button
-                  className="button secondary slim"
-                  disabled={busy}
-                  title={`Remove ${file.name}`}
-                  type="button"
-                  onClick={() => removeFile(key)}
-                >
-                  <X size={14} />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          <button className="button" disabled={busy} onClick={() => onUpload(files)}>
+            <Upload size={17} />
+            {busy ? "Uploading" : files.length > 1 ? "Import Files" : "Import"}
+          </button>
+          <ul className="selected-files" aria-label="Selected Excel files">
+            {files.map((file) => {
+              const key = fileKey(file);
+              return (
+                <li key={key}>
+                  <span>{file.name}</span>
+                  <button
+                    className="button secondary slim"
+                    disabled={busy}
+                    title={`Remove ${file.name}`}
+                    type="button"
+                    onClick={() => removeFile(key)}
+                  >
+                    <X size={14} />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
     </div>
   );
