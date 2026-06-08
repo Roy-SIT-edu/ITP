@@ -354,6 +354,7 @@ function MoveControls({
   const draft = value ?? { day: row.day, start_time: row.start_time, end_time: row.end_time, room_code: row.room };
   const rowDuration = duration(row);
   const matchingSlots = timeSlots.filter((slot) => slot.day === draft.day && slot.duration_minutes === rowDuration);
+  const uniqueMatchingSlots = uniqueSlotsByTime(matchingSlots);
 
   const update = (patch: Partial<typeof draft>) => {
     const next = { ...draft, ...patch };
@@ -376,7 +377,7 @@ function MoveControls({
         ))}
       </select>
       <select value={draft.start_time} onChange={(event) => update({ start_time: event.target.value })}>
-        {matchingSlots.map((slot) => (
+        {uniqueMatchingSlots.map((slot) => (
           <option key={`${slot.day}-${slot.start_time}-${slot.end_time}`} value={slot.start_time}>
             {slot.start_time}-{slot.end_time}
           </option>
@@ -406,6 +407,18 @@ function duration(row: ScheduledRow) {
   const [startHour, startMinute] = row.start_time.split(":").map(Number);
   const [endHour, endMinute] = row.end_time.split(":").map(Number);
   return endHour * 60 + endMinute - (startHour * 60 + startMinute);
+}
+
+function uniqueSlotsByTime(timeSlots: TimeSlot[]) {
+  const seen = new Set<string>();
+  return timeSlots.filter((slot) => {
+    const key = `${slot.start_time}-${slot.end_time}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 function timeToMinutes(timeStr: string) {
