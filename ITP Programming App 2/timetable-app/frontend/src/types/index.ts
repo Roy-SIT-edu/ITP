@@ -125,6 +125,7 @@ export type ScheduledRow = {
   programme: string | null;
   year: number | null;
   module_code: string | null;
+  module_title: string | null;
   class_type: string | null;
   student_group_code: string | null;
   staff_name: string | null;

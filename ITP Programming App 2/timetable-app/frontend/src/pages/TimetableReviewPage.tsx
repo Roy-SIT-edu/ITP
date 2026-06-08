@@ -19,6 +19,7 @@ import {
 import ConflictTable from "../components/ConflictTable";
 import StatusBadge from "../components/StatusBadge";
 import TimetableGrid from "../components/TimetableGrid";
+import WeeklyCalendarView from "../components/WeeklyCalendarView";
 import { useSessionState } from "../sessionState";
 import type {
   ConstraintViolation,
@@ -37,6 +38,7 @@ type Filters = {
   staff: string;
   room: string;
   day: string;
+  weekType: WeekTypeFilter;
 };
 
 type MoveDraft = {
@@ -46,12 +48,15 @@ type MoveDraft = {
   room_code: string;
 };
 
+type WeekTypeFilter = "all" | "odd" | "even";
+
 const emptyFilters: Filters = {
   programme: "",
   group: "",
   staff: "",
   room: "",
   day: "",
+  weekType: "all",
 };
 
 export default function TimetableReviewPage() {
@@ -63,7 +68,9 @@ export default function TimetableReviewPage() {
   const [rooms, setRooms] = useSessionState<Room[]>("review.rooms", []);
   const [timeSlots, setTimeSlots] = useSessionState<TimeSlot[]>("review.timeSlots", []);
   const [filters, setFilters] = useSessionState<Filters>("review.filters", emptyFilters);
+  const [termStartDate, setTermStartDate] = useSessionState<string>("review.termStartDate", "");
   const [moveDrafts, setMoveDrafts] = useSessionState<Record<number, MoveDraft>>("review.moveDrafts", {});
+  const [selectedSessionId, setSelectedSessionId] = useSessionState<number | null>("review.selectedSessionId", null);
   const [savingMove, setSavingMove] = useState<number | null>(null);
   const [error, setError] = useSessionState<string | null>("review.error", null);
 
@@ -106,10 +113,12 @@ export default function TimetableReviewPage() {
           matches(row.student_group_code, filters.group) &&
           matches(row.staff_name, filters.staff) &&
           matches(row.room, filters.room) &&
-          matches(row.day, filters.day),
+          matches(row.day, filters.day) &&
+          matchesWeekType(row.week_pattern, filters.weekType),
       ),
     [filters, rows],
   );
+  const termWeek = useMemo(() => currentTermWeek(termStartDate), [termStartDate]);
 
   const openRun = async (id: number) => {
     setError(null);
@@ -250,10 +259,32 @@ export default function TimetableReviewPage() {
               <FilterSelect label="Staff" value={filters.staff} values={unique(rows, "staff_name")} onChange={(value) => setFilters({ ...filters, staff: value })} />
               <FilterSelect label="Room" value={filters.room} values={unique(rows, "room")} onChange={(value) => setFilters({ ...filters, room: value })} />
               <FilterSelect label="Day" value={filters.day} values={unique(rows, "day")} onChange={(value) => setFilters({ ...filters, day: value })} />
+              <label>
+                <span>Week Type</span>
+                <select value={filters.weekType} onChange={(event) => setFilters({ ...filters, weekType: event.target.value as WeekTypeFilter })}>
+                  <option value="all">All</option>
+                  <option value="odd">Odd Weeks</option>
+                  <option value="even">Even Weeks</option>
+                </select>
+              </label>
+              <label>
+                <span>Term Start Date</span>
+                <input type="date" value={termStartDate} onChange={(event) => setTermStartDate(event.target.value)} />
+              </label>
+              {termWeek && (
+                <span className={`week-cycle-chip ${termWeek.cycle}`}>
+                  Week {termWeek.weekNumber} {termWeek.cycle === "odd" ? "Odd" : "Even"}
+                </span>
+              )}
               <button className="button secondary slim" onClick={() => setFilters(emptyFilters)}>
                 Clear
               </button>
             </div>
+            <WeeklyCalendarView
+              rows={filteredRows}
+              selectedSessionId={selectedSessionId}
+              onSelectSession={setSelectedSessionId}
+            />
             <TimetableGrid
               rows={filteredRows}
               editable
@@ -261,8 +292,11 @@ export default function TimetableReviewPage() {
               timeSlots={timeSlots}
               moveDrafts={moveDrafts}
               savingMove={savingMove}
+              showPlanner={false}
+              selectedSessionId={selectedSessionId}
               onChangeMove={setMoveDraft}
               onSaveMove={saveMove}
+              onSelectSession={setSelectedSessionId}
             />
           </section>
           <details className="status-card compact-disclosure">
@@ -340,4 +374,26 @@ function unique(rows: ScheduledRow[], key: keyof ScheduledRow) {
 
 function matches(value: string | null, filter: string) {
   return !filter || value === filter;
+}
+
+function matchesWeekType(weekPattern: string | null, filter: WeekTypeFilter) {
+  if (filter === "all") return true;
+  const normalized = (weekPattern ?? "Weekly").toLowerCase();
+  if (normalized === "weekly" || normalized === "every") return true;
+  return normalized === filter;
+}
+
+function currentTermWeek(termStartDate: string) {
+  if (!termStartDate) return null;
+  const start = new Date(`${termStartDate}T00:00:00`);
+  if (Number.isNaN(start.getTime())) return null;
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const diffDays = Math.floor((todayStart.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return null;
+  const weekNumber = Math.floor(diffDays / 7) + 1;
+  return {
+    weekNumber,
+    cycle: weekNumber % 2 === 1 ? "odd" : "even",
+  };
 }

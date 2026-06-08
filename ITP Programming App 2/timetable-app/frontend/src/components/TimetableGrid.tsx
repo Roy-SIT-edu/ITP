@@ -21,8 +21,11 @@ type Props = {
   timeSlots?: TimeSlot[];
   moveDrafts?: Record<number, MoveDraft>;
   savingMove?: number | null;
+  showPlanner?: boolean;
+  selectedSessionId?: number | null;
   onChangeMove?: (sessionId: number, value: MoveDraft) => void;
   onSaveMove?: (row: ScheduledRow) => void;
+  onSelectSession?: (sessionId: number) => void;
 };
 
 export default function TimetableGrid({
@@ -32,58 +35,80 @@ export default function TimetableGrid({
   timeSlots = [],
   moveDrafts = {},
   savingMove = null,
+  showPlanner = true,
+  selectedSessionId,
   onChangeMove,
   onSaveMove,
+  onSelectSession,
 }: Props) {
   const slots = useMemo(() => buildPlannerSlots(rows, timeSlots), [rows, timeSlots]);
   const grouped = useMemo(() => groupRowsBySlot(rows, slots), [rows, slots]);
 
-  const [selectedSessionId, setSelectedSessionId] = useState<number | null>(rows[0]?.session_id ?? null);
+  const [internalSelectedSessionId, setInternalSelectedSessionId] = useState<number | null>(rows[0]?.session_id ?? null);
   const [selectedSlotKey, setSelectedSlotKey] = useState<string | null>(rows[0] ? getFirstOverlapKey(rows[0], slots) : null);
+  const activeSelectedSessionId = selectedSessionId ?? internalSelectedSessionId;
   
   const selectedRow = useMemo(
-    () => rows.find((row) => row.session_id === selectedSessionId) ?? rows[0] ?? null,
-    [rows, selectedSessionId],
+    () => rows.find((row) => row.session_id === activeSelectedSessionId) ?? rows[0] ?? null,
+    [rows, activeSelectedSessionId],
   );
   const selectedSlotRows = useMemo(
-    () => grouped.get(selectedSlotKey ?? "") ?? [],
-    [grouped, selectedSlotKey],
+    () => {
+      if (!showPlanner && selectedRow) {
+        return rows.filter(
+          (row) =>
+            row.day === selectedRow.day &&
+            row.start_time === selectedRow.start_time &&
+            row.end_time === selectedRow.end_time,
+        );
+      }
+      return grouped.get(selectedSlotKey ?? "") ?? [];
+    },
+    [grouped, rows, selectedRow, selectedSlotKey, showPlanner],
   );
+  const selectSession = (sessionId: number | null) => {
+    setInternalSelectedSessionId(sessionId);
+    if (sessionId !== null) {
+      onSelectSession?.(sessionId);
+    }
+  };
 
   useEffect(() => {
     if (rows.length === 0) {
-      setSelectedSessionId(null);
+      setInternalSelectedSessionId(null);
       setSelectedSlotKey(null);
       return;
     }
-    if (!rows.some((row) => row.session_id === selectedSessionId)) {
-      setSelectedSessionId(rows[0].session_id);
+    if (!rows.some((row) => row.session_id === activeSelectedSessionId)) {
+      selectSession(rows[0].session_id);
     }
     const currentOverlaps = rows.some((row) => getFirstOverlapKey(row, slots) === selectedSlotKey);
     if (!selectedSlotKey || !currentOverlaps) {
       setSelectedSlotKey(getFirstOverlapKey(rows[0], slots));
     }
-  }, [rows, selectedSessionId, selectedSlotKey, slots]);
+  }, [activeSelectedSessionId, rows, selectedSlotKey, slots]);
 
   if (editable) {
     return (
       <div className="review-timetable-workspace">
-        <div className="timetable-board-panel">
-          <TimetablePlanner
-            rows={rows}
-            slots={slots}
-            grouped={grouped}
-            selectedSlotKey={selectedSlotKey}
-            onSelectSlot={(key, slotRows) => {
-              setSelectedSlotKey(key);
-              setSelectedSessionId(slotRows[0]?.session_id ?? null);
-            }}
-          />
-        </div>
+        {showPlanner && (
+          <div className="timetable-board-panel">
+            <TimetablePlanner
+              rows={rows}
+              slots={slots}
+              grouped={grouped}
+              selectedSlotKey={selectedSlotKey}
+              onSelectSlot={(key, slotRows) => {
+                setSelectedSlotKey(key);
+                selectSession(slotRows[0]?.session_id ?? null);
+              }}
+            />
+          </div>
+        )}
         <SlotSessionList
           rows={selectedSlotRows}
           selectedSessionId={selectedRow?.session_id ?? null}
-          onSelect={setSelectedSessionId}
+          onSelect={selectSession}
         />
         <SelectedSessionEditor
           row={selectedRow}
@@ -197,7 +222,10 @@ function TimetablePlanner({
                   <span className="planner-cell-count">{count}</span>
                   <span className="planner-cell-label">{count === 1 ? "session" : "sessions"}</span>
                   {slotRows.slice(0, 2).map((row) => (
-                    <small key={row.session_id}>{row.module_code ?? row.requirement_id}</small>
+                    <small key={row.session_id}>
+                      <WeekBadge weekPattern={row.week_pattern} />
+                      {row.module_code ?? row.requirement_id}
+                    </small>
                   ))}
                   {count > 2 && <em>+{count - 2} more</em>}
                 </button>
@@ -251,7 +279,10 @@ function SlotSessionList({
                 onClick={() => onSelect(row.session_id)}
                 type="button"
               >
-                <strong>{row.module_code ?? row.requirement_id}</strong>
+                <strong>
+                  {row.module_code ?? row.requirement_id}
+                  <WeekBadge weekPattern={row.week_pattern} />
+                </strong>
                 <span>{row.programme ?? "No programme"} | {row.class_type ?? "Class"} | {row.student_group_code ?? "No group"}</span>
                 <small>{row.room} | {row.staff_name ?? "No staff"}</small>
               </button>
@@ -298,7 +329,10 @@ function SelectedSessionEditor({
       </div>
       <div className="selected-session-body">
         <div className="selected-session-main">
-          <strong>{row.module_code ?? row.requirement_id}</strong>
+          <strong>
+            {row.module_code ?? row.requirement_id}
+            <WeekBadge weekPattern={row.week_pattern} />
+          </strong>
           <span>
             {row.programme ?? "No programme"} | {row.class_type ?? "Class"} | {row.student_group_code ?? "No group"}
           </span>
@@ -419,6 +453,18 @@ function uniqueSlotsByTime(timeSlots: TimeSlot[]) {
     seen.add(key);
     return true;
   });
+}
+
+function WeekBadge({ weekPattern }: { weekPattern: string | null }) {
+  const normalized = (weekPattern ?? "Weekly").toLowerCase();
+  const code = normalized === "odd" ? "O" : normalized === "even" ? "E" : "O/E";
+  const label = normalized === "odd" ? "Odd weeks" : normalized === "even" ? "Even weeks" : "Every week";
+  const tone = normalized === "odd" ? "odd" : normalized === "even" ? "even" : "weekly";
+  return (
+    <span className={`week-badge ${tone}`} title={label}>
+      {code}
+    </span>
+  );
 }
 
 function timeToMinutes(timeStr: string) {

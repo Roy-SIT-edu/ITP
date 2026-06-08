@@ -29,6 +29,7 @@ class ExportService:
                     "programme": session.programme.code if session.programme else None,
                     "year": session.student_group.year if session.student_group else None,
                     "module_code": session.module.module_code if session.module else None,
+                    "module_title": session.module.module_title if session.module else None,
                     "class_type": session.class_type,
                     "student_group_code": session.student_group.group_code if session.student_group else None,
                     "staff_name": session.staff.staff_name if session.staff else None,
