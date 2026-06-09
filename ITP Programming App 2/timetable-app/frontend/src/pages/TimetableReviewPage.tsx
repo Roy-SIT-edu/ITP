@@ -3,7 +3,7 @@
  * Displays the latest generated timetable and any stored constraint violations.
  */
 
-import { ChevronDown, Filter, RefreshCw } from "lucide-react";
+import { AlertTriangle, ChevronDown, Filter, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   compareSchedules,
@@ -16,7 +16,7 @@ import {
   getViolations,
   moveScheduledSession,
 } from "../api/client";
-import ConflictTable from "../components/ConflictTable";
+import AuditSideDrawer from "../components/AuditSideDrawer";
 import StatusBadge from "../components/StatusBadge";
 import TimetableGrid from "../components/TimetableGrid";
 import WeeklyCalendarView from "../components/WeeklyCalendarView";
@@ -72,6 +72,7 @@ export default function TimetableReviewPage() {
   const [moveDrafts, setMoveDrafts] = useSessionState<Record<number, MoveDraft>>("review.moveDrafts", {});
   const [selectedSessionId, setSelectedSessionId] = useSessionState<number | null>("review.selectedSessionId", null);
   const [savingMove, setSavingMove] = useState<number | null>(null);
+  const [auditOpen, setAuditOpen] = useState(false);
   const [error, setError] = useSessionState<string | null>("review.error", null);
 
   const load = async () => {
@@ -168,6 +169,10 @@ export default function TimetableReviewPage() {
           <p>Inspect and adjust the generated timetable</p>
         </div>
         <div className="toolbar-row">
+          <button className="button secondary" onClick={() => setAuditOpen(true)}>
+            <AlertTriangle size={17} />
+            Conflicts ({violations.length})
+          </button>
           <button className="button secondary" onClick={load}>
             <RefreshCw size={17} />
             Refresh
@@ -299,45 +304,18 @@ export default function TimetableReviewPage() {
               onSelectSession={setSelectedSessionId}
             />
           </section>
-          <details className="status-card compact-disclosure">
-            <summary className="compact-summary">
-              <div>
-                <div className="status-card-title">Conflicts</div>
-                <p>Generated timetable hard and soft issues</p>
-              </div>
-              <span className="preference-toggle">
-                {violations.length} issues
-                <ChevronDown size={16} />
-              </span>
-            </summary>
-            <div className="disclosure-content">
-              <ConflictTable violations={violations} />
-            </div>
-          </details>
-          <section className="status-card review-explanation-card">
-            <div className="section-heading">
-              <div>
-                <div className="status-card-title">Why This Schedule?</div>
-                <p>Placement explanations for scheduled sessions</p>
-              </div>
-            </div>
-            <div className="explanation-grid compact">
-              {explanations.slice(0, 4).map((item) => (
-                <article className="explanation-card" key={item.session_id}>
-                  <strong>{item.module_code ?? item.requirement_id}</strong>
-                  <span>{item.placement}</span>
-                  <ul>
-                    {item.reasons.slice(0, 3).map((reason) => (
-                      <li key={reason}>{reason}</li>
-                    ))}
-                  </ul>
-                </article>
-              ))}
-              {explanations.length === 0 && <div className="empty-state">No schedule explanations are available yet.</div>}
-            </div>
-          </section>
         </>
       )}
+      <AuditSideDrawer
+        open={auditOpen}
+        onClose={() => setAuditOpen(false)}
+        violations={violations}
+        explanations={explanations}
+        rows={rows}
+        rooms={rooms}
+        comparisons={comparisons}
+        onSelectSession={setSelectedSessionId}
+      />
     </div>
   );
 }
