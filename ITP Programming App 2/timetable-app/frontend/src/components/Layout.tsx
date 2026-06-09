@@ -31,6 +31,7 @@ const databaseItems = [
   { id: "database-modules", label: "Modules" },
   { id: "database-student-groups", label: "Student Groups" },
   { id: "database-time-slots", label: "Time Slots" },
+  { id: "database-rules", label: "Rules" },
 ];
 
 const workflowItems = [

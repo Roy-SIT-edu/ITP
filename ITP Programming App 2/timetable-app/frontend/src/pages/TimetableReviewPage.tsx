@@ -12,6 +12,7 @@ import {
   getSchedule,
   getScheduleExplanations,
   getScheduleRuns,
+  getSoftConstraintPriorities,
   getTimeSlots,
   getViolations,
   moveScheduledSession,
@@ -23,12 +24,14 @@ import WeeklyCalendarView from "../components/WeeklyCalendarView";
 import { useSessionState } from "../sessionState";
 import type {
   ConstraintViolation,
+  ResolutionSuggestion,
   Room,
   ScheduleComparison,
   ScheduleExplanation,
   ScheduleResponse,
   ScheduleRun,
   ScheduledRow,
+  SoftConstraintPriority,
   TimeSlot,
 } from "../types";
 
@@ -65,12 +68,14 @@ export default function TimetableReviewPage() {
   const [runs, setRuns] = useSessionState<ScheduleRun[]>("review.runs", []);
   const [comparisons, setComparisons] = useSessionState<ScheduleComparison[]>("review.comparisons", []);
   const [explanations, setExplanations] = useSessionState<ScheduleExplanation[]>("review.explanations", []);
+  const [softPriorities, setSoftPriorities] = useSessionState<SoftConstraintPriority[]>("review.softPriorities", []);
   const [rooms, setRooms] = useSessionState<Room[]>("review.rooms", []);
   const [timeSlots, setTimeSlots] = useSessionState<TimeSlot[]>("review.timeSlots", []);
   const [filters, setFilters] = useSessionState<Filters>("review.filters", emptyFilters);
   const [termStartDate, setTermStartDate] = useSessionState<string>("review.termStartDate", "");
   const [moveDrafts, setMoveDrafts] = useSessionState<Record<number, MoveDraft>>("review.moveDrafts", {});
   const [selectedSessionId, setSelectedSessionId] = useSessionState<number | null>("review.selectedSessionId", null);
+  const [previewSuggestion, setPreviewSuggestion] = useState<ResolutionSuggestion | null>(null);
   const [savingMove, setSavingMove] = useState<number | null>(null);
   const [auditOpen, setAuditOpen] = useState(false);
   const [error, setError] = useSessionState<string | null>("review.error", null);
@@ -80,13 +85,14 @@ export default function TimetableReviewPage() {
     try {
       const latest = await getLatestSchedule();
       setSchedule(latest);
-      const [nextViolations, nextRuns, nextComparisons, nextExplanations, nextRooms, nextTimeSlots] = await Promise.all([
+      const [nextViolations, nextRuns, nextComparisons, nextExplanations, nextRooms, nextTimeSlots, nextSoftPriorities] = await Promise.all([
         getViolations(latest.schedule_run.id),
         getScheduleRuns(),
         compareSchedules(),
         getScheduleExplanations(latest.schedule_run.id),
         getRooms(),
         getTimeSlots(),
+        getSoftConstraintPriorities(),
       ]);
       setViolations(nextViolations);
       setRuns(nextRuns);
@@ -94,6 +100,7 @@ export default function TimetableReviewPage() {
       setExplanations(nextExplanations);
       setRooms(nextRooms);
       setTimeSlots(nextTimeSlots);
+      setSoftPriorities(nextSoftPriorities);
     } catch (err) {
       setSchedule(null);
       setViolations([]);
@@ -133,6 +140,19 @@ export default function TimetableReviewPage() {
     }
   };
 
+  const refreshScheduleDetails = async (id: number) => {
+    const [refreshed, nextViolations, nextExplanations, nextComparisons] = await Promise.all([
+      getSchedule(id),
+      getViolations(id),
+      getScheduleExplanations(id),
+      compareSchedules(),
+    ]);
+    setSchedule(refreshed);
+    setViolations(nextViolations);
+    setExplanations(nextExplanations);
+    setComparisons(nextComparisons);
+  };
+
   const setMoveDraft = (sessionId: number, value: MoveDraft) => {
     setMoveDrafts((current) => ({ ...current, [sessionId]: value }));
   };
@@ -149,13 +169,31 @@ export default function TimetableReviewPage() {
     setError(null);
     try {
       await moveScheduledSession(schedule.schedule_run.id, row.session_id, draft);
-      const refreshed = await getSchedule(schedule.schedule_run.id);
-      setSchedule(refreshed);
-      setViolations(await getViolations(schedule.schedule_run.id));
-      setExplanations(await getScheduleExplanations(schedule.schedule_run.id));
-      setComparisons(await compareSchedules());
+      await refreshScheduleDetails(schedule.schedule_run.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not move scheduled session");
+    } finally {
+      setSavingMove(null);
+    }
+  };
+
+  const applyAuditSuggestion = async (suggestion: ResolutionSuggestion) => {
+    if (!schedule) return;
+    setSavingMove(suggestion.session_id);
+    setError(null);
+    try {
+      await moveScheduledSession(schedule.schedule_run.id, suggestion.session_id, {
+        day: suggestion.day,
+        start_time: suggestion.start_time,
+        end_time: suggestion.end_time,
+        room_code: suggestion.room_code,
+        update_fixed_requirement: suggestion.requires_fixed_update,
+      });
+      await refreshScheduleDetails(schedule.schedule_run.id);
+      setSelectedSessionId(suggestion.session_id);
+      setPreviewSuggestion(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not apply suggested fix");
     } finally {
       setSavingMove(null);
     }
@@ -288,6 +326,7 @@ export default function TimetableReviewPage() {
             <WeeklyCalendarView
               rows={filteredRows}
               selectedSessionId={selectedSessionId}
+              previewMove={previewSuggestion}
               onSelectSession={setSelectedSessionId}
             />
             <TimetableGrid
@@ -314,7 +353,12 @@ export default function TimetableReviewPage() {
         rows={rows}
         rooms={rooms}
         comparisons={comparisons}
+        scheduleRunId={schedule?.schedule_run.id ?? null}
+        softPriorities={softPriorities}
+        applyingSessionId={savingMove}
         onSelectSession={setSelectedSessionId}
+        onPreviewSuggestion={setPreviewSuggestion}
+        onApplySuggestion={applyAuditSuggestion}
       />
     </div>
   );

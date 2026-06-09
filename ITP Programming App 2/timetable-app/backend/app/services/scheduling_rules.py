@@ -26,7 +26,7 @@ from app.services.compatibility import (
 LUNCH_BREAK_WINDOWS = ((11 * 60, 12 * 60), (12 * 60, 13 * 60), (13 * 60, 14 * 60))
 
 
-def candidate_slot_allowed(session: Session, slot: TimeSlot) -> bool:
+def candidate_slot_allowed(session: Session, slot: TimeSlot, ignore_fixed: bool = False) -> bool:
     """Return whether a saved requirement can be assigned to a time slot."""
 
     if session.duration_minutes and slot.duration_minutes != session.duration_minutes:
@@ -58,7 +58,7 @@ def candidate_slot_allowed(session: Session, slot: TimeSlot) -> bool:
     elif session_week in {"weekly", "odd", "even"} and session_week != slot_week:
         return False
 
-    if normalize_token(session.scheduling_type) == "fixed":
+    if not ignore_fixed and normalize_token(session.scheduling_type) == "fixed":
         if session.fixed_day and slot.day != session.fixed_day:
             return False
         if session.fixed_start_time and slot.start_time != session.fixed_start_time:

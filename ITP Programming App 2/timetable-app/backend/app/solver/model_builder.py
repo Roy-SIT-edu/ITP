@@ -21,6 +21,7 @@ from app.services.compatibility import (
     time_to_minutes,
     weeks_conflict,
 )
+from app.services.constraint_service import ConstraintValidator, RuleConfig
 from app.services.scheduling_rules import LUNCH_BREAK_WINDOWS, candidate_room_allowed, candidate_slot_allowed
 
 
@@ -34,18 +35,23 @@ class BuiltModel:
 
 
 class TimetableModelBuilder:
+    def __init__(self, constraint_validator: ConstraintValidator | None = None) -> None:
+        self.constraint_validator = constraint_validator or ConstraintValidator()
+
     def build(
         self,
         sessions: list[Session],
         time_slots: list[TimeSlot],
         rooms: list[Room],
         soft_constraint_weights: dict[str, int] | None = None,
+        active_rules: list[RuleConfig] | None = None,
     ) -> BuiltModel:
         model = cp_model.CpModel()
         variables: dict[tuple[int, int, int], cp_model.IntVar] = {}
         assignments: list[dict] = []
         no_candidate_reasons: list[str] = []
         weights = soft_constraint_weights or {}
+        rules = self.constraint_validator.default_active_rules() if active_rules is None else active_rules
 
         for session in sessions:
             session_vars = []
@@ -90,7 +96,7 @@ class TimetableModelBuilder:
 
         soft_penalties = []
         for assignment in assignments:
-            penalty = self._single_assignment_soft_penalty(assignment, weights)
+            penalty = self._single_assignment_soft_penalty(assignment, weights, rules)
             if penalty > 0:
                 soft_penalties.append(assignment["variable"] * penalty)
         if not no_candidate_reasons:
@@ -147,7 +153,12 @@ class TimetableModelBuilder:
                         free_windows.append(free)
                     model.Add(sum(free_windows) >= 1)
 
-    def _single_assignment_soft_penalty(self, assignment: dict, weights: dict[str, int]) -> int:
+    def _single_assignment_soft_penalty(
+        self,
+        assignment: dict,
+        weights: dict[str, int],
+        active_rules: list[RuleConfig],
+    ) -> int:
         session = assignment["session"]
         slot = assignment["time_slot"]
         room = assignment["room"]
@@ -174,8 +185,8 @@ class TimetableModelBuilder:
             if start_min <= 540 or end_min >= 1080:
                 penalty += weights.get("EXTREME_TIME_SLOT", 15)
                 
-        if (time_to_minutes(slot.end_time) or 0) > 1020:
-            penalty += weights.get("CLASS_AFTER_1700", 10)
+        for code in self.constraint_validator.assignment_penalty_codes(assignment, active_rules):
+            penalty += weights.get(code, 10)
             
         return penalty
 

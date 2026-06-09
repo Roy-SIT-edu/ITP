@@ -159,6 +159,22 @@ export type ConstraintViolation = {
   affected_session_ids: number[];
 };
 
+export type ResolutionSuggestion = {
+  score: number;
+  session_id: number;
+  day: string;
+  start_time: string;
+  end_time: string;
+  week_pattern: string;
+  room_code: string;
+  room_name: string | null;
+  summary: string;
+  reason: string;
+  resolves: string[];
+  tradeoffs: string[];
+  requires_fixed_update: boolean;
+};
+
 export type SessionRow = {
   id: number;
   requirement_id: string | null;

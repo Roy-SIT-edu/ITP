@@ -38,6 +38,7 @@ TABLE_DATABASE_NAMES = {
     "scheduled_sessions": "schedule_state",
     "constraint_violations": "schedule_state",
     "soft_constraint_priorities": "schedule_state",
+    "rules": "schedule_state",
 }
 
 DATABASE_URL = f"sqlite:///{DATA_DIR / SPLIT_DATABASE_FILES['schedule_state']}"
@@ -64,6 +65,7 @@ def _model_database_names():
     from app.models.module import Module
     from app.models.programme import Programme
     from app.models.room import Room
+    from app.models.rule import Rule
     from app.models.schedule_run import ScheduleRun
     from app.models.scheduled_session import ScheduledSession
     from app.models.session import Session as Requirement
@@ -84,6 +86,7 @@ def _model_database_names():
         ScheduledSession: "schedule_state",
         ConstraintViolation: "schedule_state",
         SoftConstraintPriority: "schedule_state",
+        Rule: "schedule_state",
     }
 
 
@@ -135,6 +138,7 @@ def _copy_legacy_rows(target_db: Session, legacy_database_path: Path) -> None:
     from app.models.module import Module
     from app.models.programme import Programme
     from app.models.room import Room
+    from app.models.rule import Rule
     from app.models.schedule_run import ScheduleRun
     from app.models.scheduled_session import ScheduledSession
     from app.models.session import Session as Requirement
@@ -158,6 +162,7 @@ def _copy_legacy_rows(target_db: Session, legacy_database_path: Path) -> None:
         ScheduledSession,
         ConstraintViolation,
         SoftConstraintPriority,
+        Rule,
     ]
     try:
         for model in ordered_models:

@@ -6,16 +6,31 @@ empty, which keeps imported user data intact.
 
 from __future__ import annotations
 
+import json
+
 from sqlalchemy.orm import Session as DbSession
 
 from app.models.module import Module
 from app.models.programme import Programme
 from app.models.room import Room
+from app.models.rule import Rule
 from app.models.session import Session
 from app.models.staff import Staff
 from app.models.student_group import StudentGroup
 from app.models.time_slot import TimeSlot
 from app.services.compatibility import minutes_to_time
+
+
+RULE_DEFAULTS = [
+    {
+        "rule_id": "CLASS_AFTER_1700",
+        "label": "Class After 17:00",
+        "description": "Flags sessions that end after the configured latest teaching time.",
+        "severity": "SOFT",
+        "is_enabled": True,
+        "params": {"limit": 1700},
+    }
+]
 
 
 def _get_or_create(db: DbSession, model, defaults: dict | None = None, **filters):
@@ -37,6 +52,20 @@ def seed_defaults(db: DbSession) -> None:
 
 
 def seed_reference_data(db: DbSession) -> None:
+    for definition in RULE_DEFAULTS:
+        _get_or_create(
+            db,
+            Rule,
+            rule_id=definition["rule_id"],
+            defaults={
+                "label": definition["label"],
+                "description": definition["description"],
+                "severity": definition["severity"],
+                "is_enabled": definition["is_enabled"],
+                "params_json": json.dumps(definition["params"]),
+            },
+        )
+
     programmes = [
         ("DSC", "Data Science", "Computing"),
         ("ASE", "Applied Software Engineering", "Engineering"),

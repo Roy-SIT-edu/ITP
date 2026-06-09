@@ -6,6 +6,7 @@ serializer so the routes can share one implementation across split DB tables.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Any, Callable
@@ -18,6 +19,7 @@ from app.models.constraint_violation import ConstraintViolation
 from app.models.module import Module
 from app.models.programme import Programme
 from app.models.room import Room
+from app.models.rule import Rule
 from app.models.schedule_run import ScheduleRun
 from app.models.scheduled_session import ScheduledSession
 from app.models.session import Session
@@ -37,6 +39,7 @@ from app.services.serializers import (
     module_to_dict,
     programme_to_dict,
     room_to_dict,
+    rule_to_dict,
     session_to_dict,
     staff_to_dict,
     time_slot_to_dict,
@@ -162,6 +165,23 @@ DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
         key_fields=("day", "start_time", "end_time", "week_pattern"),
         serializer=time_slot_to_dict,
         sort_fields=("day", "start_time", "week_pattern"),
+    ),
+    "rules": DatabaseTypeConfig(
+        id="rules",
+        label="Rules",
+        model=Rule,
+        columns=(
+            ColumnSpec("id", "ID", "number", read_only=True),
+            ColumnSpec("rule_id", "Rule ID", required=True),
+            ColumnSpec("label", "Label", required=True),
+            ColumnSpec("description", "Description"),
+            ColumnSpec("severity", "Severity", required=True),
+            ColumnSpec("is_enabled", "Enabled", "boolean", required=True),
+            ColumnSpec("params_json", "Params JSON", required=True),
+        ),
+        key_fields=("rule_id",),
+        serializer=rule_to_dict,
+        sort_fields=("rule_id",),
     ),
     "requirements": DatabaseTypeConfig(
         id="requirements",
@@ -358,6 +378,19 @@ class DatabaseService:
                 if start is None or end is None or end <= start:
                     raise ValueError("End time must be after start time.")
                 data["duration_minutes"] = data.get("duration_minutes") or end - start
+        elif config.id == "rules":
+            severity = (clean_text(data.get("severity")) or "").upper()
+            if severity not in {"HARD", "SOFT"}:
+                raise ValueError("Severity must be HARD or SOFT.")
+            data["severity"] = severity
+            params_json = clean_text(data.get("params_json")) or "{}"
+            try:
+                params = json.loads(params_json)
+            except json.JSONDecodeError as exc:
+                raise ValueError("Params JSON must be valid JSON.") from exc
+            if not isinstance(params, dict):
+                raise ValueError("Params JSON must be a JSON object.")
+            data["params_json"] = json.dumps(params)
         return data
 
     def _coerce_requirement(self, db: DbSession, data: dict) -> dict:

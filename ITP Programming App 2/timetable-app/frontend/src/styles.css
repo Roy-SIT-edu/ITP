@@ -1886,6 +1886,36 @@ button.week-calendar-cell:disabled {
   outline-offset: -2px;
 }
 
+.week-calendar-cell.has-preview {
+  background: #dbeafe;
+  border-color: #2563eb;
+  box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.35);
+}
+
+.week-calendar-ghost-card {
+  position: absolute;
+  inset: 12px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  border: 1px dashed #1d4ed8;
+  border-radius: 6px;
+  background: rgba(239, 246, 255, 0.94);
+  color: #1e3a8a;
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.week-calendar-ghost-card strong,
+.week-calendar-ghost-card small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .week-calendar-density-pill {
   align-items: center;
   background: #ecfdf5;
@@ -4264,9 +4294,23 @@ th {
   cursor: pointer;
 }
 
+.audit-tier-row td {
+  background: #f8fafc;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .audit-table tbody tr.active,
 .audit-table tbody tr:hover {
   background: #eff6ff;
+}
+
+.audit-impact-score {
+  color: #1d4ed8;
+  font-size: 13px;
 }
 
 .audit-status {
@@ -4318,10 +4362,97 @@ th {
   margin: 0;
 }
 
+.audit-impact-detail {
+  align-items: center;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+}
+
+.audit-impact-detail strong {
+  color: #1d4ed8;
+}
+
+.audit-impact-detail small {
+  color: #475569;
+  font-size: 12px;
+}
+
 .audit-linked-slots,
+.audit-resolution-panel,
 .audit-explanation-list {
   display: grid;
   gap: 10px;
+}
+
+.audit-resolution-panel {
+  margin: 12px;
+}
+
+.audit-section-title.compact {
+  border-bottom: 0;
+  min-height: auto;
+  padding: 0;
+}
+
+.audit-suggestion-list {
+  display: grid;
+  gap: 10px;
+}
+
+.audit-suggestion-card {
+  background: #ffffff;
+  border: 1px solid #bfdbfe;
+  border-left: 4px solid #2563eb;
+  border-radius: 8px;
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.08);
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.audit-suggestion-card:hover {
+  background: #eff6ff;
+}
+
+.audit-suggestion-card > div {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.audit-suggestion-card strong {
+  color: #0f172a;
+}
+
+.audit-suggestion-card span {
+  background: #dbeafe;
+  border-radius: 999px;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 8px;
+}
+
+.audit-suggestion-card p,
+.audit-suggestion-card small,
+.audit-suggestion-card li {
+  color: #475569;
+  font-size: 12px;
+  margin: 0;
+}
+
+.audit-suggestion-card ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.audit-suggestion-card .button {
+  justify-self: start;
 }
 
 .audit-linked-slots button,

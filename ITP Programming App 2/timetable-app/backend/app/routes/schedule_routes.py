@@ -10,9 +10,10 @@ from app.models.room import Room
 from app.models.schedule_run import ScheduleRun
 from app.models.scheduled_session import ScheduledSession
 from app.models.time_slot import TimeSlot
-from app.services.compatibility import is_online_mode, parse_day_list
+from app.services.compatibility import is_online_mode, normalize_token, parse_day_list
 from app.services.constraint_service import ConstraintService
 from app.services.export_service import ExportService
+from app.services.resolution_service import ResolutionService
 from app.services.schedule_service import ScheduleService
 from app.services.soft_constraint_priority_service import SoftConstraintPriorityService
 from app.services.serializers import schedule_run_to_dict, violation_to_dict
@@ -25,6 +26,7 @@ class ManualMoveInput(BaseModel):
     start_time: str
     end_time: str
     room_code: str
+    update_fixed_requirement: bool = False
 
 
 @router.post("/generate")
@@ -107,6 +109,10 @@ def move_scheduled_session(schedule_run_id: int, session_id: int, data: ManualMo
     item.start_time = slot.start_time
     item.end_time = slot.end_time
     item.week_pattern = slot.week_pattern
+    if data.update_fixed_requirement and normalize_token(item.session.scheduling_type) == "fixed":
+        item.session.fixed_day = slot.day
+        item.session.fixed_start_time = slot.start_time
+        item.session.fixed_end_time = slot.end_time
 
     soft_weights = SoftConstraintPriorityService().weights(db)
     check = ConstraintService().check_and_store(db, schedule_run_id, soft_weights)
@@ -121,6 +127,18 @@ def move_scheduled_session(schedule_run_id: int, session_id: int, data: ManualMo
         "schedule_run": schedule_run_to_dict(run) if run else None,
         "violations": check["violations"],
     }
+
+
+@router.get("/{schedule_run_id}/violations/{violation_id}/suggestions")
+def resolution_suggestions(
+    schedule_run_id: int,
+    violation_id: int,
+    limit: int = Query(default=3, ge=1, le=5),
+    db: DbSession = Depends(get_db),
+):
+    if not db.query(ScheduleRun).filter_by(id=schedule_run_id).first():
+        raise HTTPException(status_code=404, detail={"message": "Schedule run not found"})
+    return ResolutionService().suggestions_for_violation(db, schedule_run_id, violation_id, limit)
 
 
 @router.get("/{schedule_run_id}/explanations")

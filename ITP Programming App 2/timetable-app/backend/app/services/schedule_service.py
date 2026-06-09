@@ -39,12 +39,19 @@ class ScheduleService:
         time_slots = db.query(TimeSlot).order_by(TimeSlot.day, TimeSlot.start_time).all()
         rooms = db.query(Room).order_by(Room.room_code).all()
         soft_weights = self.priority_service.weights(db)
+        active_rules = self.constraint_service.active_rules(db)
 
         run = ScheduleRun(status="RUNNING", message="Solver started")
         db.add(run)
         db.flush()
 
-        result = self.solver.solve(sessions, time_slots, rooms, soft_constraint_weights=soft_weights)
+        result = self.solver.solve(
+            sessions,
+            time_slots,
+            rooms,
+            soft_constraint_weights=soft_weights,
+            active_rules=active_rules,
+        )
         run.solver_status = result["solver_status"]
         run.soft_score = result["soft_score"]
         run.message = result["message"]

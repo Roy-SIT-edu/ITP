@@ -6,9 +6,14 @@ for the review and validation pages after a timetable has been generated.
 
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass
+from typing import Any
+
 from sqlalchemy.orm import Session as DbSession
 
 from app.models.constraint_violation import ConstraintViolation
+from app.models.rule import Rule
 from app.models.scheduled_session import ScheduledSession
 from app.services.compatibility import (
     delivery_room_compatible,
@@ -21,7 +26,121 @@ from app.services.compatibility import (
 from app.services.scheduling_rules import LUNCH_BREAK_WINDOWS
 
 
+@dataclass(frozen=True)
+class RuleConfig:
+    rule_id: str
+    severity: str
+    params: dict[str, Any]
+    label: str = ""
+    description: str | None = None
+
+
+@dataclass(frozen=True)
+class RuleEvaluation:
+    rule_id: str
+    severity: str
+    message: str
+    affected_session_ids: list[int]
+
+
+class ConstraintValidator:
+    """Executes active data-driven rules against candidate and scheduled slots."""
+
+    DEFAULT_RULES = [
+        RuleConfig(
+            rule_id="CLASS_AFTER_1700",
+            severity="SOFT",
+            params={"limit": 1700},
+            label="Class After 17:00",
+            description="Flags sessions that end after the configured latest teaching time.",
+        )
+    ]
+
+    def default_active_rules(self) -> list[RuleConfig]:
+        return list(self.DEFAULT_RULES)
+
+    def active_rules(self, db: DbSession) -> list[RuleConfig]:
+        return [self._row_to_config(row) for row in db.query(Rule).filter_by(is_enabled=True).all()]
+
+    def assignment_penalty_codes(self, assignment: dict, active_rules: list[RuleConfig]) -> list[str]:
+        return [
+            rule.rule_id
+            for rule in active_rules
+            if self._assignment_rule_triggered(rule, assignment)
+        ]
+
+    def scheduled_violations(
+        self,
+        item: ScheduledSession,
+        active_rules: list[RuleConfig],
+        session_label: str,
+    ) -> list[RuleEvaluation]:
+        evaluations: list[RuleEvaluation] = []
+        for rule in active_rules:
+            if rule.rule_id != "CLASS_AFTER_1700":
+                continue
+            limit = self._rule_limit_minutes(rule)
+            end_min = time_to_minutes(item.end_time) or 0
+            if end_min > limit:
+                evaluations.append(
+                    RuleEvaluation(
+                        rule_id=rule.rule_id,
+                        severity=rule.severity,
+                        message=f"Session {session_label} ends after {self._format_minutes(limit)}.",
+                        affected_session_ids=[item.session_id],
+                    )
+                )
+        return evaluations
+
+    def _assignment_rule_triggered(self, rule: RuleConfig, assignment: dict) -> bool:
+        if rule.rule_id != "CLASS_AFTER_1700":
+            return False
+        slot = assignment["time_slot"]
+        limit = self._rule_limit_minutes(rule)
+        return (time_to_minutes(slot.end_time) or 0) > limit
+
+    def _row_to_config(self, row: Rule) -> RuleConfig:
+        try:
+            params = json.loads(row.params_json or "{}")
+        except json.JSONDecodeError:
+            params = {}
+        if not isinstance(params, dict):
+            params = {}
+        return RuleConfig(
+            rule_id=row.rule_id,
+            severity=(normalize_token(row.severity) or "SOFT").upper(),
+            params=params,
+            label=row.label,
+            description=row.description,
+        )
+
+    def _rule_limit_minutes(self, rule: RuleConfig) -> int:
+        raw_value = rule.params.get("limit", 1700)
+        if isinstance(raw_value, str) and ":" in raw_value:
+            parsed = time_to_minutes(raw_value)
+            return parsed if parsed is not None else 17 * 60
+        try:
+            numeric = int(raw_value)
+        except (TypeError, ValueError):
+            return 17 * 60
+        if numeric > 1440:
+            hours = numeric // 100
+            minutes = numeric % 100
+            if 0 <= hours <= 23 and 0 <= minutes < 60:
+                return hours * 60 + minutes
+        return numeric
+
+    def _format_minutes(self, minutes: int) -> str:
+        return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+
 class ConstraintService:
+    def __init__(self, rule_validator: ConstraintValidator | None = None) -> None:
+        self.rule_validator = rule_validator or ConstraintValidator()
+
+    def active_rules(self, db: DbSession) -> list[RuleConfig]:
+        return self.rule_validator.active_rules(db)
+
     def check_and_store(
         self,
         db: DbSession,
@@ -64,10 +183,11 @@ class ConstraintService:
             .all()
         )
         violations: list[dict] = []
+        active_rules = self.active_rules(db)
         self._hard_double_booking_checks(scheduled, violations)
         self._hard_quality_checks(scheduled, violations)
         self._hard_lunch_break_checks(scheduled, violations)
-        self._soft_checks(scheduled, violations)
+        self._soft_checks(scheduled, violations, active_rules)
         return violations
 
     def _hard_double_booking_checks(self, scheduled: list[ScheduledSession], violations: list[dict]) -> None:
@@ -215,7 +335,12 @@ class ConstraintService:
                     }
                 )
 
-    def _soft_checks(self, scheduled: list[ScheduledSession], violations: list[dict]) -> None:
+    def _soft_checks(
+        self,
+        scheduled: list[ScheduledSession],
+        violations: list[dict],
+        active_rules: list[RuleConfig],
+    ) -> None:
         self._tutor_gap_checks(scheduled, violations)
         self._student_day_checks(scheduled, violations)
         self._adjacent_switch_checks(scheduled, violations)
@@ -252,13 +377,13 @@ class ConstraintService:
                         "affected_session_ids": [item.session_id],
                     }
                 )
-            if end_min > 1020:
+            for evaluation in self.rule_validator.scheduled_violations(item, active_rules, self._module_label(item)):
                 violations.append(
                     {
-                        "constraint_code": "CLASS_AFTER_1700",
-                        "severity": "SOFT",
-                        "message": f"Session {self._module_label(item)} ends after 17:00.",
-                        "affected_session_ids": [item.session_id],
+                        "constraint_code": evaluation.rule_id,
+                        "severity": evaluation.severity,
+                        "message": evaluation.message,
+                        "affected_session_ids": evaluation.affected_session_ids,
                     }
                 )
 

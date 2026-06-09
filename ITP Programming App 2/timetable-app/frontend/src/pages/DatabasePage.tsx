@@ -28,6 +28,7 @@ const fallbackLabels: Record<string, string> = {
   modules: "Modules",
   "student-groups": "Student Groups",
   "time-slots": "Time Slots",
+  rules: "Rules",
   requirements: "Requirements",
 };
 

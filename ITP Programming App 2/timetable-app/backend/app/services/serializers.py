@@ -6,6 +6,7 @@ from app.models.constraint_violation import ConstraintViolation
 from app.models.module import Module
 from app.models.programme import Programme
 from app.models.room import Room
+from app.models.rule import Rule
 from app.models.schedule_run import ScheduleRun
 from app.models.session import Session
 from app.models.staff import Staff
@@ -57,6 +58,18 @@ def room_to_dict(item: Room) -> dict:
         "is_virtual": item.is_virtual,
         "campus_mode": item.campus_mode,
         "recording_available": item.recording_available,
+    }
+
+
+def rule_to_dict(item: Rule) -> dict:
+    return {
+        "id": item.id,
+        "rule_id": item.rule_id,
+        "label": item.label,
+        "description": item.description,
+        "severity": item.severity,
+        "is_enabled": item.is_enabled,
+        "params_json": item.params_json,
     }
 
 

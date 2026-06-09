@@ -1,19 +1,30 @@
 /*
- * Diagnostic side drawer for generated schedule conflicts and placement logic.
- * This reads existing review-page data only; it does not change generation rules.
+ * Diagnostic side drawer for generated schedule conflicts and guided fixes.
  */
 
 import { AlertTriangle, BarChart3, CheckCircle2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { ConstraintViolation, Room, ScheduleComparison, ScheduleExplanation, ScheduledRow } from "../types";
+import { getResolutionSuggestions } from "../api/client";
+import type {
+  ConstraintViolation,
+  ResolutionSuggestion,
+  Room,
+  ScheduleComparison,
+  ScheduleExplanation,
+  ScheduledRow,
+  SoftConstraintPriority,
+} from "../types";
 import StatusBadge from "./StatusBadge";
 
 type AuditFilter = "all" | "room" | "staff" | "student" | "hard" | "soft";
 type ResolutionFilter = "all" | "pending" | "in_progress" | "resolved";
-type SortKey = "severity" | "category" | "code" | "sessions";
+type SortKey = "impact" | "severity" | "category" | "code" | "sessions";
 
 type AuditRow = ConstraintViolation & {
   category: string;
+  impactScore: number;
+  priorityWeight: number;
+  tier: "critical" | "minor";
   status: "Pending";
 };
 
@@ -25,7 +36,12 @@ type Props = {
   rows: ScheduledRow[];
   rooms: Room[];
   comparisons: ScheduleComparison[];
+  scheduleRunId?: number | null;
+  softPriorities?: SoftConstraintPriority[];
+  applyingSessionId?: number | null;
   onSelectSession?: (sessionId: number) => void;
+  onPreviewSuggestion?: (suggestion: ResolutionSuggestion | null) => void;
+  onApplySuggestion?: (suggestion: ResolutionSuggestion) => Promise<void> | void;
 };
 
 const auditFilters: { key: AuditFilter; label: string }[] = [
@@ -52,21 +68,41 @@ export default function AuditSideDrawer({
   rows,
   rooms,
   comparisons,
+  scheduleRunId,
+  softPriorities = [],
+  applyingSessionId = null,
   onSelectSession,
+  onPreviewSuggestion,
+  onApplySuggestion,
 }: Props) {
   const [filter, setFilter] = useState<AuditFilter>("all");
   const [resolutionFilter, setResolutionFilter] = useState<ResolutionFilter>("all");
-  const [sortKey, setSortKey] = useState<SortKey>("severity");
+  const [sortKey, setSortKey] = useState<SortKey>("impact");
   const [activeViolationId, setActiveViolationId] = useState<number | null>(null);
+  const [suggestions, setSuggestions] = useState<ResolutionSuggestion[]>([]);
+  const [suggestionLoading, setSuggestionLoading] = useState(false);
+  const [suggestionError, setSuggestionError] = useState<string | null>(null);
+
+  const priorityWeights = useMemo(
+    () => new Map(softPriorities.map((item) => [item.constraint_code, item.weight])),
+    [softPriorities],
+  );
 
   const auditRows = useMemo<AuditRow[]>(
     () =>
-      violations.map((item) => ({
-        ...item,
-        category: conflictCategory(item.constraint_code, item.message),
-        status: "Pending",
-      })),
-    [violations],
+      violations.map((item) => {
+        const priorityWeight = priorityWeights.get(item.constraint_code) ?? (item.severity === "HARD" ? 60 : 10);
+        const score = impactScore(item, rows, priorityWeight);
+        return {
+          ...item,
+          category: conflictCategory(item.constraint_code, item.message),
+          impactScore: score,
+          priorityWeight,
+          tier: item.severity === "HARD" || score >= 60 ? "critical" : "minor",
+          status: "Pending",
+        };
+      }),
+    [priorityWeights, rows, violations],
   );
 
   const filteredRows = useMemo(() => {
@@ -101,6 +137,47 @@ export default function AuditSideDrawer({
     .sort((left, right) => left.id - right.id)
     .slice(-8)
     .map((item) => item.stored_hard_issues + item.stored_soft_issues);
+  const criticalRows = filteredRows.filter((item) => item.tier === "critical");
+  const minorRows = filteredRows.filter((item) => item.tier === "minor");
+
+  useEffect(() => {
+    if (!open || !activeViolation?.affected_session_ids[0]) return;
+    onSelectSession?.(activeViolation.affected_session_ids[0]);
+  }, [activeViolation?.id, onSelectSession, open]);
+
+  useEffect(() => {
+    onPreviewSuggestion?.(null);
+    if (!open || !scheduleRunId || !activeViolation) {
+      setSuggestions([]);
+      setSuggestionError(null);
+      setSuggestionLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setSuggestions([]);
+    setSuggestionLoading(true);
+    setSuggestionError(null);
+    getResolutionSuggestions(scheduleRunId, activeViolation.id)
+      .then((items) => {
+        if (!cancelled) setSuggestions(items);
+      })
+      .catch((err) => {
+        if (!cancelled) setSuggestionError(err instanceof Error ? err.message : "Could not load suggestions");
+      })
+      .finally(() => {
+        if (!cancelled) setSuggestionLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeViolation?.id, onPreviewSuggestion, open, scheduleRunId]);
+
+  const chooseViolation = (item: AuditRow) => {
+    setActiveViolationId(item.id);
+    if (item.affected_session_ids[0]) {
+      onSelectSession?.(item.affected_session_ids[0]);
+    }
+  };
 
   if (!open) return null;
 
@@ -170,6 +247,9 @@ export default function AuditSideDrawer({
               <thead>
                 <tr>
                   <th>
+                    <button type="button" onClick={() => setSortKey("impact")}>Impact</button>
+                  </th>
+                  <th>
                     <button type="button" onClick={() => setSortKey("severity")}>Severity</button>
                   </th>
                   <th>
@@ -185,24 +265,11 @@ export default function AuditSideDrawer({
                 </tr>
               </thead>
               <tbody>
-                {filteredRows.map((item) => (
-                  <tr
-                    className={activeViolation?.id === item.id ? "active" : ""}
-                    key={item.id}
-                    onClick={() => setActiveViolationId(item.id)}
-                  >
-                    <td>
-                      <StatusBadge label={item.severity} tone={item.severity === "HARD" ? "bad" : "warn"} />
-                    </td>
-                    <td>{item.category}</td>
-                    <td><span className="audit-status pending">{item.status}</span></td>
-                    <td>{item.constraint_code}</td>
-                    <td>{item.affected_session_ids.join(", ")}</td>
-                  </tr>
-                ))}
+                {renderTierRows("Critical Fixes", criticalRows, activeViolation, chooseViolation)}
+                {renderTierRows("Minor Suggestions", minorRows, activeViolation, chooseViolation)}
                 {filteredRows.length === 0 && (
                   <tr>
-                    <td colSpan={5}>No issues match this filter.</td>
+                    <td colSpan={6}>No issues match this filter.</td>
                   </tr>
                 )}
               </tbody>
@@ -221,6 +288,10 @@ export default function AuditSideDrawer({
                 <span>{activeViolation.category}</span>
                 <strong>{activeViolation.constraint_code}</strong>
                 <p>{activeViolation.message}</p>
+                <div className="audit-impact-detail">
+                  <strong>Impact {activeViolation.impactScore}</strong>
+                  <small>{impactDescription(activeViolation)}</small>
+                </div>
               </article>
 
               <div className="audit-linked-slots">
@@ -232,6 +303,50 @@ export default function AuditSideDrawer({
                 ))}
                 {activeSessionRows.length === 0 && <div className="empty-state">No linked scheduled sessions found.</div>}
               </div>
+
+              <section className="audit-resolution-panel">
+                <div className="audit-section-title compact">
+                  <CheckCircle2 size={15} />
+                  <strong>Suggested Fixes</strong>
+                </div>
+                {suggestionLoading && <div className="empty-state">Searching valid alternatives...</div>}
+                {suggestionError && <div className="notice bad">{suggestionError}</div>}
+                {!suggestionLoading && !suggestionError && suggestions.length === 0 && (
+                  <div className="empty-state">No one-click fix is available for this issue yet.</div>
+                )}
+                <div className="audit-suggestion-list">
+                  {suggestions.map((suggestion) => (
+                    <article
+                      className="audit-suggestion-card"
+                      key={`${suggestion.session_id}-${suggestion.day}-${suggestion.start_time}-${suggestion.room_code}`}
+                      onFocus={() => onPreviewSuggestion?.(suggestion)}
+                      onBlur={() => onPreviewSuggestion?.(null)}
+                      onMouseEnter={() => onPreviewSuggestion?.(suggestion)}
+                      onMouseLeave={() => onPreviewSuggestion?.(null)}
+                    >
+                      <div>
+                        <strong>{suggestion.summary}</strong>
+                        <span>Fit {suggestion.score}</span>
+                      </div>
+                      <p>{suggestion.reason}</p>
+                      <small>{suggestion.room_code}{suggestion.room_name ? ` | ${suggestion.room_name}` : ""}</small>
+                      {suggestion.tradeoffs.length > 0 && (
+                        <ul>
+                          {suggestion.tradeoffs.map((tradeoff) => <li key={tradeoff}>{tradeoff}</li>)}
+                        </ul>
+                      )}
+                      <button
+                        className="button slim"
+                        disabled={applyingSessionId === suggestion.session_id}
+                        type="button"
+                        onClick={() => onApplySuggestion?.(suggestion)}
+                      >
+                        {applyingSessionId === suggestion.session_id ? "Applying" : "Apply Move"}
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              </section>
 
               <div className="audit-explanation-list">
                 {activeExplanations.map((item) => (
@@ -253,6 +368,40 @@ export default function AuditSideDrawer({
         </section>
       </aside>
     </div>
+  );
+}
+
+function renderTierRows(
+  label: string,
+  rows: AuditRow[],
+  activeViolation: AuditRow | null,
+  onChoose: (item: AuditRow) => void,
+) {
+  if (rows.length === 0) return null;
+  return (
+    <>
+      <tr className="audit-tier-row">
+        <td colSpan={6}>{label}</td>
+      </tr>
+      {rows.map((item) => (
+        <tr
+          className={activeViolation?.id === item.id ? "active" : ""}
+          key={item.id}
+          onClick={() => onChoose(item)}
+        >
+          <td>
+            <strong className="audit-impact-score">{item.impactScore}</strong>
+          </td>
+          <td>
+            <StatusBadge label={item.severity} tone={item.severity === "HARD" ? "bad" : "warn"} />
+          </td>
+          <td>{item.category}</td>
+          <td><span className="audit-status pending">{item.status}</span></td>
+          <td>{item.constraint_code}</td>
+          <td>{item.affected_session_ids.join(", ")}</td>
+        </tr>
+      ))}
+    </>
   );
 }
 
@@ -307,6 +456,9 @@ function statusKey(status: AuditRow["status"]) {
 }
 
 function compareAuditRows(left: AuditRow, right: AuditRow, sortKey: SortKey) {
+  if (sortKey === "impact") {
+    return right.impactScore - left.impactScore || left.constraint_code.localeCompare(right.constraint_code);
+  }
   if (sortKey === "severity") {
     const severityOrder = { HARD: 0, SOFT: 1 };
     return severityOrder[left.severity] - severityOrder[right.severity] || left.constraint_code.localeCompare(right.constraint_code);
@@ -314,6 +466,27 @@ function compareAuditRows(left: AuditRow, right: AuditRow, sortKey: SortKey) {
   if (sortKey === "category") return left.category.localeCompare(right.category);
   if (sortKey === "sessions") return left.affected_session_ids.length - right.affected_session_ids.length;
   return left.constraint_code.localeCompare(right.constraint_code);
+}
+
+function impactScore(item: ConstraintViolation, rows: ScheduledRow[], priorityWeight: number) {
+  const related = relatedRows(rows, item.affected_session_ids);
+  const base = item.severity === "HARD" ? 70 : 25;
+  const peopleProxy = related.reduce((total, row) => total + (row.student_group_code ? 8 : 3), 0);
+  const pairPressure = Math.max(0, item.affected_session_ids.length - 1) * 8;
+  return Math.min(100, base + priorityWeight + peopleProxy + pairPressure);
+}
+
+function impactDescription(item: AuditRow) {
+  if (item.severity === "HARD") {
+    return "This can make the timetable physically impossible until it is resolved.";
+  }
+  if (item.constraint_code === "CLASS_AFTER_1700") {
+    return "This creates a late teaching slot and breaches the configured latest-class rule.";
+  }
+  if (item.category === "Student Conflicts") {
+    return "This affects the student experience and should be reviewed before export.";
+  }
+  return "This is a preference or quality issue; fixing higher scores first gives the biggest improvement.";
 }
 
 function relatedRows(rows: ScheduledRow[], sessionIds: number[]) {

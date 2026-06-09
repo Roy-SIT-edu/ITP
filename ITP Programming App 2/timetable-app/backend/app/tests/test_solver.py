@@ -160,3 +160,43 @@ def test_solver_requires_one_lunch_hour_between_11_and_14(db_session):
     )
 
     assert result["solver_status"] == "INFEASIBLE"
+
+
+def test_solver_uses_active_rules_for_late_class_penalty(db_session):
+    session = db_session.query(Session).filter_by(requirement_id="REQ-DEMO-001").one()
+    session.scheduling_type = "Fixed"
+    session.fixed_day = "Monday"
+    session.fixed_start_time = "17:00"
+    session.fixed_end_time = "18:00"
+    session.duration_minutes = 60
+    session.student_group_id = None
+    session.delivery_mode = "Online"
+    session.campus_mode = "Virtual"
+    session.venue_type_required = "virtual"
+    slot = (
+        db_session.query(TimeSlot)
+        .filter_by(day="Monday", start_time="17:00", end_time="18:00", week_pattern="Weekly")
+        .one()
+    )
+    room = db_session.query(Room).filter_by(room_code="VIRTUAL-ROOM-1").one()
+
+    active_result = CpSatTimetableSolver().solve(
+        [session],
+        [slot],
+        [room],
+        soft_constraint_weights={"CLASS_AFTER_1700": 11},
+        max_seconds=5,
+    )
+    disabled_result = CpSatTimetableSolver().solve(
+        [session],
+        [slot],
+        [room],
+        soft_constraint_weights={"CLASS_AFTER_1700": 11},
+        active_rules=[],
+        max_seconds=5,
+    )
+
+    assert active_result["solver_status"] in {"FEASIBLE", "OPTIMAL"}
+    assert active_result["soft_score"] == 11
+    assert disabled_result["solver_status"] in {"FEASIBLE", "OPTIMAL"}
+    assert disabled_result["soft_score"] == 0

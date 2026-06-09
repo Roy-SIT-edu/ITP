@@ -8,6 +8,7 @@ from app.models.constraint_violation import ConstraintViolation
 from app.models.module import Module
 from app.models.programme import Programme
 from app.models.room import Room
+from app.models.rule import Rule
 from app.models.schedule_run import ScheduleRun
 from app.models.scheduled_session import ScheduledSession
 from app.models.session import Session
@@ -21,6 +22,7 @@ __all__ = [
     "Module",
     "Programme",
     "Room",
+    "Rule",
     "ScheduleRun",
     "ScheduledSession",
     "Session",

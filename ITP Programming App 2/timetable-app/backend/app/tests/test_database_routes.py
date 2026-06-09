@@ -11,6 +11,7 @@ from app import models  # noqa: F401
 from app.database import Base, create_db_and_seed, create_session_factory, dispose_engines, get_db
 from app.main import app
 from app.models.room import Room
+from app.models.rule import Rule
 from app.models.schedule_run import ScheduleRun
 from app.models.staff import Staff
 from app.services.schedule_service import ScheduleService
@@ -63,9 +64,24 @@ def test_split_database_files_are_created_and_seeded(tmp_path):
     try:
         assert db.query(Room).count() == 6
         assert db.query(Staff).count() == 3
+        assert db.query(Rule).filter_by(rule_id="CLASS_AFTER_1700").count() == 1
     finally:
         db.close()
         dispose_engines(engines)
+
+
+def test_database_types_include_rules(tmp_path):
+    db, engine = _route_db(tmp_path)
+    client = _client_for(db)
+    try:
+        response = client.get("/api/database/types")
+    finally:
+        app.dependency_overrides.clear()
+        db.close()
+        engine.dispose()
+
+    assert response.status_code == 200
+    assert any(item["id"] == "rules" for item in response.json())
 
 
 def test_database_example_workbook_contains_live_data(tmp_path):

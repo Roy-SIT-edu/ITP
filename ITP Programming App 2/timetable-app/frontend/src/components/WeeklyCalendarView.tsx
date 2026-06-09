@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { ScheduledRow } from "../types";
+import type { ResolutionSuggestion, ScheduledRow } from "../types";
 
 const allDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 const dayKeys = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
@@ -30,10 +30,12 @@ const defaultDisplayOptions: DisplayOptions = {
 export default function WeeklyCalendarView({
   rows,
   selectedSessionId,
+  previewMove,
   onSelectSession,
 }: {
   rows: ScheduledRow[];
   selectedSessionId?: number | null;
+  previewMove?: ResolutionSuggestion | null;
   onSelectSession?: (sessionId: number) => void;
 }) {
   const [weekOf, setWeekOf] = useState(() => formatDateInput(startOfWeek(new Date())));
@@ -194,17 +196,32 @@ export default function WeeklyCalendarView({
               const cellRows = rowsByCell.get(key) ?? [];
               const count = cellRows.length;
               const containsSelected = selectedSessionId != null && cellRows.some((row) => row.session_id === selectedSessionId);
+              const containsPreview =
+                !!previewMove &&
+                previewMove.day === item.day &&
+                intervalsOverlap(
+                  timeToMinutes(previewMove.start_time),
+                  timeToMinutes(previewMove.end_time),
+                  minutes,
+                  minutes + 60,
+                );
               const active = activeCellKey === key;
               return (
                 <button
                   aria-label={cellAriaLabel(item.day, minutes, count)}
-                  className={`week-calendar-cell ${densityClass(count)} ${active ? "active" : ""} ${containsSelected ? "contains-selected" : ""}`}
-                  disabled={count === 0}
+                  className={`week-calendar-cell ${densityClass(count)} ${active ? "active" : ""} ${containsSelected ? "contains-selected" : ""} ${containsPreview ? "has-preview" : ""}`}
+                  disabled={count === 0 && !containsPreview}
                   key={key}
                   onClick={() => selectCell(key, cellRows)}
                   style={{ gridColumn: dayIndex + 2, gridRow: rowIndex + 2 }}
                   type="button"
                 >
+                  {containsPreview && (
+                    <span className="week-calendar-ghost-card">
+                      <strong>Preview move</strong>
+                      <small>{previewMove.start_time}-{previewMove.end_time} | {previewMove.room_code}</small>
+                    </span>
+                  )}
                   {count > 0 && (
                     <>
                       <span className="week-calendar-cell-topline">

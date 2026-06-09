@@ -26,6 +26,7 @@ class CpSatTimetableSolver:
         time_slots: list[TimeSlot],
         rooms: list[Room],
         soft_constraint_weights: dict[str, int] | None = None,
+        active_rules: list | None = None,
         max_seconds: float = 20.0,
     ) -> dict:
         if not sessions:
@@ -36,7 +37,7 @@ class CpSatTimetableSolver:
                 "message": "No sessions are available to schedule.",
             }
 
-        built = self.model_builder.build(sessions, time_slots, rooms, soft_constraint_weights)
+        built = self.model_builder.build(sessions, time_slots, rooms, soft_constraint_weights, active_rules)
         if built.no_candidate_reasons:
             return {
                 "solver_status": "INFEASIBLE",

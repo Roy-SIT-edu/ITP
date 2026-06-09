@@ -11,6 +11,7 @@ import type {
   DatabaseRow,
   DatabaseTypeInfo,
   Room,
+  ResolutionSuggestion,
   ScheduleComparison,
   ScheduleExplanation,
   ScheduleGenerateResult,
@@ -177,7 +178,7 @@ export function getScheduleExplanations(scheduleRunId: number) {
 export function moveScheduledSession(
   scheduleRunId: number,
   sessionId: number,
-  data: { day: string; start_time: string; end_time: string; room_code: string },
+  data: { day: string; start_time: string; end_time: string; room_code: string; update_fixed_requirement?: boolean },
 ) {
   return request<{ message: string; schedule_run: ScheduleRun | null; violations: ConstraintViolation[] }>(
     `/api/schedules/${scheduleRunId}/sessions/${sessionId}`,
@@ -187,6 +188,10 @@ export function moveScheduledSession(
       body: JSON.stringify(data),
     },
   );
+}
+
+export function getResolutionSuggestions(scheduleRunId: number, violationId: number) {
+  return request<ResolutionSuggestion[]>(`/api/schedules/${scheduleRunId}/violations/${violationId}/suggestions`);
 }
 
 export function getViolations(scheduleRunId: number) {
