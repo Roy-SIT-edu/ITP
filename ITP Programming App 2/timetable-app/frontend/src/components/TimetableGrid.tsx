@@ -224,6 +224,7 @@ function TimetablePlanner({
                   {slotRows.slice(0, 2).map((row) => (
                     <small key={row.session_id}>
                       <WeekBadge weekPattern={row.week_pattern} />
+                      {row.programme ? `${row.programme} | ` : ""}
                       {row.module_code ?? row.requirement_id}
                     </small>
                   ))}
@@ -274,17 +275,20 @@ function SlotSessionList({
             .sort((left, right) => (left.module_code ?? "").localeCompare(right.module_code ?? ""))
             .map((row) => (
               <button
-                className={`slot-session-card ${selectedSessionId === row.session_id ? "selected" : ""}`}
+                className={`slot-session-card ${classTypeTone(row.class_type)} ${selectedSessionId === row.session_id ? "selected" : ""}`}
                 key={row.session_id}
                 onClick={() => onSelect(row.session_id)}
                 type="button"
               >
                 <strong>
-                  {row.module_code ?? row.requirement_id}
-                  <WeekBadge weekPattern={row.week_pattern} />
+                  <span>{row.module_code ?? row.requirement_id}</span>
+                  <span className="slot-card-badges">
+                    <span className="slot-program-chip">{row.programme ?? "No programme"}</span>
+                    <WeekBadge weekPattern={row.week_pattern} />
+                  </span>
                 </strong>
-                <span>{row.programme ?? "No programme"} | {row.class_type ?? "Class"} | {row.student_group_code ?? "No group"}</span>
-                <small>{row.room} | {row.staff_name ?? "No staff"}</small>
+                <span>{row.class_type ?? "Class"} | {row.student_group_code ?? "No group"}</span>
+                <small>{row.room} | {row.staff_name ?? "No staff"} | {row.start_time}-{row.end_time}</small>
               </button>
             ))}
         </div>
@@ -538,4 +542,14 @@ function heatClass(value: number) {
   if (value === 2) return "load-2";
   if (value <= 4) return "load-4";
   return "load-5";
+}
+
+function classTypeTone(value: string | null) {
+  const normalized = (value ?? "").toLowerCase();
+  if (normalized.includes("tutorial")) return "type-tutorial";
+  if (normalized.includes("lecture")) return "type-lecture";
+  if (normalized.includes("lab")) return "type-lab";
+  if (normalized.includes("seminar")) return "type-seminar";
+  if (normalized.includes("workshop")) return "type-workshop";
+  return "type-other";
 }

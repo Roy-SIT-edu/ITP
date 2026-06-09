@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import type { ScheduledRow } from "../types";
 
 const allDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
@@ -39,6 +40,7 @@ export default function WeeklyCalendarView({
   const [startTime, setStartTime] = useState("08:00");
   const [endTime, setEndTime] = useState("22:00");
   const [displayOptions, setDisplayOptions] = useState<DisplayOptions>(defaultDisplayOptions);
+  const [activeCellKey, setActiveCellKey] = useState<string | null>(null);
 
   const weekStart = useMemo(() => startOfWeek(parseDateInput(weekOf) ?? new Date()), [weekOf]);
   const weekDays = useMemo(
@@ -50,7 +52,7 @@ export default function WeeklyCalendarView({
       })),
     [weekStart],
   );
-  const visibleDays = weekDays.filter((item) => displayOptions[item.key]);
+  const visibleDays = useMemo(() => weekDays.filter((item) => displayOptions[item.key]), [displayOptions, weekDays]);
   const timeRows = useMemo(() => buildTimeRows(startTime, endTime), [startTime, endTime]);
   const calendarRows = rows.filter(
     (row) =>
@@ -58,6 +60,50 @@ export default function WeeklyCalendarView({
       timeToMinutes(row.end_time) > timeToMinutes(startTime) &&
       timeToMinutes(row.start_time) < timeToMinutes(endTime),
   );
+  const rowsByCell = useMemo(() => {
+    const grouped = new Map<string, ScheduledRow[]>();
+    visibleDays.forEach((item) => {
+      timeRows.forEach((minutes) => {
+        const cellRows = calendarRows
+          .filter(
+            (row) =>
+              row.day === item.day &&
+              intervalsOverlap(
+                timeToMinutes(row.start_time),
+                timeToMinutes(row.end_time),
+                minutes,
+                minutes + 60,
+              ),
+          )
+          .sort(compareCalendarRows);
+        if (cellRows.length) {
+          grouped.set(calendarCellKey(item.day, minutes), cellRows);
+        }
+      });
+    });
+    return grouped;
+  }, [calendarRows, timeRows, visibleDays]);
+  const activeCell = useMemo(() => {
+    if (!activeCellKey) return null;
+    const [day, minuteValue] = activeCellKey.split("|");
+    const minutes = Number(minuteValue);
+    const dayIndex = visibleDays.findIndex((item) => item.day === day);
+    const rowIndex = timeRows.indexOf(minutes);
+    if (dayIndex < 0 || rowIndex < 0) return null;
+    return {
+      day,
+      minutes,
+      dayIndex,
+      rowIndex,
+      rows: rowsByCell.get(activeCellKey) ?? [],
+    };
+  }, [activeCellKey, rowsByCell, timeRows, visibleDays]);
+
+  useEffect(() => {
+    if (activeCellKey && !rowsByCell.has(activeCellKey)) {
+      setActiveCellKey(null);
+    }
+  }, [activeCellKey, rowsByCell]);
 
   const moveWeek = (direction: -1 | 1) => {
     setWeekOf(formatDateInput(addDays(weekStart, direction * 7)));
@@ -72,6 +118,24 @@ export default function WeeklyCalendarView({
 
   const updateDisplay = (key: keyof DisplayOptions, value: boolean) => {
     setDisplayOptions((current) => ({ ...current, [key]: value }));
+  };
+
+  const selectCell = (key: string, cellRows: ScheduledRow[]) => {
+    if (cellRows.length === 0) {
+      setActiveCellKey(null);
+      return;
+    }
+    if (cellRows.length === 1) {
+      onSelectSession?.(cellRows[0].session_id);
+      setActiveCellKey(null);
+      return;
+    }
+    setActiveCellKey(key);
+  };
+
+  const selectSessionFromPopover = (sessionId: number) => {
+    onSelectSession?.(sessionId);
+    setActiveCellKey(null);
   };
 
   return (
@@ -130,74 +194,103 @@ export default function WeeklyCalendarView({
           ))}
 
           {visibleDays.map((item, dayIndex) =>
-            timeRows.map((minutes, rowIndex) => (
-              <div
-                className="week-calendar-cell"
-                key={`${item.day}-${minutes}`}
-                style={{ gridColumn: dayIndex + 2, gridRow: rowIndex + 2 }}
-              />
-            )),
-          )}
-
-          {calendarRows.map((row) => {
-            const dayIndex = visibleDays.findIndex((item) => item.day === row.day);
-            const start = timeToMinutes(row.start_time);
-            const end = timeToMinutes(row.end_time);
-            const boundedStart = Math.max(start, timeToMinutes(startTime));
-            const boundedEnd = Math.min(end, timeToMinutes(endTime));
-            const rowIndex = Math.max(0, Math.floor((boundedStart - timeToMinutes(startTime)) / 60));
-            const rowSpan = Math.max(1, Math.ceil((boundedEnd - boundedStart) / 60));
-            if (dayIndex < 0 || boundedEnd <= boundedStart) return null;
-            return (
-              <button
-                className={`week-calendar-event ${weekTone(row.week_pattern)} ${selectedSessionId === row.session_id ? "selected" : ""}`}
-                key={row.scheduled_session_id}
-                onClick={() => onSelectSession?.(row.session_id)}
-                style={{
-                  gridColumn: dayIndex + 2,
-                  gridRow: `${rowIndex + 2} / span ${rowSpan}`,
-                }}
-                type="button"
-              >
-                <strong>{eventHeading(row)}</strong>
-                {displayOptions.showClassTitle && <span>{row.module_title ?? "Class title not available"}</span>}
-                <span>{row.class_type ?? "Class"}</span>
-                <span>
-                  {formatTime(start, displayOptions.showAmPm)} - {formatTime(end, displayOptions.showAmPm)}
-                </span>
-                <span>{row.room}</span>
-                {displayOptions.showInstructors && (
-                  <>
-                    <span>Instructors:</span>
-                    <span>{row.staff_name ?? row.staff_id ?? "No instructor"}</span>
-                  </>
-                )}
-              </button>
-            );
-          })}
-
-          {visibleDays.map((item, dayIndex) =>
             timeRows.map((minutes, rowIndex) => {
-              const count = calendarRows.filter((row) =>
-                row.day === item.day &&
-                intervalsOverlap(
-                  timeToMinutes(row.start_time),
-                  timeToMinutes(row.end_time),
-                  minutes,
-                  minutes + 60,
-                ),
-              ).length;
-              if (count === 0) return null;
+              const key = calendarCellKey(item.day, minutes);
+              const cellRows = rowsByCell.get(key) ?? [];
+              const count = cellRows.length;
+              const containsSelected = selectedSessionId != null && cellRows.some((row) => row.session_id === selectedSessionId);
+              const active = activeCellKey === key;
               return (
-                <span
-                  className="week-calendar-count active"
-                  key={`${item.day}-${minutes}-count`}
+                <button
+                  aria-label={cellAriaLabel(item.day, minutes, count)}
+                  className={`week-calendar-cell ${densityClass(count)} ${active ? "active" : ""} ${containsSelected ? "contains-selected" : ""}`}
+                  disabled={count === 0}
+                  key={key}
+                  onClick={() => selectCell(key, cellRows)}
                   style={{ gridColumn: dayIndex + 2, gridRow: rowIndex + 2 }}
+                  type="button"
                 >
-                  {count} {count === 1 ? "session" : "sessions"}
-                </span>
+                  {count > 0 && (
+                    <>
+                      <span className="week-calendar-cell-topline">
+                        <span className="week-calendar-density-pill">+{count}</span>
+                      </span>
+                      <span className="week-calendar-program-strip">
+                        {programPreview(cellRows).map((programme) => (
+                          <span className="week-calendar-program-chip" key={programme}>
+                            {programme}
+                          </span>
+                        ))}
+                      </span>
+                      <span className="week-calendar-hover-card" aria-hidden="true">
+                        <span className="week-calendar-hover-head">
+                          {formatTime(minutes, displayOptions.showAmPm)}-{formatTime(minutes + 60, displayOptions.showAmPm)}
+                        </span>
+                        <span className="week-calendar-hover-list">
+                          {cellRows.map((row) => (
+                            <span className="week-calendar-hover-row" key={row.scheduled_session_id}>
+                              <span>
+                                <strong>{row.module_code ?? row.requirement_id ?? "Session"}</strong>
+                                <em>{shortClassType(row.class_type)}</em>
+                              </span>
+                              <small>
+                                {row.programme ?? "No programme"} | {instructorLastName(row.staff_name ?? row.staff_id)}
+                              </small>
+                            </span>
+                          ))}
+                        </span>
+                      </span>
+                    </>
+                  )}
+                </button>
               );
             }),
+          )}
+
+          {activeCell && activeCell.rows.length > 1 && (
+            <div
+              className="week-calendar-popover"
+              style={{
+                gridColumn: `${activeCell.dayIndex + 2} / span ${activeCell.dayIndex >= visibleDays.length - 1 ? 1 : 2}`,
+                gridRow: activeCell.rowIndex + 2,
+              }}
+            >
+              <div className="week-calendar-popover-head">
+                <div>
+                  <strong>
+                    {activeCell.day}, {formatTime(activeCell.minutes, displayOptions.showAmPm)}-
+                    {formatTime(activeCell.minutes + 60, displayOptions.showAmPm)}
+                  </strong>
+                  <span>{activeCell.rows.length} sessions</span>
+                </div>
+                <button aria-label="Close session list" className="icon-button" type="button" onClick={() => setActiveCellKey(null)}>
+                  <X size={14} />
+                </button>
+              </div>
+              <div className="week-calendar-popover-list">
+                {activeCell.rows.map((row) => (
+                  <button
+                    className={`week-calendar-mini-card ${selectedSessionId === row.session_id ? "active" : ""}`}
+                    key={row.scheduled_session_id}
+                    onClick={() => selectSessionFromPopover(row.session_id)}
+                    type="button"
+                  >
+                    <span className="mini-card-title">
+                      <strong>{row.module_code ?? row.requirement_id ?? "Session"}</strong>
+                      <span className="mini-session-tag">{shortClassType(row.class_type)}</span>
+                    </span>
+                    {displayOptions.showClassTitle && <small>{row.module_title ?? "Class title not available"}</small>}
+                    {displayOptions.showInstructors && <span>{instructorLastName(row.staff_name ?? row.staff_id)}</span>}
+                    <span>
+                      {row.student_group_code ?? row.programme ?? "No group"} | {row.room} | {row.start_time}-{row.end_time}
+                    </span>
+                    <span>
+                      {row.week_pattern ?? "Weeks not set"} | {row.delivery_mode ?? "Mode not set"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       </div>
@@ -327,4 +420,53 @@ function weekTone(weekPattern: string | null) {
   if (normalized === "odd") return "odd";
   if (normalized === "even") return "even";
   return "weekly";
+}
+
+function calendarCellKey(day: DayName | string, minutes: number) {
+  return `${day}|${minutes}`;
+}
+
+function cellAriaLabel(day: DayName | string, minutes: number, count: number) {
+  const label = `${day} ${minutesToTime(minutes)}-${minutesToTime(minutes + 60)}`;
+  if (count === 0) return `${label}, no sessions`;
+  return `${label}, ${count} ${count === 1 ? "session" : "sessions"}`;
+}
+
+function compareCalendarRows(left: ScheduledRow, right: ScheduledRow) {
+  return (
+    timeToMinutes(left.start_time) - timeToMinutes(right.start_time) ||
+    (left.module_code ?? left.requirement_id ?? "").localeCompare(right.module_code ?? right.requirement_id ?? "")
+  );
+}
+
+function densityClass(count: number) {
+  if (count === 0) return "empty";
+  if (count === 1) return "load-1";
+  if (count === 2) return "load-2";
+  if (count <= 4) return "load-4";
+  return "load-5";
+}
+
+function shortClassType(value: string | null) {
+  const text = (value ?? "Class").trim();
+  const normalized = text.toLowerCase();
+  if (normalized.includes("lecture")) return "Lec";
+  if (normalized.includes("tutorial")) return "Tut";
+  if (normalized.includes("lab")) return "Lab";
+  if (normalized.includes("seminar")) return "Sem";
+  if (normalized.includes("workshop")) return "Wrk";
+  return text.slice(0, 4) || "Class";
+}
+
+function instructorLastName(value: string | null) {
+  const text = (value ?? "").trim();
+  if (!text) return "No instructor";
+  const parts = text.split(/\s+/);
+  return parts[parts.length - 1];
+}
+
+function programPreview(rows: ScheduledRow[]) {
+  const programmes = Array.from(new Set(rows.map((row) => row.programme).filter(Boolean).map(String)));
+  if (programmes.length <= 2) return programmes;
+  return [...programmes.slice(0, 2), `+${programmes.length - 2}`];
 }
