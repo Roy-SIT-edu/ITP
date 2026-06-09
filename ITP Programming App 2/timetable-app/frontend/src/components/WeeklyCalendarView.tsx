@@ -125,11 +125,6 @@ export default function WeeklyCalendarView({
       setActiveCellKey(null);
       return;
     }
-    if (cellRows.length === 1) {
-      onSelectSession?.(cellRows[0].session_id);
-      setActiveCellKey(null);
-      return;
-    }
     setActiveCellKey(key);
   };
 
@@ -247,7 +242,7 @@ export default function WeeklyCalendarView({
             }),
           )}
 
-          {activeCell && activeCell.rows.length > 1 && (
+          {activeCell && activeCell.rows.length > 0 && (
             <div
               className="week-calendar-popover"
               style={{
@@ -261,7 +256,7 @@ export default function WeeklyCalendarView({
                     {activeCell.day}, {formatTime(activeCell.minutes, displayOptions.showAmPm)}-
                     {formatTime(activeCell.minutes + 60, displayOptions.showAmPm)}
                   </strong>
-                  <span>{activeCell.rows.length} sessions</span>
+                  <span>{activeCell.rows.length} {activeCell.rows.length === 1 ? "session" : "sessions"}</span>
                 </div>
                 <button aria-label="Close session list" className="icon-button" type="button" onClick={() => setActiveCellKey(null)}>
                   <X size={14} />
