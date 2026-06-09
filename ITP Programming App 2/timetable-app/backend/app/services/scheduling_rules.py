@@ -23,6 +23,8 @@ from app.services.compatibility import (
     weeks_conflict,
 )
 
+LUNCH_BREAK_WINDOWS = ((11 * 60, 12 * 60), (12 * 60, 13 * 60), (13 * 60, 14 * 60))
+
 
 def candidate_slot_allowed(session: Session, slot: TimeSlot) -> bool:
     """Return whether a saved requirement can be assigned to a time slot."""
@@ -36,8 +38,6 @@ def candidate_slot_allowed(session: Session, slot: TimeSlot) -> bool:
     if slot.day == "Wednesday" and end_min > 780:
         return False
     if slot.day == "Friday" and start_min < 840 and end_min > 720:
-        return False
-    if start_min < 780 and end_min > 720:
         return False
     if slot.day == "Friday" and end_min > 1020:
         return False

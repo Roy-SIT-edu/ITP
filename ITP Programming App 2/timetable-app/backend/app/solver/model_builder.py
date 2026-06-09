@@ -21,7 +21,7 @@ from app.services.compatibility import (
     time_to_minutes,
     weeks_conflict,
 )
-from app.services.scheduling_rules import candidate_room_allowed, candidate_slot_allowed
+from app.services.scheduling_rules import LUNCH_BREAK_WINDOWS, candidate_room_allowed, candidate_slot_allowed
 
 
 @dataclass
@@ -86,6 +86,7 @@ class TimetableModelBuilder:
                 assignments,
                 lambda item: item["session"].student_group_id,
             )
+            self._add_lunch_break_constraints(model, assignments)
 
         soft_penalties = []
         for assignment in assignments:
@@ -113,6 +114,38 @@ class TimetableModelBuilder:
                         continue
                     if slot_conflicts(left["time_slot"], right["time_slot"]):
                         model.Add(left["variable"] + right["variable"] <= 1)
+
+    def _add_lunch_break_constraints(self, model: cp_model.CpModel, assignments: list[dict]) -> None:
+        group_specs = [
+            ("STAFF", lambda item: item["session"].staff_id),
+            ("GROUP", lambda item: item["session"].student_group_id),
+        ]
+        for scope, key_func in group_specs:
+            grouped: dict[tuple[int, str], list[dict]] = {}
+            for item in assignments:
+                key = key_func(item)
+                if key is None:
+                    continue
+                grouped.setdefault((key, item["time_slot"].day), []).append(item)
+
+            for (entity_id, day), items in grouped.items():
+                for week_pattern in ("Odd", "Even"):
+                    week_items = [
+                        item
+                        for item in items
+                        if weeks_conflict(item["time_slot"].week_pattern, week_pattern)
+                    ]
+                    if not week_items:
+                        continue
+
+                    free_windows = []
+                    for index, window in enumerate(LUNCH_BREAK_WINDOWS):
+                        free = model.NewBoolVar(f"lunch_free_{scope}_{entity_id}_{day}_{week_pattern}_{index}")
+                        for item in week_items:
+                            if self._slot_overlaps_window(item["time_slot"], window):
+                                model.AddImplication(free, item["variable"].Not())
+                        free_windows.append(free)
+                    model.Add(sum(free_windows) >= 1)
 
     def _single_assignment_soft_penalty(self, assignment: dict, weights: dict[str, int]) -> int:
         session = assignment["session"]
@@ -274,3 +307,9 @@ class TimetableModelBuilder:
         starts = [time_to_minutes(left.start_time) or 0, time_to_minutes(right.start_time) or 0]
         ends = [time_to_minutes(left.end_time) or 0, time_to_minutes(right.end_time) or 0]
         return max(ends) - min(starts)
+
+    def _slot_overlaps_window(self, slot: TimeSlot, window: tuple[int, int]) -> bool:
+        start = time_to_minutes(slot.start_time) or 0
+        end = time_to_minutes(slot.end_time) or 0
+        window_start, window_end = window
+        return start < window_end and window_start < end

@@ -18,6 +18,7 @@ from app.services.compatibility import (
     time_to_minutes,
     weeks_conflict,
 )
+from app.services.scheduling_rules import LUNCH_BREAK_WINDOWS
 
 
 class ConstraintService:
@@ -65,6 +66,7 @@ class ConstraintService:
         violations: list[dict] = []
         self._hard_double_booking_checks(scheduled, violations)
         self._hard_quality_checks(scheduled, violations)
+        self._hard_lunch_break_checks(scheduled, violations)
         self._soft_checks(scheduled, violations)
         return violations
 
@@ -161,16 +163,6 @@ class ConstraintService:
                         "affected_session_ids": [item.session_id],
                     }
                 )
-            if start_min < 780 and end_min > 720:
-                if not (item.day == "Friday" and start_min < 840 and end_min > 720):
-                    violations.append(
-                        {
-                            "constraint_code": "LUNCH_BREAK_OVERLAP",
-                            "severity": "HARD",
-                            "message": f"Session {self._module_label(item)} overlaps with the 12:00-13:00 lunch break.",
-                            "affected_session_ids": [item.session_id],
-                        }
-                    )
             if item.day == "Friday" and end_min > 1020:
                 violations.append(
                     {
@@ -178,6 +170,48 @@ class ConstraintService:
                         "severity": "HARD",
                         "message": f"Session {self._module_label(item)} is scheduled on Friday after 17:00.",
                         "affected_session_ids": [item.session_id],
+                    }
+                )
+
+    def _hard_lunch_break_checks(self, scheduled: list[ScheduledSession], violations: list[dict]) -> None:
+        checks = [
+            (
+                "STAFF_LUNCH_BREAK",
+                lambda item: item.staff_id,
+                lambda item: f"Staff {item.session.staff.staff_name if item.session.staff else item.staff_id}",
+            ),
+            (
+                "STUDENT_GROUP_LUNCH_BREAK",
+                lambda item: item.session.student_group_id,
+                lambda item: f"Student group {item.session.student_group.group_code if item.session.student_group else item.session.student_group_id}",
+            ),
+        ]
+        for code, key_func, label_func in checks:
+            grouped: dict[tuple[int, str, str], list[ScheduledSession]] = {}
+            for item in scheduled:
+                key = key_func(item)
+                if key is None:
+                    continue
+                for week_pattern in ("Odd", "Even"):
+                    if weeks_conflict(item.week_pattern, week_pattern):
+                        grouped.setdefault((key, item.day, week_pattern), []).append(item)
+
+            for (_, day, week_pattern), items in grouped.items():
+                if self._has_lunch_break(items):
+                    continue
+                affected = sorted(
+                    {
+                        item.session_id
+                        for item in items
+                        if self._scheduled_overlaps_window(item, (11 * 60, 14 * 60))
+                    }
+                )
+                violations.append(
+                    {
+                        "constraint_code": code,
+                        "severity": "HARD",
+                        "message": f"{label_func(items[0])} has no 1-hour lunch break between 11:00 and 14:00 on {day} ({week_pattern} weeks).",
+                        "affected_session_ids": affected or [item.session_id for item in items],
                     }
                 )
 
@@ -354,3 +388,15 @@ class ConstraintService:
     def _module_label(self, item: ScheduledSession) -> str:
         module = item.session.module.module_code if item.session.module else item.session.requirement_id
         return module or f"session {item.session_id}"
+
+    def _has_lunch_break(self, items: list[ScheduledSession]) -> bool:
+        for window in LUNCH_BREAK_WINDOWS:
+            if all(not self._scheduled_overlaps_window(item, window) for item in items):
+                return True
+        return False
+
+    def _scheduled_overlaps_window(self, item: ScheduledSession, window: tuple[int, int]) -> bool:
+        start = time_to_minutes(item.start_time) or 0
+        end = time_to_minutes(item.end_time) or 0
+        window_start, window_end = window
+        return start < window_end and window_start < end
