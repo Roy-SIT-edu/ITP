@@ -35,15 +35,18 @@ export default function TimetableGrid({
   onChangeMove,
   onSaveMove,
 }: Props) {
+  const slots = useMemo(() => buildPlannerSlots(rows, timeSlots), [rows, timeSlots]);
+  const grouped = useMemo(() => groupRowsBySlot(rows, slots), [rows, slots]);
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(rows[0]?.session_id ?? null);
-  const [selectedSlotKey, setSelectedSlotKey] = useState<string | null>(rows[0] ? slotKey(rows[0]) : null);
+  const [selectedSlotKey, setSelectedSlotKey] = useState<string | null>(rows[0] ? getFirstOverlapKey(rows[0], slots) : null);
+  const [isPlacing, setIsPlacing] = useState(false);
   const selectedRow = useMemo(
     () => rows.find((row) => row.session_id === selectedSessionId) ?? rows[0] ?? null,
     [rows, selectedSessionId],
   );
   const selectedSlotRows = useMemo(
-    () => rows.filter((row) => slotKey(row) === selectedSlotKey),
-    [rows, selectedSlotKey],
+    () => grouped.get(selectedSlotKey ?? "") ?? [],
+    [grouped, selectedSlotKey],
   );
 
   useEffect(() => {
@@ -55,10 +58,10 @@ export default function TimetableGrid({
     if (!rows.some((row) => row.session_id === selectedSessionId)) {
       setSelectedSessionId(rows[0].session_id);
     }
-    if (!rows.some((row) => slotKey(row) === selectedSlotKey)) {
-      setSelectedSlotKey(slotKey(rows[0]));
+    if (!selectedSlotKey || !grouped.has(selectedSlotKey)) {
+      setSelectedSlotKey(getFirstOverlapKey(rows[0], slots));
     }
-  }, [rows, selectedSessionId, selectedSlotKey]);
+  }, [grouped, rows, selectedSessionId, selectedSlotKey, slots]);
 
   if (editable) {
     return (
@@ -66,11 +69,39 @@ export default function TimetableGrid({
         <div className="timetable-board-panel">
           <TimetablePlanner
             rows={rows}
+            slots={slots}
+            grouped={grouped}
             selectedSlotKey={selectedSlotKey}
+            isPlacing={isPlacing}
             timeSlots={timeSlots}
+            selectedSessionDraft={selectedSessionId && moveDrafts[selectedSessionId] ? moveDrafts[selectedSessionId] : undefined}
             onSelectSlot={(key, slotRows) => {
-              setSelectedSlotKey(key);
-              setSelectedSessionId(slotRows[0]?.session_id ?? null);
+              if (isPlacing && selectedRow) {
+                const [day, startTime, endTime] = key.split("|");
+                const draft = moveDrafts[selectedRow.session_id] ?? {
+                  day: selectedRow.day,
+                  start_time: selectedRow.start_time,
+                  end_time: selectedRow.end_time,
+                  room_code: selectedRow.room,
+                };
+                const rowDuration = duration(selectedRow);
+                const matchingSlot = timeSlots.find(
+                  (slot) => slot.day === day && slot.start_time === startTime && slot.duration_minutes === rowDuration,
+                );
+                onChangeMove?.(selectedRow.session_id, {
+                  ...draft,
+                  day,
+                  start_time: startTime,
+                  end_time: matchingSlot ? matchingSlot.end_time : endTime,
+                });
+                setIsPlacing(false);
+                setSelectedSlotKey(key);
+                return;
+              }
+              if (slotRows.length > 0) {
+                setSelectedSlotKey(key);
+                setSelectedSessionId(slotRows[0].session_id);
+              }
             }}
           />
         </div>
@@ -87,6 +118,8 @@ export default function TimetableGrid({
           savingMove={savingMove}
           onChangeMove={onChangeMove}
           onSaveMove={onSaveMove}
+          isPlacing={isPlacing}
+          setIsPlacing={setIsPlacing}
         />
       </div>
     );
@@ -94,7 +127,7 @@ export default function TimetableGrid({
 
   return (
     <>
-      <TimetablePlanner rows={rows} timeSlots={timeSlots} />
+      <TimetablePlanner rows={rows} slots={slots} grouped={grouped} timeSlots={timeSlots} />
 
       <div className="table-wrap">
         <table>
@@ -152,18 +185,22 @@ export default function TimetableGrid({
 
 function TimetablePlanner({
   rows,
-  timeSlots = [],
+  slots,
+  grouped,
   selectedSlotKey,
+  isPlacing,
+  selectedSessionDraft,
   onSelectSlot,
 }: {
   rows: ScheduledRow[];
-  timeSlots?: TimeSlot[];
+  slots: { key: string; start_time: string; end_time: string; label: string }[];
+  grouped: Map<string, ScheduledRow[]>;
   selectedSlotKey?: string | null;
+  isPlacing?: boolean;
+  timeSlots?: TimeSlot[];
+  selectedSessionDraft?: MoveDraft;
   onSelectSlot?: (key: string, rows: ScheduledRow[]) => void;
 }) {
-  const slots = buildPlannerSlots(rows, timeSlots);
-  const grouped = groupRowsBySlot(rows);
-
   return (
     <div className="planner-shell">
       <div className="planner-grid" role="grid" aria-label="Timetable planner summary">
@@ -181,10 +218,15 @@ function TimetablePlanner({
               const slotRows = grouped.get(key) ?? [];
               const selected = key === selectedSlotKey;
               const count = slotRows.length;
+              const draftSelected =
+                selectedSessionDraft?.day === day &&
+                selectedSessionDraft.start_time &&
+                selectedSessionDraft.end_time &&
+                intervalsOverlap(slot.start_time, slot.end_time, selectedSessionDraft.start_time, selectedSessionDraft.end_time);
               return (
                 <button
-                  className={`planner-cell ${count ? heatClass(count) : "empty"} ${selected ? "selected" : ""}`}
-                  disabled={!count && !onSelectSlot}
+                  className={`planner-cell ${count ? heatClass(count) : "empty"} ${selected ? "selected" : ""} ${isPlacing ? "placing-mode" : ""} ${draftSelected ? "highlight-draft" : ""}`}
+                  disabled={!count && !onSelectSlot && !isPlacing}
                   key={key}
                   onClick={() => onSelectSlot?.(key, slotRows)}
                   type="button"
@@ -202,11 +244,20 @@ function TimetablePlanner({
         ))}
       </div>
       <div className="planner-legend">
-        <span><i className="load-0" />0</span>
-        <span><i className="load-1" />1</span>
-        <span><i className="load-2" />2</span>
-        <span><i className="load-4" />3-4</span>
-        <span><i className="load-5" />5+</span>
+        <div className="legend-group">
+          <span className="legend-title">Density:</span>
+          <span><i className="load-0" />0</span>
+          <span><i className="load-1" />1</span>
+          <span><i className="load-2" />2</span>
+          <span><i className="load-4" />3-4</span>
+          <span><i className="load-5" />5+</span>
+        </div>
+        {isPlacing && (
+          <div className="legend-group">
+            <span className="legend-title">Placement:</span>
+            <span><i className="legend-draft" />Draft Move</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -265,6 +316,8 @@ function SelectedSessionEditor({
   savingMove,
   onChangeMove,
   onSaveMove,
+  isPlacing,
+  setIsPlacing,
 }: {
   row: ScheduledRow | null;
   rooms: Room[];
@@ -273,6 +326,8 @@ function SelectedSessionEditor({
   savingMove: number | null;
   onChangeMove?: (sessionId: number, value: MoveDraft) => void;
   onSaveMove?: (row: ScheduledRow) => void;
+  isPlacing: boolean;
+  setIsPlacing: (value: boolean) => void;
 }) {
   if (!row) {
     return (
@@ -323,6 +378,8 @@ function SelectedSessionEditor({
           saving={savingMove === row.session_id}
           onChange={(value) => onChangeMove?.(row.session_id, value)}
           onSave={() => onSaveMove?.(row)}
+          isPlacing={isPlacing}
+          setIsPlacing={setIsPlacing}
         />
       </div>
     </section>
@@ -337,6 +394,8 @@ function MoveControls({
   saving,
   onChange,
   onSave,
+  isPlacing,
+  setIsPlacing,
 }: {
   row: ScheduledRow;
   rooms: Room[];
@@ -345,20 +404,12 @@ function MoveControls({
   saving: boolean;
   onChange: (value: MoveDraft) => void;
   onSave: () => void;
+  isPlacing?: boolean;
+  setIsPlacing?: (value: boolean) => void;
 }) {
-<<<<<<< Updated upstream
   const draft = value ?? { day: row.day, start_time: row.start_time, end_time: row.end_time, room_code: row.room };
   const rowDuration = duration(row);
   const matchingSlots = timeSlots.filter((slot) => slot.day === draft.day && slot.duration_minutes === rowDuration);
-=======
-  const sessionId = "session_id" in row ? row.session_id : row.id;
-  const draft = value ?? { 
-    day: "day" in row ? row.day : "", 
-    start_time: "start_time" in row ? row.start_time : "", 
-    end_time: "end_time" in row ? row.end_time : "", 
-    room_code: "room" in row ? row.room : ""
-  };
->>>>>>> Stashed changes
 
   const update = (patch: Partial<typeof draft>) => {
     const next = { ...draft, ...patch };
@@ -373,68 +424,63 @@ function MoveControls({
 
   return (
     <div className="move-controls">
-<<<<<<< Updated upstream
-      <select value={draft.day} onChange={(event) => update({ day: event.target.value })}>
-        {days.map((day) => (
-          <option key={day} value={day}>
-            {day}
-          </option>
-        ))}
-      </select>
-      <select value={draft.start_time} onChange={(event) => update({ start_time: event.target.value })}>
-        {matchingSlots.map((slot) => (
-          <option key={`${slot.day}-${slot.start_time}-${slot.end_time}`} value={slot.start_time}>
-            {slot.start_time}-{slot.end_time}
-          </option>
-        ))}
-      </select>
-      <input
-        list={`room-options-${row.session_id}`}
-        value={draft.room_code}
-        onChange={(event) => update({ room_code: event.target.value })}
-        placeholder="Search room"
-      />
-      <datalist id={`room-options-${row.session_id}`}>
-=======
       <div className="move-controls-header">
         <div>
           <strong>Move session</strong>
           <span>
-            {draft.day || "Choose a day"}, {draft.start_time || "--"}-{draft.end_time || "--"}
+            {draft.day}, {draft.start_time}-{draft.end_time}
           </span>
         </div>
-        <button 
-          className={`button slim ${isPlacing ? 'primary' : 'secondary'}`} 
-          onClick={() => setIsPlacing(!isPlacing)}
-          type="button"
-        >
-          {isPlacing ? "Cancel Selection" : "Pick Time"}
-        </button>
+        {setIsPlacing && (
+          <button
+            className={`button slim ${isPlacing ? "primary" : "secondary"}`}
+            onClick={() => setIsPlacing(!isPlacing)}
+            type="button"
+          >
+            {isPlacing ? "Cancel Selection" : "Pick Time"}
+          </button>
+        )}
       </div>
-      <label className="move-field">
-        <span>Room</span>
-        <input
-          list={`room-options-${sessionId}`}
-          value={draft.room_code || ""}
-          onChange={(event) => update({ room_code: event.target.value })}
-          placeholder="Leave empty to auto-assign"
-        />
-      </label>
-      <datalist id={`room-options-${sessionId}`}>
->>>>>>> Stashed changes
+      <div className="move-control-fields">
+        <label className="move-field">
+          <span>Day</span>
+          <select value={draft.day} onChange={(event) => update({ day: event.target.value })}>
+            {days.map((day) => (
+              <option key={day} value={day}>
+                {day}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="move-field">
+          <span>Time</span>
+          <select value={draft.start_time} onChange={(event) => update({ start_time: event.target.value })}>
+            {matchingSlots.map((slot) => (
+              <option key={`${slot.day}-${slot.start_time}-${slot.end_time}`} value={slot.start_time}>
+                {slot.start_time}-{slot.end_time}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="move-field">
+          <span>Room</span>
+          <input
+            list={`room-options-${row.session_id}`}
+            value={draft.room_code}
+            onChange={(event) => update({ room_code: event.target.value })}
+            placeholder="Leave empty to auto-assign"
+          />
+        </label>
+      </div>
+      <datalist id={`room-options-${row.session_id}`}>
         {rooms.map((room) => (
           <option key={room.id} value={room.room_code}>
             {room.room_code}
           </option>
         ))}
       </datalist>
-<<<<<<< Updated upstream
-      <button className="button secondary slim" disabled={saving} type="button" onClick={onSave}>
-        {saving ? "Saving" : "Move"}
-=======
-      <button className="button primary slim" disabled={saving} type="button" onClick={() => { setIsPlacing(false); onSave(); }}>
+      <button className="button primary slim" disabled={saving} type="button" onClick={() => { setIsPlacing?.(false); onSave(); }}>
         {saving ? "Saving" : "Save Move"}
->>>>>>> Stashed changes
       </button>
     </div>
   );
@@ -446,42 +492,67 @@ function duration(row: ScheduledRow) {
   return endHour * 60 + endMinute - (startHour * 60 + startMinute);
 }
 
-function slotKey(row: ScheduledRow) {
+function buildPlannerSlots(rows: ScheduledRow[], timeSlots: TimeSlot[]) {
+  let minHour = 9;
+  let maxHour = 17;
+  const allTimes = [
+    ...timeSlots.flatMap((slot) => [slot.start_time, slot.end_time]),
+    ...rows.flatMap((row) => [row.start_time, row.end_time]),
+  ];
+
+  allTimes.forEach((time) => {
+    if (!time) return;
+    const [hourText, minuteText] = time.split(":");
+    const hour = Number(hourText);
+    const minute = Number(minuteText || 0);
+    if (Number.isNaN(hour)) return;
+    minHour = Math.min(minHour, hour);
+    maxHour = Math.max(maxHour, minute > 0 ? hour + 1 : hour);
+  });
+
+  const slots = [];
+  for (let hour = minHour; hour < maxHour; hour += 1) {
+    const start = `${String(hour).padStart(2, "0")}:00`;
+    const end = `${String(hour + 1).padStart(2, "0")}:00`;
+    slots.push({
+      key: `${start}|${end}`,
+      start_time: start,
+      end_time: end,
+      label: `${start}-${end}`,
+    });
+  }
+  return slots;
+}
+
+function getFirstOverlapKey(row: ScheduledRow, plannerSlots: { start_time: string; end_time: string }[]) {
+  for (const slot of plannerSlots) {
+    if (intervalsOverlap(row.start_time, row.end_time, slot.start_time, slot.end_time)) {
+      return `${row.day}|${slot.start_time}|${slot.end_time}`;
+    }
+  }
   return `${row.day}|${row.start_time}|${row.end_time}`;
 }
 
-function groupRowsBySlot(rows: ScheduledRow[]) {
-  return rows.reduce<Map<string, ScheduledRow[]>>((current, row) => {
-    const key = slotKey(row);
-    current.set(key, [...(current.get(key) ?? []), row]);
-    return current;
-  }, new Map());
+function groupRowsBySlot(rows: ScheduledRow[], plannerSlots: { start_time: string; end_time: string }[]) {
+  const map = new Map<string, ScheduledRow[]>();
+  rows.forEach((row) => {
+    plannerSlots.forEach((slot) => {
+      if (intervalsOverlap(row.start_time, row.end_time, slot.start_time, slot.end_time)) {
+        const key = `${row.day}|${slot.start_time}|${slot.end_time}`;
+        map.set(key, [...(map.get(key) ?? []), row]);
+      }
+    });
+  });
+  return map;
 }
 
-function buildPlannerSlots(rows: ScheduledRow[], timeSlots: TimeSlot[]) {
-  const keyedSlots = new Map<string, { key: string; start_time: string; end_time: string; label: string }>();
+function timeToMinutes(timeStr: string) {
+  const [hour, minute] = timeStr.split(":").map(Number);
+  return hour * 60 + (minute || 0);
+}
 
-  timeSlots.forEach((slot) => {
-    const key = `${slot.start_time}|${slot.end_time}`;
-    keyedSlots.set(key, {
-      key,
-      start_time: slot.start_time,
-      end_time: slot.end_time,
-      label: `${slot.start_time}-${slot.end_time}`,
-    });
-  });
-
-  rows.forEach((row) => {
-    const key = `${row.start_time}|${row.end_time}`;
-    keyedSlots.set(key, {
-      key,
-      start_time: row.start_time,
-      end_time: row.end_time,
-      label: `${row.start_time}-${row.end_time}`,
-    });
-  });
-
-  return Array.from(keyedSlots.values()).sort((left, right) => left.start_time.localeCompare(right.start_time));
+function intervalsOverlap(startA: string, endA: string, startB: string, endB: string) {
+  return timeToMinutes(startA) < timeToMinutes(endB) && timeToMinutes(startB) < timeToMinutes(endA);
 }
 
 function heatClass(value: number) {

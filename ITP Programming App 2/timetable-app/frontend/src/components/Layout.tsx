@@ -29,8 +29,6 @@ const databaseItems = [
   { id: "database-staff", label: "Staff" },
   { id: "database-programmes", label: "Programmes" },
   { id: "database-modules", label: "Modules" },
-  { id: "database-student-groups", label: "Student Groups" },
-  { id: "database-time-slots", label: "Time Slots" },
 ];
 
 const workflowItems = [

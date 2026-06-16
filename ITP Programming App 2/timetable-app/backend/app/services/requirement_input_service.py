@@ -440,8 +440,7 @@ class RequirementInputService:
         return group
 
     def _generated_group_code(self, programme_code: str, year: int, class_size: int, requirement_id: str | None) -> str:
-        key = re.sub(r"[^A-Za-z0-9]+", "-", requirement_id or "REQ").strip("-").upper()
-        return f"{programme_code.upper()}-Y{year}-SZ{class_size}-{key}"
+        return f"{programme_code.upper()}-Y{year}"
 
     def _staff_assignments(
         self,

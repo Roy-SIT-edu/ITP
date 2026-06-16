@@ -100,10 +100,13 @@ def test_raw_data_workbook_seeds_matching_reference_tables(tmp_path):
     SessionLocal, engines = create_session_factory(data_dir)
     db = SessionLocal()
     try:
-        assert db.query(Room).filter_by(room_code="E2-01-01-Lectorial 6").one().recording_available is True
+        room = db.query(Room).filter_by(room_code="E2-01-01").one()
+        assert room.room_name == "Lectorial 6"
+        assert room.recording_available is True
         assert db.query(Module).filter_by(module_code="AAI1001").one().module_host_key == "AAI1001-2520-ICT-UGRD-PU"
         assert db.query(Staff).filter_by(staff_id="A102199").one().staff_name == "AFIFAH BINTE ABDUL RAHMAN"
         assert {item.code for item in db.query(Programme).all()} >= {"ACC", "ASE", "DSC"}
+        assert db.query(Programme).filter_by(code="DSC").one().name == "Digital Supply Chain"
     finally:
         db.close()
         dispose_engines(engines)
@@ -124,6 +127,27 @@ def test_database_current_workbook_contains_live_data(tmp_path):
     frame = pd.read_excel(BytesIO(response.content))
     assert "room_code" in frame.columns
     assert "SR-01" in set(frame["room_code"])
+
+
+def test_staff_database_hides_duplicate_host_key(tmp_path):
+    db, engine = _route_db(tmp_path)
+    client = _client_for(db)
+    try:
+        types_response = client.get("/api/database/types")
+        staff_type = next(item for item in types_response.json() if item["id"] == "staff")
+        assert [column["key"] for column in staff_type["columns"]] == ["id", "staff_id", "staff_name"]
+
+        rows_response = client.get("/api/database/staff")
+        assert "staff_host_key" not in rows_response.json()[0]
+
+        workbook_response = client.get("/api/database/staff/current.xlsx")
+    finally:
+        app.dependency_overrides.clear()
+        db.close()
+        engine.dispose()
+
+    frame = pd.read_excel(BytesIO(workbook_response.content))
+    assert "staff_host_key" not in frame.columns
 
 
 def test_replace_upload_success_and_validation_rollback(tmp_path):

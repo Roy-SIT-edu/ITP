@@ -80,8 +80,8 @@ DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
         model=Room,
         columns=(
             ColumnSpec("id", "ID", "number", read_only=True),
-            ColumnSpec("room_code", "Room Code", required=True, aliases=("Location Name",)),
-            ColumnSpec("room_name", "Room Name", required=True, aliases=("Location Description",)),
+            ColumnSpec("room_code", "Address", required=True, aliases=("Location Name",)),
+            ColumnSpec("room_name", "Room Code", required=True, aliases=("Location Description",)),
             ColumnSpec("room_type", "Room Type", required=True, aliases=("Resource Type",)),
             ColumnSpec("capacity", "Capacity", "number", required=True),
             ColumnSpec("is_virtual", "Virtual", "boolean"),
@@ -100,7 +100,6 @@ DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
             ColumnSpec("id", "ID", "number", read_only=True),
             ColumnSpec("staff_id", "Staff ID", required=True, aliases=("Host Key",)),
             ColumnSpec("staff_name", "Staff Name", required=True, aliases=("Name",)),
-            ColumnSpec("staff_host_key", "Host Key", aliases=("Staff ID",)),
         ),
         key_fields=("staff_id",),
         serializer=staff_to_dict,
@@ -206,6 +205,8 @@ DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
     ),
 }
 
+ADMIN_DATABASE_TYPE_IDS = ("rooms", "staff", "programmes", "modules")
+
 
 class DatabaseService:
     def types(self) -> list[dict]:
@@ -224,7 +225,7 @@ class DatabaseService:
                     for column in config.columns
                 ],
             }
-            for config in DATABASE_TYPES.values()
+            for config in (DATABASE_TYPES[data_type] for data_type in ADMIN_DATABASE_TYPE_IDS)
         ]
 
     def list_rows(self, db: DbSession, data_type: str) -> list[dict]:
@@ -386,6 +387,9 @@ class DatabaseService:
                     raise ValueError("End time must be after start time.")
                 data["duration_minutes"] = data.get("duration_minutes") or end - start
         elif config.id == "rooms":
+            room_address, room_name = self._split_room_location(data.get("room_code"))
+            data["room_code"] = room_address
+            data["room_name"] = room_name if room_name != room_address else data.get("room_name")
             is_virtual = "virtual" in (data.get("room_type") or "").lower()
             data["is_virtual"] = data.get("is_virtual") if data.get("is_virtual") is not None else is_virtual
             data["campus_mode"] = data.get("campus_mode") or ("Virtual" if data["is_virtual"] else "Physical")
@@ -396,6 +400,15 @@ class DatabaseService:
         elif config.id == "modules":
             data["module_title"] = data.get("module_title") or data.get("module_code")
         return data
+
+    def _split_room_location(self, room_code: str | None) -> tuple[str | None, str | None]:
+        text = clean_text(room_code)
+        if not text:
+            return None, None
+        match = re.match(r"^([A-Za-z0-9]+-[A-Za-z0-9]+-\d{2})-(.+)$", text)
+        if not match:
+            return text, text
+        return match.group(1), match.group(2).strip()
 
     def _coerce_requirement(self, db: DbSession, data: dict) -> dict:
         programme = self._lookup_programme(db, clean_text(data.pop("programme", None)))

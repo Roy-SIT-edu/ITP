@@ -3,7 +3,7 @@
  * Renders any configured split database type as a searchable, editable table.
  */
 
-import { Download, Edit2, Plus, RefreshCw, Save, Search, Trash2, Upload, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Download, Edit2, Plus, RefreshCw, Save, Search, Trash2, Upload, X } from "lucide-react";
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   createDatabaseRow,
@@ -20,6 +20,11 @@ import type { DatabaseColumn, DatabaseRow, DatabaseTypeInfo, UploadSummary } fro
 type Props = {
   dataType: string;
 };
+
+type SortState = {
+  key: string;
+  direction: "asc" | "desc";
+} | null;
 
 const fallbackLabels: Record<string, string> = {
   rooms: "Rooms",
@@ -47,6 +52,23 @@ function buildBlankDraft(columns: DatabaseColumn[]) {
   return Object.fromEntries(columns.filter((column) => !column.read_only).map((column) => [column.key, initialValue(column)]));
 }
 
+function compareRows(left: DatabaseRow, right: DatabaseRow, column: DatabaseColumn, direction: "asc" | "desc") {
+  const modifier = direction === "asc" ? 1 : -1;
+  const leftValue = left[column.key];
+  const rightValue = right[column.key];
+
+  if (leftValue === null || leftValue === undefined || leftValue === "") return rightValue === null || rightValue === undefined || rightValue === "" ? 0 : 1;
+  if (rightValue === null || rightValue === undefined || rightValue === "") return -1;
+
+  if (column.kind === "number") {
+    return (Number(leftValue) - Number(rightValue)) * modifier;
+  }
+  if (column.kind === "boolean") {
+    return (Number(Boolean(leftValue)) - Number(Boolean(rightValue))) * modifier;
+  }
+  return String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true, sensitivity: "base" }) * modifier;
+}
+
 export default function DatabasePage({ dataType }: Props) {
   const [types, setTypes] = useState<DatabaseTypeInfo[]>([]);
   const [rows, setRows] = useState<DatabaseRow[]>([]);
@@ -61,6 +83,7 @@ export default function DatabasePage({ dataType }: Props) {
   const [success, setSuccess] = useState<string | null>(null);
   const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
   const [showUploadWarning, setShowUploadWarning] = useState(false);
+  const [sort, setSort] = useState<SortState>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const config = types.find((item) => item.id === dataType);
@@ -88,6 +111,7 @@ export default function DatabasePage({ dataType }: Props) {
     setDraft({});
     setNewDraft({});
     setSearch("");
+    setSort(null);
     setUploadSummary(null);
     setSuccess(null);
     load();
@@ -102,9 +126,20 @@ export default function DatabasePage({ dataType }: Props) {
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return rows;
-    return rows.filter((row) => columns.some((column) => displayValue(row[column.key]).toLowerCase().includes(query)));
-  }, [columns, rows, search]);
+    const matches = query ? rows.filter((row) => columns.some((column) => displayValue(row[column.key]).toLowerCase().includes(query))) : rows;
+    if (!sort) return matches;
+    const column = columns.find((item) => item.key === sort.key);
+    if (!column) return matches;
+    return [...matches].sort((left, right) => compareRows(left, right, column, sort.direction));
+  }, [columns, rows, search, sort]);
+
+  const toggleSort = (column: DatabaseColumn) => {
+    setSort((previous) => {
+      if (previous?.key !== column.key) return { key: column.key, direction: "asc" };
+      if (previous.direction === "asc") return { key: column.key, direction: "desc" };
+      return null;
+    });
+  };
 
   const beginEdit = (row: DatabaseRow) => {
     setEditingId(row.id);
@@ -353,7 +388,22 @@ export default function DatabasePage({ dataType }: Props) {
             <tr>
               <th className="action-col">Actions</th>
               {columns.map((column) => (
-                <th key={column.key}>{column.label}</th>
+                <th key={column.key}>
+                  <button
+                    aria-label={`Sort by ${column.label}`}
+                    aria-pressed={sort?.key === column.key}
+                    className="table-sort-button"
+                    onClick={() => toggleSort(column)}
+                    type="button"
+                  >
+                    <span>{column.label}</span>
+                    {sort?.key === column.key ? (
+                      sort.direction === "asc" ? <ArrowUp size={13} /> : <ArrowDown size={13} />
+                    ) : (
+                      <ArrowUpDown size={13} />
+                    )}
+                  </button>
+                </th>
               ))}
             </tr>
           </thead>

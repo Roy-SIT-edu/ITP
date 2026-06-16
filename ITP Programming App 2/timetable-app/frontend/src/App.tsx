@@ -20,8 +20,6 @@ const routeMap = {
   "database-staff": () => <DatabasePage dataType="staff" />,
   "database-programmes": () => <DatabasePage dataType="programmes" />,
   "database-modules": () => <DatabasePage dataType="modules" />,
-  "database-student-groups": () => <DatabasePage dataType="student-groups" />,
-  "database-time-slots": () => <DatabasePage dataType="time-slots" />,
   validation: ValidationPage,
   "soft-constraints": SoftConstraintsPage,
   review: TimetableReviewPage,

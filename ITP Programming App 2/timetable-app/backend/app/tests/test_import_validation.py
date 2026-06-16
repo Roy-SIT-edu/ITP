@@ -101,7 +101,7 @@ def test_two_tab_template_imports_with_defaults_and_generated_group(db_session, 
     assert summary["rows_imported"] == 1
     assert session.module.module_code == "NEW1001"
     assert db_session.query(Module).filter_by(module_code="NEW1001").one()
-    assert session.student_group.group_code.startswith("DSC-Y2-SZ40-REQ-NEW-001")
+    assert session.student_group.group_code == "DSC-Y2"
     assert session.scheduling_type == "Flexible"
     assert session.week_pattern == "Weekly"
     assert session.start_week == 1

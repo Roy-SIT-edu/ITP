@@ -15,6 +15,15 @@ type Props = {
 
 const refreshEventName = "workflow-progress-refresh";
 
+type ProcessStage = {
+  id: string;
+  step?: number;
+  label: string;
+  detail: string;
+  state: string;
+  locked: boolean;
+};
+
 export function notifyWorkflowProgressChange() {
   window.dispatchEvent(new Event(refreshEventName));
 }
@@ -47,7 +56,7 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
   const generationClear = !!latest && latest.status !== "FAILED";
   const success = !!latest && latest.status === "COMPLETED" && latest.hard_violation_count === 0;
 
-  const processStages = [
+  const processStages: ProcessStage[] = [
     {
       id: "upload",
       label: "Import Data",
@@ -56,7 +65,6 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
       locked: false,
     },
     {
-<<<<<<< Updated upstream
       id: "validation",
       step: 2,
       label: "Validate Data",
@@ -66,12 +74,6 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
           : `${dashboard?.validation.error_count ?? 0} errors`
         : "Not run",
       state: validationClear ? "complete" : validationRan ? "attention" : "pending",
-=======
-      id: "soft-constraints",
-      label: "Priorities",
-      detail: hasImport ? "Rank soft constraints" : "Import first",
-      state: hasImport ? "complete" : "pending",
->>>>>>> Stashed changes
       locked: !hasImport,
     },
     {
@@ -84,10 +86,7 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
     },
     {
       id: "review",
-<<<<<<< Updated upstream
       step: 4,
-=======
->>>>>>> Stashed changes
       label: "Review Timetable",
       detail: generationRan ? latest?.solver_status ?? latest?.status ?? "Review schedule" : "Generate first",
       state: generationClear ? "complete" : generationRan ? "attention" : "pending",
@@ -95,46 +94,64 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
     },
     {
       id: "export",
-<<<<<<< Updated upstream
       step: 5,
-=======
->>>>>>> Stashed changes
       label: "Export Timetable",
       detail: success ? "Ready to export" : latest ? `${latest.hard_violation_count} hard conflicts` : "Review first",
       state: success ? "complete" : latest ? "attention" : "pending",
       locked: !generationRan,
     },
   ];
+  const activeIndex = processStages.findIndex((stage) => stage.id === route);
+  const activeStage = activeIndex >= 0 ? processStages[activeIndex] : null;
+  const nextStage = processStages.find((stage, index) => index > activeIndex && !stage.locked) ?? null;
 
   return (
-    <nav className="workflow-stepper" aria-label="Scheduling workflow">
-      {processStages.map((stage, index) => {
-        const active = route === stage.id;
-        return (
-          <div className={`workflow-stage ${stage.state} ${active ? "active" : ""} ${stage.locked ? "locked" : ""}`} key={stage.id}>
-            <a
-              aria-current={active ? "page" : undefined}
-              aria-disabled={stage.locked}
-              className="workflow-step-link"
-              href={`#${stage.id}`}
-              onClick={(event) => {
-                if (stage.locked) {
-                  event.preventDefault();
-                  return;
-                }
-                onNavigate(stage.id);
-              }}
-              title={stage.locked ? stage.detail : undefined}
-            >
-              <div>
-                <strong>{stage.label}</strong>
-                <span>{error ? "Unable to refresh" : stage.detail}</span>
-              </div>
-            </a>
-            {index < processStages.length - 1 && <div className={`workflow-line ${stage.state}`} />}
-          </div>
-        );
-      })}
-    </nav>
+    <>
+      <div className="workflow-compact" aria-label="Current workflow status">
+        <div>
+          <span>Current Step</span>
+          <strong>{activeStage?.label ?? "Overview"}</strong>
+        </div>
+        <p>{error ? "Unable to refresh workflow status" : activeStage?.detail ?? "Open a workflow step to begin."}</p>
+        {nextStage && (
+          <a
+            className="button secondary slim"
+            href={`#${nextStage.id}`}
+            onClick={() => onNavigate(nextStage.id)}
+          >
+            Next: {nextStage.label}
+          </a>
+        )}
+      </div>
+      <nav className="workflow-stepper" aria-label="Scheduling workflow">
+        {processStages.map((stage, index) => {
+          const active = route === stage.id;
+          return (
+            <div className={`workflow-stage ${stage.state} ${active ? "active" : ""} ${stage.locked ? "locked" : ""}`} key={stage.id}>
+              <a
+                aria-current={active ? "page" : undefined}
+                aria-disabled={stage.locked}
+                className="workflow-step-link"
+                href={`#${stage.id}`}
+                onClick={(event) => {
+                  if (stage.locked) {
+                    event.preventDefault();
+                    return;
+                  }
+                  onNavigate(stage.id);
+                }}
+                title={stage.locked ? stage.detail : undefined}
+              >
+                <div>
+                  <strong>{stage.label}</strong>
+                  <span>{error ? "Unable to refresh" : stage.detail}</span>
+                </div>
+              </a>
+              {index < processStages.length - 1 && <div className={`workflow-line ${stage.state}`} />}
+            </div>
+          );
+        })}
+      </nav>
+    </>
   );
 }

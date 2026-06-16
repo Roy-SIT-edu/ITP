@@ -43,7 +43,6 @@ def staff_to_dict(item: Staff) -> dict:
         "id": item.id,
         "staff_name": item.staff_name,
         "staff_id": item.staff_id,
-        "staff_host_key": item.staff_host_key,
     }
 
 

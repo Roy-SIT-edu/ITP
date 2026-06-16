@@ -25,6 +25,36 @@ from app.services.compatibility import minutes_to_time
 
 DEFAULT_RAW_DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "Raw Data.xlsx"
 
+PROGRAMME_NAMES = {
+    "AAI": "Applied Artificial Intelligence",
+    "ACC": "Accountancy",
+    "ASE": "Aircraft Systems Engineering",
+    "ATM": "Aviation Management",
+    "BAC": "Applied Computing / Applied Computing (Fintech)",
+    "BICT": "Business and Infocomm Technology",
+    "CDM": "Communication and Digital Media",
+    "CEG": "Computer Engineering",
+    "CVE": "Civil Engineering",
+    "DSC": "Digital Supply Chain",
+    "EDE": "Electronics and Data Engineering",
+    "EEE": "Electrical and Electronic Engineering",
+    "EPE": "Electrical Power Engineering",
+    "ESE": "Engineering Systems",
+    "FDT": "Food Technology",
+    "HTM": "Hospitality and Tourism Management",
+    "ICT": "Information and Communications Technology - Information Security / Software Engineering",
+    "MDME": "Mechanical Design and Manufacturing Engineering",
+    "MEC": "Mechanical Engineering",
+    "METS": "Mechatronics Systems",
+    "NAME": "Naval Architecture and Marine Engineering",
+    "NUR": "Nursing",
+    "RSE": "Robotics Systems",
+    "RTY": "Radiation Therapy",
+    "SBE": "Sustainable Built Environment",
+    "SLT": "Speech and Language Therapy",
+    "TCE": "Chemical Engineering - likely TUM Chemical Engineering prefix",
+}
+
 
 def _get_or_create(db: DbSession, model, defaults: dict | None = None, **filters):
     instance = db.query(model).filter_by(**filters).first()
@@ -81,16 +111,17 @@ def seed_raw_data_workbook(db: DbSession, workbook_path: Path) -> None:
 
 def _seed_rooms(db: DbSession, frame: pd.DataFrame) -> None:
     for _, row in frame.dropna(how="all").iterrows():
-        room_code = clean_text(row.get("Location Name"))
-        if not room_code:
+        location_name = clean_text(row.get("Location Name"))
+        if not location_name:
             continue
         resource_type = clean_text(row.get("Resource Type")) or "Room"
+        room_address, room_code = _split_room_location(location_name)
         _get_or_create(
             db,
             Room,
-            room_code=room_code,
+            room_code=room_address,
             defaults={
-                "room_name": clean_text(row.get("Location Description")) or room_code,
+                "room_name": room_code,
                 "room_type": resource_type,
                 "capacity": _int_or_default(row.get("Capacity"), 0),
                 "is_virtual": "virtual" in resource_type.lower(),
@@ -98,6 +129,13 @@ def _seed_rooms(db: DbSession, frame: pd.DataFrame) -> None:
                 "recording_available": _yes_no(row.get("Recording")),
             },
         )
+
+
+def _split_room_location(location_name: str) -> tuple[str, str]:
+    match = re.match(r"^([A-Za-z0-9]+-[A-Za-z0-9]+-\d{2})-(.+)$", location_name.strip())
+    if not match:
+        return location_name, location_name
+    return match.group(1), match.group(2).strip()
 
 
 def _seed_modules(db: DbSession, frame: pd.DataFrame) -> None:
@@ -136,7 +174,15 @@ def _seed_programmes(db: DbSession, frame: pd.DataFrame) -> None:
     for _, row in frame.dropna(how="all").iterrows():
         codes.update(_programme_codes(row.get("Programmes")))
     for code in sorted(codes):
-        _get_or_create(db, Programme, code=code, defaults={"name": code, "cluster": None})
+        programme = _get_or_create(
+            db,
+            Programme,
+            code=code,
+            defaults={"name": PROGRAMME_NAMES.get(code, code), "cluster": None},
+        )
+        canonical_name = PROGRAMME_NAMES.get(code)
+        if canonical_name and programme.name != canonical_name:
+            programme.name = canonical_name
 
 
 def _programme_codes(value: object) -> set[str]:
