@@ -159,7 +159,8 @@ class ValidationService:
             for right in fixed_sessions[index + 1 :]:
                 if not fixed_sessions_conflict(left, right):
                     continue
-                if left.staff_id and left.staff_id == right.staff_id:
+                shared_staff = self._shared_staff_ids(left, right)
+                if shared_staff:
                     self._append_fixed_clash(
                         errors,
                         "STAFF_DOUBLE_BOOKING",
@@ -180,6 +181,19 @@ class ValidationService:
                         seen_pairs,
                     )
         self._fixed_room_capacity_checks(db, fixed_sessions, errors)
+
+    def _shared_staff_ids(self, left: Session, right: Session) -> set[int]:
+        return set(self._session_staff_ids(left)) & set(self._session_staff_ids(right))
+
+    def _session_staff_ids(self, session: Session) -> list[int]:
+        ids = [
+            assignment.staff_id
+            for assignment in getattr(session, "staff_assignments", []) or []
+            if assignment.staff_id is not None
+        ]
+        if not ids and session.staff_id is not None:
+            ids.append(session.staff_id)
+        return ids
 
     def _fixed_room_capacity_checks(self, db: DbSession, sessions: list[Session], errors: list[dict]) -> None:
         rooms = db.query(Room).all()

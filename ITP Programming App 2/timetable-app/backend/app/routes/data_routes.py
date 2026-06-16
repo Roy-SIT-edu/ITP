@@ -15,6 +15,7 @@ from app.models.room import Room
 from app.models.schedule_run import ScheduleRun
 from app.models.scheduled_session import ScheduledSession
 from app.models.session import Session
+from app.models.session_staff import SessionStaff
 from app.models.staff import Staff
 from app.models.student_group import StudentGroup
 from app.models.time_slot import TimeSlot
@@ -28,6 +29,7 @@ from app.services.serializers import (
     session_to_dict,
     staff_to_dict,
     time_slot_to_dict,
+    session_staff_items,
 )
 from app.services.requirement_input_service import RequirementInputService, RequirementInputValidationError
 from app.services.validation_service import ValidationService
@@ -118,7 +120,6 @@ def availability(db: DbSession = Depends(get_db)):
     staff_busy: dict[str, dict] = {}
     room_busy: dict[str, dict] = {}
     for item in scheduled:
-        staff_label = item.session.staff.staff_name if item.session and item.session.staff else str(item.staff_id or "Unassigned")
         room_label = item.room.room_code if item.room else str(item.room_id)
         entry = {
             "session_id": item.session_id,
@@ -128,7 +129,12 @@ def availability(db: DbSession = Depends(get_db)):
             "start_time": item.start_time,
             "end_time": item.end_time,
         }
-        staff_busy.setdefault(staff_label, {"name": staff_label, "busy": []})["busy"].append(entry)
+        staff_items = session_staff_items(item.session) if item.session else []
+        if not staff_items:
+            staff_items = [{"staff_name": str(item.staff_id or "Unassigned"), "staff_id": None}]
+        for staff in staff_items:
+            staff_label = staff.get("staff_name") or staff.get("staff_id") or "Unassigned"
+            staff_busy.setdefault(staff_label, {"name": staff_label, "busy": []})["busy"].append(entry)
         room_busy.setdefault(room_label, {"room_code": room_label, "busy": []})["busy"].append(entry)
 
     return {
@@ -194,6 +200,7 @@ def create_session(data: SessionInput, db: DbSession = Depends(get_db)):
 @router.delete("/sessions")
 def reset_sessions(db: DbSession = Depends(get_db)):
     clear_schedule_state(db)
+    db.query(SessionStaff).delete()
     rows_deleted = db.query(Session).delete()
     db.commit()
     return {

@@ -6,6 +6,7 @@ the references exist and the row can be scheduled against current rooms/slots.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, Mapping
@@ -17,6 +18,7 @@ from app.models.module import Module
 from app.models.programme import Programme
 from app.models.room import Room
 from app.models.session import Session as RequirementSession
+from app.models.session_staff import SessionStaff
 from app.models.staff import Staff
 from app.models.student_group import StudentGroup
 from app.models.time_slot import TimeSlot
@@ -88,6 +90,7 @@ class RequirementInputService:
                 item.source_filename,
                 item.source_row_no,
                 check_existing_duplicate=False,
+                allow_reference_upsert=True,
             )
             for issue in row_errors:
                 issue["source_file"] = item.source_filename
@@ -140,6 +143,7 @@ class RequirementInputService:
             0,
             existing_session_id=existing_session_id,
             check_existing_duplicate=True,
+            allow_reference_upsert=False,
         )
         if errors:
             raise RequirementInputValidationError(errors)
@@ -151,8 +155,18 @@ class RequirementInputService:
         return session
 
     def apply_data(self, session: RequirementSession, data: dict) -> None:
+        staff_assignments = data.pop("staff_assignments", None)
         for key, value in data.items():
             setattr(session, key, value)
+        if staff_assignments is not None:
+            session.staff_assignments = [
+                SessionStaff(
+                    staff_id=item["staff_id"],
+                    staff_order=item["staff_order"],
+                    is_primary=item["is_primary"],
+                )
+                for item in staff_assignments
+            ]
 
     def has_feasible_room_for_session(self, db: DbSession, session: RequirementSession) -> bool:
         if session.exact_class_size is None:
@@ -173,6 +187,7 @@ class RequirementInputService:
         source_row_no: int,
         existing_session_id: int | None = None,
         check_existing_duplicate: bool = True,
+        allow_reference_upsert: bool = False,
     ) -> tuple[dict, list[dict]]:
         errors: list[dict] = []
 
@@ -183,25 +198,30 @@ class RequirementInputService:
             source_row_no,
             errors,
         )
-        module = self._lookup_module(
+        module = self._lookup_or_create_module(
             db,
             self._required_text(row, source_row_no, "Module Code", errors),
+            clean_text(self._value(row, "Module Host Key")),
+            clean_text(self._value(row, "Module Title")),
             source_row_no,
             errors,
+            allow_reference_upsert,
         )
-        group = self._lookup_group(
+        year = self._required_positive_int(row, source_row_no, "Year", errors)
+        exact_class_size = self._required_positive_int(row, source_row_no, "Exact Class Size", errors)
+        group = self._lookup_or_create_group(
             db,
-            self._required_text(row, source_row_no, "Student Group Code", errors),
+            clean_text(self._value(row, "Student Group Code")),
+            programme,
+            year,
+            exact_class_size,
+            requirement_id,
             source_row_no,
             errors,
+            allow_reference_upsert,
         )
-        staff = self._lookup_staff(
-            db,
-            clean_text(self._value(row, "Staff 1 ID")),
-            clean_text(self._value(row, "Staff 1 Name")),
-            source_row_no,
-            errors,
-        )
+        staff_assignments = self._staff_assignments(db, row, source_row_no, errors)
+        staff = staff_assignments[0]["staff"] if staff_assignments else None
 
         if requirement_id and check_existing_duplicate:
             self._check_existing_requirement_id(db, requirement_id, source_row_no, errors, existing_session_id)
@@ -215,7 +235,6 @@ class RequirementInputService:
                 )
             )
 
-        year = self._positive_int(self._value(row, "Year"))
         if year and group and group.year and int(group.year) != int(year):
             errors.append(
                 self._issue(
@@ -235,7 +254,6 @@ class RequirementInputService:
                 self._issue(source_row_no, "Duration", "Duration must be numeric and greater than 0.")
             )
         sessions_per_week = self._required_positive_int(row, source_row_no, "Sessions Per Week", errors)
-        exact_class_size = self._required_positive_int(row, source_row_no, "Exact Class Size", errors)
         start_week = self._required_positive_int(row, source_row_no, "Start Week", errors)
         end_week = self._required_positive_int(row, source_row_no, "End Week", errors)
         if start_week and end_week and start_week > end_week:
@@ -270,6 +288,8 @@ class RequirementInputService:
                 errors.append(
                     self._issue(source_row_no, "Campus Mode", "Face-to-face sessions cannot use virtual campus mode.")
                 )
+            if delivery_token in {"online", "asynchronous", "async"}:
+                self._ensure_virtual_room(db)
 
         if delivery_mode and campus_mode and venue_type and exact_class_size:
             if not self._has_feasible_room(db, delivery_mode, campus_mode, venue_type, exact_class_size):
@@ -291,6 +311,14 @@ class RequirementInputService:
             "module_id": module.id if module else None,
             "student_group_id": group.id if group else None,
             "staff_id": staff.id if staff else None,
+            "staff_assignments": [
+                {
+                    "staff_id": item["staff"].id,
+                    "staff_order": item["staff_order"],
+                    "is_primary": item["is_primary"],
+                }
+                for item in staff_assignments
+            ],
             "class_type": class_type,
             "delivery_mode": delivery_mode,
             "campus_mode": campus_mode,
@@ -321,6 +349,22 @@ class RequirementInputService:
         }
         return data, errors
 
+    def _ensure_virtual_room(self, db: DbSession) -> None:
+        if db.query(Room).filter(Room.is_virtual.is_(True)).first():
+            return
+        db.add(
+            Room(
+                room_code="VIRTUAL-ONLINE",
+                room_name="Virtual Online Room",
+                room_type="virtual",
+                capacity=9999,
+                is_virtual=True,
+                campus_mode="Virtual",
+                recording_available=True,
+            )
+        )
+        db.flush()
+
     def _lookup_programme(
         self,
         db: DbSession,
@@ -336,35 +380,120 @@ class RequirementInputService:
             errors.append(self._issue(source_row_no, "Programme", f"Programme '{code}' does not exist in Database > Programmes."))
         return programme
 
-    def _lookup_module(
+    def _lookup_or_create_module(
         self,
         db: DbSession,
         module_code: str | None,
+        module_host_key: str | None,
+        module_title: str | None,
         source_row_no: int,
         errors: list[dict],
+        allow_reference_upsert: bool,
     ) -> Module | None:
         if not module_code:
             return None
         module = db.query(Module).filter(func.lower(Module.module_code) == module_code.lower()).first()
         if not module:
-            errors.append(self._issue(source_row_no, "Module Code", f"Module '{module_code}' does not exist in Database > Modules."))
+            if not allow_reference_upsert:
+                errors.append(self._issue(source_row_no, "Module Code", f"Module '{module_code}' does not exist in Database > Modules."))
+                return None
+            module = Module(
+                module_code=module_code,
+                module_host_key=module_host_key,
+                module_title=module_title or module_code,
+                term=None,
+            )
+            db.add(module)
+            db.flush()
         return module
 
-    def _lookup_group(
+    def _lookup_or_create_group(
         self,
         db: DbSession,
         group_code: str | None,
+        programme: Programme | None,
+        year: int | None,
+        class_size: int | None,
+        requirement_id: str | None,
         source_row_no: int,
         errors: list[dict],
+        allow_reference_upsert: bool,
     ) -> StudentGroup | None:
-        if not group_code:
+        if not programme or not year or not class_size:
             return None
+        group_code = group_code or self._generated_group_code(programme.code, year, class_size, requirement_id)
         group = db.query(StudentGroup).filter(func.lower(StudentGroup.group_code) == group_code.lower()).first()
         if not group:
-            errors.append(
-                self._issue(source_row_no, "Student Group Code", f"Student group '{group_code}' does not exist in Database > Student Groups.")
+            if not allow_reference_upsert:
+                errors.append(
+                    self._issue(source_row_no, "Student Group Code", f"Student group '{group_code}' does not exist in Database > Student Groups.")
+                )
+                return None
+            group = StudentGroup(
+                group_code=group_code,
+                programme_id=programme.id,
+                year=year,
+                size=class_size,
             )
+            db.add(group)
+            db.flush()
         return group
+
+    def _generated_group_code(self, programme_code: str, year: int, class_size: int, requirement_id: str | None) -> str:
+        key = re.sub(r"[^A-Za-z0-9]+", "-", requirement_id or "REQ").strip("-").upper()
+        return f"{programme_code.upper()}-Y{year}-SZ{class_size}-{key}"
+
+    def _staff_assignments(
+        self,
+        db: DbSession,
+        row: Mapping[str, Any],
+        source_row_no: int,
+        errors: list[dict],
+    ) -> list[dict]:
+        assignments: list[dict] = []
+        seen_staff_ids: dict[int, int] = {}
+        for staff_order in range(1, 5):
+            id_field = f"Staff {staff_order} ID"
+            name_field = f"Staff {staff_order} Name"
+            staff_id = clean_text(self._value(row, id_field))
+            staff_name = clean_text(self._value(row, name_field))
+            if staff_order == 1 and not staff_id:
+                errors.append(self._issue(source_row_no, id_field, "Staff 1 ID is required."))
+                continue
+            if staff_order > 1 and staff_name and not staff_id:
+                errors.append(self._issue(source_row_no, id_field, f"{id_field} is required when {name_field} is filled."))
+                continue
+            if not staff_id:
+                continue
+            staff = self._lookup_staff_by_id(db, staff_id, source_row_no, id_field, errors)
+            if not staff:
+                continue
+            if staff.id in seen_staff_ids:
+                errors.append(
+                    self._issue(
+                        source_row_no,
+                        id_field,
+                        f"Duplicate staff ID '{staff_id}' also appears in Staff {seen_staff_ids[staff.id]} ID.",
+                    )
+                )
+                continue
+            seen_staff_ids[staff.id] = staff_order
+            assignments.append({"staff": staff, "staff_order": staff_order, "is_primary": staff_order == 1})
+        return assignments
+
+    def _lookup_staff_by_id(
+        self,
+        db: DbSession,
+        staff_id: str,
+        source_row_no: int,
+        field: str,
+        errors: list[dict],
+    ) -> Staff | None:
+        staff = db.query(Staff).filter(func.lower(Staff.staff_id) == staff_id.lower()).first()
+        if not staff:
+            errors.append(self._issue(source_row_no, field, f"Staff ID '{staff_id}' does not exist in Database > Staff."))
+            return None
+        return staff
 
     def _lookup_staff(
         self,
@@ -392,13 +521,7 @@ class RequirementInputService:
                 return None
 
         if staff and staff_name and staff.staff_name and staff.staff_name.lower() != staff_name.lower():
-            errors.append(
-                self._issue(
-                    source_row_no,
-                    "Staff 1 Name",
-                    f"Staff ID '{staff.staff_id}' belongs to '{staff.staff_name}', not '{staff_name}'.",
-                )
-            )
+            return staff
         return staff
 
     def _check_existing_requirement_id(

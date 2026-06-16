@@ -213,9 +213,7 @@ select {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   color: #475569;
-  display: grid;
-  gap: 8px;
-  grid-template-columns: auto minmax(0, 1fr);
+  display: block;
   min-height: 54px;
   min-width: 0;
   padding: 8px 10px;
@@ -232,7 +230,7 @@ select {
   line-height: 1.2;
 }
 
-.workflow-step-link span:not(.workflow-step-number):not(.workflow-step-icon) {
+.workflow-step-link span {
   color: #64748b;
   font-size: 11px;
   margin-top: 3px;
@@ -241,23 +239,12 @@ select {
   white-space: nowrap;
 }
 
-.workflow-step-number,
 .workflow-step-icon {
   align-items: center;
   border-radius: 8px;
   display: inline-flex;
   flex: 0 0 auto;
   justify-content: center;
-}
-
-.workflow-step-number {
-  background: #ffffff;
-  border: 1px solid #dbe3ee;
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 800;
-  height: 24px;
-  width: 24px;
 }
 
 .workflow-step-marker svg {
@@ -290,7 +277,6 @@ select {
   transform: translateY(-50%);
 }
 
-.workflow-stage.complete .workflow-step-number,
 .workflow-stage.complete .workflow-step-icon {
   background: #dcfce7;
   border-color: #86efac;
@@ -305,7 +291,6 @@ select {
   border-left-color: #22c55e;
 }
 
-.workflow-stage.attention .workflow-step-number,
 .workflow-stage.attention .workflow-step-icon {
   background: #fef3c7;
   border-color: #fcd34d;
@@ -320,7 +305,6 @@ select {
   border-left-color: #f59e0b;
 }
 
-.workflow-stage.ready .workflow-step-number,
 .workflow-stage.ready .workflow-step-icon {
   background: #e8f5f3;
   border-color: #99d5cf;
@@ -1972,8 +1956,8 @@ select {
 .selected-session-body {
   align-items: start;
   display: grid;
-  gap: 14px;
-  grid-template-columns: minmax(220px, 0.85fr) minmax(260px, 1fr) minmax(280px, 1.2fr);
+  gap: 16px;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(300px, 1fr) minmax(270px, 0.85fr);
   min-width: 0;
   padding: 14px;
 }
@@ -2022,21 +2006,79 @@ select {
 }
 
 .selected-session-panel .move-controls {
-  align-items: end;
+  align-items: stretch;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
   display: grid;
+<<<<<<< Updated upstream
   gap: 8px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   min-width: 0;
 }
 
+=======
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  padding: 12px;
+}
+
+.move-controls-header {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.move-controls-header div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.move-controls-header strong,
+.move-field span {
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.move-controls-header span {
+  color: #334155;
+  display: block;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.move-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+>>>>>>> Stashed changes
 .selected-session-panel .move-controls select,
 .selected-session-panel .move-controls input {
   width: 100%;
 }
 
+.selected-session-panel .move-controls input {
+  background: #ffffff;
+}
+
 .selected-session-panel .move-controls .button {
   min-width: 0;
+}
+
+.selected-session-panel .move-controls > .button {
   width: 100%;
+}
+
+.move-controls-header .button {
+  white-space: nowrap;
 }
 
 .day-column {
@@ -2224,6 +2266,10 @@ select {
   max-width: 860px;
 }
 
+.upload-warning-modal {
+  max-width: 560px;
+}
+
 .modal-header {
   padding: 20px 24px;
   border-bottom: 1px solid #e5e7eb;
@@ -2243,6 +2289,28 @@ select {
   display: grid;
   gap: 20px;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.upload-warning-body {
+  grid-template-columns: 1fr;
+}
+
+.upload-warning-copy {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.upload-warning-copy strong {
+  color: #92400e;
+}
+
+.upload-warning-copy span {
+  color: #713f12;
+  line-height: 1.45;
 }
 
 .modal-body label {
@@ -2446,14 +2514,6 @@ select {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .selected-session-panel .move-controls {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .selected-session-panel .move-controls .button {
-    grid-column: 1 / -1;
-  }
-
   .preference-item {
     grid-template-columns: 1fr;
   }
@@ -2612,7 +2672,7 @@ select {
     font-size: 12px;
   }
 
-  .workflow-step-link span:not(.workflow-step-number):not(.workflow-step-icon) {
+  .workflow-step-link span {
     display: none;
   }
 
@@ -2895,7 +2955,6 @@ body {
   box-shadow: var(--shadow-card);
   min-height: 68px;
   padding: 10px 12px;
-  grid-template-columns: auto minmax(0, 1fr);
 }
 
 .workflow-step-link strong {
@@ -2904,20 +2963,13 @@ body {
   font-weight: 700;
 }
 
-.workflow-step-link span:not(.workflow-step-number):not(.workflow-step-icon) {
+.workflow-step-link span {
   color: var(--color-text-secondary);
   font-size: 12px;
 }
 
-.workflow-step-number,
 .workflow-step-icon {
   border-radius: 12px;
-}
-
-.workflow-step-number {
-  background: var(--color-muted-panel);
-  border-color: var(--color-border);
-  color: var(--color-text-secondary);
 }
 
 .workflow-step-icon {
@@ -2928,14 +2980,12 @@ body {
   width: 34px;
 }
 
-.workflow-stage.complete .workflow-step-number,
 .workflow-stage.complete .workflow-step-icon {
   background: var(--color-teal-soft);
   border-color: #99f6e4;
   color: var(--color-secondary);
 }
 
-.workflow-stage.ready .workflow-step-number,
 .workflow-stage.ready .workflow-step-icon {
   background: var(--color-accent-soft);
   border-color: #c7d2fe;
@@ -3344,7 +3394,6 @@ th {
   }
 
   .workflow-step-link {
-    grid-template-columns: auto minmax(0, 1fr);
     min-height: 58px;
   }
 

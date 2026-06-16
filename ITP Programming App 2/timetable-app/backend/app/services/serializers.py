@@ -47,6 +47,31 @@ def staff_to_dict(item: Staff) -> dict:
     }
 
 
+def session_staff_items(item: Session) -> list[dict]:
+    assignments = list(getattr(item, "staff_assignments", []) or [])
+    if not assignments and item.staff:
+        return [{"staff_id": item.staff.staff_id, "staff_name": item.staff.staff_name, "is_primary": True, "staff_order": 1}]
+    return [
+        {
+            "staff_id": assignment.staff.staff_id if assignment.staff else None,
+            "staff_name": assignment.staff.staff_name if assignment.staff else None,
+            "is_primary": assignment.is_primary,
+            "staff_order": assignment.staff_order,
+        }
+        for assignment in assignments
+    ]
+
+
+def session_staff_names(item: Session) -> str | None:
+    names = [staff["staff_name"] or staff["staff_id"] for staff in session_staff_items(item) if staff["staff_name"] or staff["staff_id"]]
+    return ", ".join(names) if names else None
+
+
+def session_staff_ids(item: Session) -> str | None:
+    ids = [staff["staff_id"] for staff in session_staff_items(item) if staff["staff_id"]]
+    return ", ".join(ids) if ids else None
+
+
 def room_to_dict(item: Room) -> dict:
     return {
         "id": item.id,
@@ -80,6 +105,9 @@ def session_to_dict(item: Session) -> dict:
         "student_group_code": item.student_group.group_code if item.student_group else None,
         "staff_name": item.staff.staff_name if item.staff else None,
         "staff_id": item.staff.staff_id if item.staff else None,
+        "co_teachers": session_staff_items(item),
+        "co_teacher_names": session_staff_names(item),
+        "co_teacher_ids": session_staff_ids(item),
         "class_type": item.class_type,
         "delivery_mode": item.delivery_mode,
         "campus_mode": item.campus_mode,

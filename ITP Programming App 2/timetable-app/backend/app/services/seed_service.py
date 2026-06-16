@@ -1,11 +1,16 @@
-"""Development seed data for empty split databases.
+"""Startup seed data for empty split databases.
 
-Startup seeds minimal reference records and sample sessions only when tables are
-empty, which keeps imported user data intact.
+Reference data can be populated from the real multi-sheet raw-data workbook.
+The scheduler still needs a generated time-slot grid, but demo rooms, staff,
+modules, programmes, student groups, and sessions are intentionally not seeded.
 """
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
+import pandas as pd
 from sqlalchemy.orm import Session as DbSession
 
 from app.models.module import Module
@@ -15,7 +20,10 @@ from app.models.session import Session
 from app.models.staff import Staff
 from app.models.student_group import StudentGroup
 from app.models.time_slot import TimeSlot
+from app.services.compatibility import clean_text
 from app.services.compatibility import minutes_to_time
+
+DEFAULT_RAW_DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "Raw Data.xlsx"
 
 
 def _get_or_create(db: DbSession, model, defaults: dict | None = None, **filters):
@@ -29,45 +37,18 @@ def _get_or_create(db: DbSession, model, defaults: dict | None = None, **filters
     return instance
 
 
-def seed_defaults(db: DbSession) -> None:
-    seed_reference_data(db)
-    if db.query(Session).count() == 0:
-        seed_sample_sessions(db)
+def seed_defaults(db: DbSession, raw_data_path: Path | None = DEFAULT_RAW_DATA_PATH) -> None:
+    seed_reference_data(db, raw_data_path=raw_data_path)
     db.commit()
 
 
-def seed_reference_data(db: DbSession) -> None:
-    programmes = [
-        ("DSC", "Data Science", "Computing"),
-        ("ASE", "Applied Software Engineering", "Engineering"),
-        ("MDME", "Mechanical Design and Manufacturing Engineering", "Engineering"),
-    ]
-    for code, name, cluster in programmes:
-        _get_or_create(db, Programme, code=code, defaults={"name": name, "cluster": cluster})
+def seed_reference_data(db: DbSession, raw_data_path: Path | None = None) -> None:
+    if raw_data_path and raw_data_path.exists():
+        seed_raw_data_workbook(db, raw_data_path)
+    seed_time_slots(db)
 
-    rooms = [
-        ("VIRTUAL-ROOM-1", "Virtual Room 1", "virtual", 999, True, "Virtual", True),
-        ("SR-01", "Seminar Room 01", "classroom", 40, False, "Physical", False),
-        ("SR-02", "Seminar Room 02", "classroom", 60, False, "Physical", False),
-        ("SR-03", "Seminar Room 03", "classroom", 80, False, "Physical", False),
-        ("LAB-01", "Lab 01", "lab", 30, False, "Physical", False),
-        ("LECT-01", "Lectorial 01", "lectorial", 120, False, "Physical", True),
-    ]
-    for code, name, room_type, capacity, is_virtual, campus_mode, recording in rooms:
-        _get_or_create(
-            db,
-            Room,
-            room_code=code,
-            defaults={
-                "room_name": name,
-                "room_type": room_type,
-                "capacity": capacity,
-                "is_virtual": is_virtual,
-                "campus_mode": campus_mode,
-                "recording_available": recording,
-            },
-        )
 
+def seed_time_slots(db: DbSession) -> None:
     for day in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]:
         for week_pattern in ["Weekly", "Odd", "Even"]:
             for duration in [60, 120]:
@@ -85,7 +66,117 @@ def seed_reference_data(db: DbSession) -> None:
                     )
 
 
+def seed_raw_data_workbook(db: DbSession, workbook_path: Path) -> None:
+    """Seed supported reference tables from the raw-data workbook."""
+    with pd.ExcelFile(workbook_path) as workbook:
+        if "Campus Restrictions" in workbook.sheet_names and db.query(Room).count() == 0:
+            _seed_rooms(db, pd.read_excel(workbook, sheet_name="Campus Restrictions"))
+        if "Module Code" in workbook.sheet_names and db.query(Module).count() == 0:
+            _seed_modules(db, pd.read_excel(workbook, sheet_name="Module Code"))
+        if "Staff Information" in workbook.sheet_names and db.query(Staff).count() == 0:
+            _seed_staff(db, pd.read_excel(workbook, sheet_name="Staff Information"))
+        if "Common Modules" in workbook.sheet_names and db.query(Programme).count() == 0:
+            _seed_programmes(db, pd.read_excel(workbook, sheet_name="Common Modules"))
+
+
+def _seed_rooms(db: DbSession, frame: pd.DataFrame) -> None:
+    for _, row in frame.dropna(how="all").iterrows():
+        room_code = clean_text(row.get("Location Name"))
+        if not room_code:
+            continue
+        resource_type = clean_text(row.get("Resource Type")) or "Room"
+        _get_or_create(
+            db,
+            Room,
+            room_code=room_code,
+            defaults={
+                "room_name": clean_text(row.get("Location Description")) or room_code,
+                "room_type": resource_type,
+                "capacity": _int_or_default(row.get("Capacity"), 0),
+                "is_virtual": "virtual" in resource_type.lower(),
+                "campus_mode": "Virtual" if "virtual" in resource_type.lower() else "Physical",
+                "recording_available": _yes_no(row.get("Recording")),
+            },
+        )
+
+
+def _seed_modules(db: DbSession, frame: pd.DataFrame) -> None:
+    for _, row in frame.dropna(how="all").iterrows():
+        module_code = clean_text(row.get("Module Code"))
+        if not module_code:
+            continue
+        _get_or_create(
+            db,
+            Module,
+            module_code=module_code,
+            defaults={
+                "module_host_key": clean_text(row.get("Host Key")),
+                "module_title": module_code,
+                "term": clean_text(row.get("Term")),
+            },
+        )
+
+
+def _seed_staff(db: DbSession, frame: pd.DataFrame) -> None:
+    for _, row in frame.dropna(how="all").iterrows():
+        staff_id = clean_text(row.get("Host Key"))
+        staff_name = _clean_staff_name(row.get("Name"))
+        if not staff_id or not staff_name:
+            continue
+        _get_or_create(
+            db,
+            Staff,
+            staff_id=staff_id,
+            defaults={"staff_name": staff_name, "staff_host_key": staff_id},
+        )
+
+
+def _seed_programmes(db: DbSession, frame: pd.DataFrame) -> None:
+    codes = set()
+    for _, row in frame.dropna(how="all").iterrows():
+        codes.update(_programme_codes(row.get("Programmes")))
+    for code in sorted(codes):
+        _get_or_create(db, Programme, code=code, defaults={"name": code, "cluster": None})
+
+
+def _programme_codes(value: object) -> set[str]:
+    text = clean_text(value)
+    if not text:
+        return set()
+    cleaned = re.sub(r"\([^)]*\)", "", text)
+    cleaned = re.sub(r"\bAll programmes\b|\bexcept\b|\band\b", ",", cleaned, flags=re.IGNORECASE)
+    parts = re.split(r"[,/&+]", cleaned)
+    return {
+        part.strip().upper()
+        for part in parts
+        if re.fullmatch(r"[A-Z][A-Z0-9]{1,9}", part.strip().upper())
+    }
+
+
+def _clean_staff_name(value: object) -> str | None:
+    text = clean_text(value)
+    if not text:
+        return None
+    return re.sub(r"\s+\.$", "", text).strip()
+
+
+def _yes_no(value: object) -> bool:
+    text = (clean_text(value) or "").lower()
+    return text in {"yes", "y", "true", "1"}
+
+
+def _int_or_default(value: object, default: int) -> int:
+    text = clean_text(value)
+    if text is None:
+        return default
+    try:
+        return int(float(text))
+    except ValueError:
+        return default
+
+
 def seed_sample_sessions(db: DbSession) -> None:
+    _seed_demo_reference_data(db)
     dsc = db.query(Programme).filter_by(code="DSC").one()
     modules = {
         "DSC2204": _get_or_create(
@@ -211,4 +302,37 @@ def seed_sample_sessions(db: DbSession) -> None:
                 source_file="seed",
                 source_row_no=None,
             )
+        )
+
+
+def _seed_demo_reference_data(db: DbSession) -> None:
+    programmes = [
+        ("DSC", "Data Science", "Computing"),
+        ("ASE", "Applied Software Engineering", "Engineering"),
+        ("MDME", "Mechanical Design and Manufacturing Engineering", "Engineering"),
+    ]
+    for code, name, cluster in programmes:
+        _get_or_create(db, Programme, code=code, defaults={"name": name, "cluster": cluster})
+
+    rooms = [
+        ("VIRTUAL-ROOM-1", "Virtual Room 1", "virtual", 999, True, "Virtual", True),
+        ("SR-01", "Seminar Room 01", "classroom", 40, False, "Physical", False),
+        ("SR-02", "Seminar Room 02", "classroom", 60, False, "Physical", False),
+        ("SR-03", "Seminar Room 03", "classroom", 80, False, "Physical", False),
+        ("LAB-01", "Lab 01", "lab", 30, False, "Physical", False),
+        ("LECT-01", "Lectorial 01", "lectorial", 120, False, "Physical", True),
+    ]
+    for code, name, room_type, capacity, is_virtual, campus_mode, recording in rooms:
+        _get_or_create(
+            db,
+            Room,
+            room_code=code,
+            defaults={
+                "room_name": name,
+                "room_type": room_type,
+                "capacity": capacity,
+                "is_virtual": is_virtual,
+                "campus_mode": campus_mode,
+                "recording_available": recording,
+            },
         )

@@ -104,7 +104,7 @@ export default function TimetableReviewPage() {
         (row) =>
           matches(row.programme, filters.programme) &&
           matches(row.student_group_code, filters.group) &&
-          matches(row.staff_name, filters.staff) &&
+          matches(row.co_teacher_names || row.staff_name, filters.staff) &&
           matches(row.room, filters.room) &&
           matches(row.day, filters.day),
       ),
@@ -247,7 +247,7 @@ export default function TimetableReviewPage() {
               <Filter size={18} />
               <FilterSelect label="Programme" value={filters.programme} values={unique(rows, "programme")} onChange={(value) => setFilters({ ...filters, programme: value })} />
               <FilterSelect label="Group" value={filters.group} values={unique(rows, "student_group_code")} onChange={(value) => setFilters({ ...filters, group: value })} />
-              <FilterSelect label="Staff" value={filters.staff} values={unique(rows, "staff_name")} onChange={(value) => setFilters({ ...filters, staff: value })} />
+              <FilterSelect label="Staff" value={filters.staff} values={unique(rows, "co_teacher_names")} onChange={(value) => setFilters({ ...filters, staff: value })} />
               <FilterSelect label="Room" value={filters.room} values={unique(rows, "room")} onChange={(value) => setFilters({ ...filters, room: value })} />
               <FilterSelect label="Day" value={filters.day} values={unique(rows, "day")} onChange={(value) => setFilters({ ...filters, day: value })} />
               <button className="button secondary slim" onClick={() => setFilters(emptyFilters)}>

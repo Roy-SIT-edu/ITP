@@ -7,7 +7,7 @@ import { Download, Edit2, Plus, RefreshCw, Save, Search, Trash2, Upload, X } fro
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   createDatabaseRow,
-  databaseExampleUrl,
+  databaseCurrentInputUrl,
   deleteDatabaseRow,
   getDatabaseRows,
   getDatabaseTypes,
@@ -60,6 +60,7 @@ export default function DatabasePage({ dataType }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
+  const [showUploadWarning, setShowUploadWarning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const config = types.find((item) => item.id === dataType);
@@ -198,6 +199,17 @@ export default function DatabasePage({ dataType }: Props) {
     }
   };
 
+  const beginUpload = () => {
+    setError(null);
+    setSuccess(null);
+    setShowUploadWarning(true);
+  };
+
+  const continueUpload = () => {
+    setShowUploadWarning(false);
+    fileInputRef.current?.click();
+  };
+
   const updateDraft = (target: "edit" | "new", key: string, value: unknown) => {
     const setter = target === "edit" ? setDraft : setNewDraft;
     setter((previous) => ({ ...previous, [key]: value }));
@@ -231,11 +243,11 @@ export default function DatabasePage({ dataType }: Props) {
           <p>View, upload, edit, append, and delete database records</p>
         </div>
         <div className="toolbar-row">
-          <a className="button secondary" href={databaseExampleUrl(dataType)}>
+          <a className="button secondary" href={databaseCurrentInputUrl(dataType)}>
             <Download size={17} />
-            Example
+            Download Current
           </a>
-          <button className="button secondary" onClick={() => fileInputRef.current?.click()} disabled={busy}>
+          <button className="button secondary" onClick={beginUpload} disabled={busy}>
             <Upload size={17} />
             Upload Excel
           </button>
@@ -250,6 +262,41 @@ export default function DatabasePage({ dataType }: Props) {
           </button>
         </div>
       </div>
+
+      {showUploadWarning && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="modal-content upload-warning-modal" role="dialog" aria-modal="true" aria-labelledby="upload-warning-title">
+            <div className="modal-header">
+              <h2 id="upload-warning-title">Replace {title} data?</h2>
+              <button className="icon-button" type="button" onClick={() => setShowUploadWarning(false)} aria-label="Close upload warning">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="modal-body upload-warning-body">
+              <div className="upload-warning-copy">
+                <strong>This Excel upload replaces all current {title.toLowerCase()} rows.</strong>
+                <span>
+                  Download the current database first if you may need to restore or compare the existing information.
+                  Validation errors will stop the replacement, but a valid upload will overwrite this table.
+                </span>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="button secondary" type="button" onClick={() => setShowUploadWarning(false)}>
+                Cancel
+              </button>
+              <a className="button secondary" href={databaseCurrentInputUrl(dataType)}>
+                <Download size={17} />
+                Download Current Data
+              </a>
+              <button className="button danger" type="button" onClick={continueUpload}>
+                <Upload size={17} />
+                Continue to Upload
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && <div className="notice bad">{error}</div>}
       {success && <div className="notice good">{success}</div>}

@@ -131,6 +131,10 @@ export function databaseExampleUrl(dataType: string) {
   return `${API_BASE}/api/database/${dataType}/example.xlsx`;
 }
 
+export function databaseCurrentInputUrl(dataType: string) {
+  return `${API_BASE}/api/database/${dataType}/current.xlsx`;
+}
+
 export function getValidation() {
   return request<ValidationResult>("/api/validation/latest");
 }

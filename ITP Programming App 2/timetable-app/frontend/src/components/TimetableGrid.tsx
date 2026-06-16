@@ -121,7 +121,7 @@ export default function TimetableGrid({
                 <td>{row.module_code}</td>
                 <td>{row.class_type}</td>
                 <td>{row.student_group_code}</td>
-                <td>{row.staff_name}</td>
+                <td>{row.co_teacher_names || row.staff_name}</td>
                 <td>{row.room}</td>
                 <td>{row.day}</td>
                 <td>{row.start_time}</td>
@@ -248,7 +248,7 @@ function SlotSessionList({
               >
                 <strong>{row.module_code ?? row.requirement_id}</strong>
                 <span>{row.programme ?? "No programme"} | {row.class_type ?? "Class"} | {row.student_group_code ?? "No group"}</span>
-                <small>{row.room} | {row.staff_name ?? "No staff"}</small>
+                <small>{row.room} | {row.co_teacher_names || row.staff_name || "No staff"}</small>
               </button>
             ))}
         </div>
@@ -298,7 +298,7 @@ function SelectedSessionEditor({
             {row.programme ?? "No programme"} | {row.class_type ?? "Class"} | {row.student_group_code ?? "No group"}
           </span>
           <small>
-            {row.staff_name ?? "No staff"} | {row.delivery_mode ?? "Mode not set"} | {row.week_pattern ?? "Weeks not set"}
+            {row.co_teacher_names || row.staff_name || "No staff"} | {row.delivery_mode ?? "Mode not set"} | {row.week_pattern ?? "Weeks not set"}
           </small>
         </div>
         <div className="selected-session-facts">
@@ -346,9 +346,19 @@ function MoveControls({
   onChange: (value: MoveDraft) => void;
   onSave: () => void;
 }) {
+<<<<<<< Updated upstream
   const draft = value ?? { day: row.day, start_time: row.start_time, end_time: row.end_time, room_code: row.room };
   const rowDuration = duration(row);
   const matchingSlots = timeSlots.filter((slot) => slot.day === draft.day && slot.duration_minutes === rowDuration);
+=======
+  const sessionId = "session_id" in row ? row.session_id : row.id;
+  const draft = value ?? { 
+    day: "day" in row ? row.day : "", 
+    start_time: "start_time" in row ? row.start_time : "", 
+    end_time: "end_time" in row ? row.end_time : "", 
+    room_code: "room" in row ? row.room : ""
+  };
+>>>>>>> Stashed changes
 
   const update = (patch: Partial<typeof draft>) => {
     const next = { ...draft, ...patch };
@@ -363,6 +373,7 @@ function MoveControls({
 
   return (
     <div className="move-controls">
+<<<<<<< Updated upstream
       <select value={draft.day} onChange={(event) => update({ day: event.target.value })}>
         {days.map((day) => (
           <option key={day} value={day}>
@@ -384,14 +395,46 @@ function MoveControls({
         placeholder="Search room"
       />
       <datalist id={`room-options-${row.session_id}`}>
+=======
+      <div className="move-controls-header">
+        <div>
+          <strong>Move session</strong>
+          <span>
+            {draft.day || "Choose a day"}, {draft.start_time || "--"}-{draft.end_time || "--"}
+          </span>
+        </div>
+        <button 
+          className={`button slim ${isPlacing ? 'primary' : 'secondary'}`} 
+          onClick={() => setIsPlacing(!isPlacing)}
+          type="button"
+        >
+          {isPlacing ? "Cancel Selection" : "Pick Time"}
+        </button>
+      </div>
+      <label className="move-field">
+        <span>Room</span>
+        <input
+          list={`room-options-${sessionId}`}
+          value={draft.room_code || ""}
+          onChange={(event) => update({ room_code: event.target.value })}
+          placeholder="Leave empty to auto-assign"
+        />
+      </label>
+      <datalist id={`room-options-${sessionId}`}>
+>>>>>>> Stashed changes
         {rooms.map((room) => (
           <option key={room.id} value={room.room_code}>
             {room.room_code}
           </option>
         ))}
       </datalist>
+<<<<<<< Updated upstream
       <button className="button secondary slim" disabled={saving} type="button" onClick={onSave}>
         {saving ? "Saving" : "Move"}
+=======
+      <button className="button primary slim" disabled={saving} type="button" onClick={() => { setIsPlacing(false); onSave(); }}>
+        {saving ? "Saving" : "Save Move"}
+>>>>>>> Stashed changes
       </button>
     </div>
   );

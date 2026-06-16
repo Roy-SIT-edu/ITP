@@ -129,6 +129,8 @@ export type ScheduledRow = {
   student_group_code: string | null;
   staff_name: string | null;
   staff_id: string | null;
+  co_teacher_names?: string | null;
+  co_teacher_ids?: string | null;
   room: string;
   day: string;
   start_time: string;
@@ -166,6 +168,9 @@ export type SessionRow = {
   student_group_code: string | null;
   staff_name: string | null;
   staff_id: string | null;
+  co_teachers?: { staff_id: string | null; staff_name: string | null; is_primary: boolean; staff_order: number }[];
+  co_teacher_names?: string | null;
+  co_teacher_ids?: string | null;
   class_type: string | null;
   delivery_mode: string | null;
   campus_mode: string | null;

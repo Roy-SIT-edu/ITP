@@ -84,6 +84,8 @@ export default function RequirementsEditor({ refreshSignal = 0, onChanged }: Pro
         session.student_group_code,
         session.staff_name,
         session.staff_id,
+        session.co_teacher_names,
+        session.co_teacher_ids,
         session.programme,
       ].some((value) => (value || "").toLowerCase().includes(query)),
     );
@@ -159,8 +161,8 @@ export default function RequirementsEditor({ refreshSignal = 0, onChanged }: Pro
 
   const handleSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!formData.staff_name?.trim() && !formData.staff_id?.trim()) {
-      setError("Please provide either a staff name or a staff ID.");
+    if (!formData.staff_id?.trim()) {
+      setError("Please provide Staff 1 ID.");
       return;
     }
 
@@ -282,7 +284,7 @@ export default function RequirementsEditor({ refreshSignal = 0, onChanged }: Pro
                 <td>{row.programme}</td>
                 <td>{row.module_code}</td>
                 <td>{row.student_group_code}</td>
-                <td>{row.staff_name || row.staff_id}</td>
+                <td>{row.co_teacher_names || row.staff_name || row.staff_id}</td>
                 <td>
                   {row.class_type}
                   {row.delivery_mode ? ` (${row.delivery_mode})` : ""}

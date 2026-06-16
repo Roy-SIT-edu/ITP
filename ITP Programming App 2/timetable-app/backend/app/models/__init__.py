@@ -11,6 +11,7 @@ from app.models.room import Room
 from app.models.schedule_run import ScheduleRun
 from app.models.scheduled_session import ScheduledSession
 from app.models.session import Session
+from app.models.session_staff import SessionStaff
 from app.models.soft_constraint_priority import SoftConstraintPriority
 from app.models.staff import Staff
 from app.models.student_group import StudentGroup
@@ -24,6 +25,7 @@ __all__ = [
     "ScheduleRun",
     "ScheduledSession",
     "Session",
+    "SessionStaff",
     "SoftConstraintPriority",
     "Staff",
     "StudentGroup",

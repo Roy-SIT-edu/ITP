@@ -212,7 +212,7 @@ def venue_room_compatible(session, room) -> bool:
     if "virtual" in venue or "online" in venue:
         return bool(getattr(room, "is_virtual", False))
     if "lab" in venue:
-        return "lab" in room_type
+        return "lab" in room_type or "computer" in room_type
     if "lect" in venue:
         return "lect" in room_type
     if any(token in venue for token in ["class", "tutorial", "seminar"]):

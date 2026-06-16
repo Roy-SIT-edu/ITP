@@ -4,7 +4,6 @@
  * primary navigation path.
  */
 
-import { CheckCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getDashboard } from "../api/client";
 import type { Dashboard } from "../types";
@@ -51,13 +50,13 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
   const processStages = [
     {
       id: "upload",
-      step: 1,
       label: "Import Data",
       detail: hasImport ? `${dashboard?.imported_rows ?? 0} rows loaded` : "Waiting for data",
       state: hasImport ? "complete" : "pending",
       locked: false,
     },
     {
+<<<<<<< Updated upstream
       id: "validation",
       step: 2,
       label: "Validate Data",
@@ -67,6 +66,12 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
           : `${dashboard?.validation.error_count ?? 0} errors`
         : "Not run",
       state: validationClear ? "complete" : validationRan ? "attention" : "pending",
+=======
+      id: "soft-constraints",
+      label: "Priorities",
+      detail: hasImport ? "Rank soft constraints" : "Import first",
+      state: hasImport ? "complete" : "pending",
+>>>>>>> Stashed changes
       locked: !hasImport,
     },
     {
@@ -79,7 +84,10 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
     },
     {
       id: "review",
+<<<<<<< Updated upstream
       step: 4,
+=======
+>>>>>>> Stashed changes
       label: "Review Timetable",
       detail: generationRan ? latest?.solver_status ?? latest?.status ?? "Review schedule" : "Generate first",
       state: generationClear ? "complete" : generationRan ? "attention" : "pending",
@@ -87,7 +95,10 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
     },
     {
       id: "export",
+<<<<<<< Updated upstream
       step: 5,
+=======
+>>>>>>> Stashed changes
       label: "Export Timetable",
       detail: success ? "Ready to export" : latest ? `${latest.hard_violation_count} hard conflicts` : "Review first",
       state: success ? "complete" : latest ? "attention" : "pending",
@@ -115,9 +126,6 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
               }}
               title={stage.locked ? stage.detail : undefined}
             >
-              <span className="workflow-step-number workflow-step-marker">
-                {stage.state === "complete" ? <CheckCircle2 size={15} /> : stage.step}
-              </span>
               <div>
                 <strong>{stage.label}</strong>
                 <span>{error ? "Unable to refresh" : stage.detail}</span>

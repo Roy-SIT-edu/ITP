@@ -76,11 +76,7 @@ class TimetableModelBuilder:
 
         if not no_candidate_reasons:
             self._add_no_overlap_constraints(model, assignments, lambda item: item["room"].id)
-            self._add_no_overlap_constraints(
-                model,
-                assignments,
-                lambda item: item["session"].staff_id,
-            )
+            self._add_staff_no_overlap_constraints(model, assignments)
             self._add_no_overlap_constraints(
                 model,
                 assignments,
@@ -105,6 +101,20 @@ class TimetableModelBuilder:
             if key is None:
                 continue
             grouped.setdefault(key, []).append(item)
+
+        for group in grouped.values():
+            for index, left in enumerate(group):
+                for right in group[index + 1 :]:
+                    if left["session"].id == right["session"].id:
+                        continue
+                    if slot_conflicts(left["time_slot"], right["time_slot"]):
+                        model.Add(left["variable"] + right["variable"] <= 1)
+
+    def _add_staff_no_overlap_constraints(self, model, assignments) -> None:
+        grouped: dict[int, list[dict]] = {}
+        for item in assignments:
+            for staff_id in self._session_staff_ids(item["session"]):
+                grouped.setdefault(staff_id, []).append(item)
 
         for group in grouped.values():
             for index, left in enumerate(group):
@@ -153,7 +163,7 @@ class TimetableModelBuilder:
         weight = weights.get("TUTOR_IDLE_GAP", 25)
         if weight <= 0:
             return
-        grouped = self._group_assignments(assignments, lambda item: (item["session"].staff_id, item["time_slot"].day))
+        grouped = self._group_assignments_by_staff_day(assignments)
         for items in grouped.values():
             for left, right in self._assignment_pairs(items):
                 if not self._compatible_pair(left, right):
@@ -190,7 +200,7 @@ class TimetableModelBuilder:
         if weight <= 0:
             return
         groups = [
-            ("STAFF", self._group_assignments(assignments, lambda item: (item["session"].staff_id, item["time_slot"].day))),
+            ("STAFF", self._group_assignments_by_staff_day(assignments)),
             (
                 "GROUP",
                 self._group_assignments(assignments, lambda item: (item["session"].student_group_id, item["time_slot"].day)),
@@ -216,6 +226,23 @@ class TimetableModelBuilder:
                 continue
             grouped.setdefault(key, []).append(item)
         return grouped
+
+    def _group_assignments_by_staff_day(self, assignments: list[dict]) -> dict[tuple[int, str], list[dict]]:
+        grouped: dict[tuple[int, str], list[dict]] = {}
+        for item in assignments:
+            for staff_id in self._session_staff_ids(item["session"]):
+                grouped.setdefault((staff_id, item["time_slot"].day), []).append(item)
+        return grouped
+
+    def _session_staff_ids(self, session: Session) -> list[int]:
+        ids = [
+            assignment.staff_id
+            for assignment in getattr(session, "staff_assignments", []) or []
+            if assignment.staff_id is not None
+        ]
+        if not ids and session.staff_id is not None:
+            ids.append(session.staff_id)
+        return ids
 
     def _assignment_pairs(self, assignments: list[dict]):
         for index, left in enumerate(assignments):

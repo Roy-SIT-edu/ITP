@@ -68,7 +68,7 @@ export default function UploadPage() {
       <div className="page-header">
         <div>
           <h1>Import Data</h1>
-          <p>Select one or more Excel input files. Imported rows replace the current requirement set.</p>
+          <p>Select one or more two-tab Excel input files. Imported rows replace the current requirement set.</p>
         </div>
         <div className="toolbar-row">
           <button className="button secondary" type="button" onClick={handleReset} disabled={busy || resetting}>
@@ -81,7 +81,7 @@ export default function UploadPage() {
         <div className="section-heading">
           <div>
             <div className="status-card-title">Input Files</div>
-            <p>Use Excel workbooks with the Input_Template sheet. After import, validate the data before ranking priorities.</p>
+            <p>Use workbooks with Input_Template for required fields and Remarks_(optional) for optional defaults.</p>
           </div>
         </div>
         <UploadBox busy={busy} onUpload={handleUpload} resetSignal={resetSignal} />

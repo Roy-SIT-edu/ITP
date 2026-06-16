@@ -95,6 +95,15 @@ async def upload_database_type(
 
 @router.get("/{data_type}/example.xlsx")
 def database_example(data_type: str, db: DbSession = Depends(get_db)):
+    return _database_workbook_response(data_type, db, f"{data_type}-example.xlsx")
+
+
+@router.get("/{data_type}/current.xlsx")
+def database_current_input_workbook(data_type: str, db: DbSession = Depends(get_db)):
+    return _database_workbook_response(data_type, db, f"{data_type}-current-input.xlsx")
+
+
+def _database_workbook_response(data_type: str, db: DbSession, filename: str):
     try:
         buffer = service.example_workbook(db, data_type)
     except KeyError as exc:
@@ -102,5 +111,5 @@ def database_example(data_type: str, db: DbSession = Depends(get_db)):
     return StreamingResponse(
         buffer,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={data_type}-example.xlsx"},
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )

@@ -34,6 +34,7 @@ TABLE_DATABASE_NAMES = {
     "student_groups": "student_groups",
     "time_slots": "time_slots",
     "sessions": "requirements",
+    "session_staff": "requirements",
     "schedule_runs": "schedule_state",
     "scheduled_sessions": "schedule_state",
     "constraint_violations": "schedule_state",
@@ -67,6 +68,7 @@ def _model_database_names():
     from app.models.schedule_run import ScheduleRun
     from app.models.scheduled_session import ScheduledSession
     from app.models.session import Session as Requirement
+    from app.models.session_staff import SessionStaff
     from app.models.soft_constraint_priority import SoftConstraintPriority
     from app.models.staff import Staff
     from app.models.student_group import StudentGroup
@@ -80,6 +82,7 @@ def _model_database_names():
         StudentGroup: "student_groups",
         TimeSlot: "time_slots",
         Requirement: "requirements",
+        SessionStaff: "requirements",
         ScheduleRun: "schedule_state",
         ScheduledSession: "schedule_state",
         ConstraintViolation: "schedule_state",
@@ -138,6 +141,7 @@ def _copy_legacy_rows(target_db: Session, legacy_database_path: Path) -> None:
     from app.models.schedule_run import ScheduleRun
     from app.models.scheduled_session import ScheduledSession
     from app.models.session import Session as Requirement
+    from app.models.session_staff import SessionStaff
     from app.models.soft_constraint_priority import SoftConstraintPriority
     from app.models.staff import Staff
     from app.models.student_group import StudentGroup
@@ -154,6 +158,7 @@ def _copy_legacy_rows(target_db: Session, legacy_database_path: Path) -> None:
         TimeSlot,
         StudentGroup,
         Requirement,
+        SessionStaff,
         ScheduleRun,
         ScheduledSession,
         ConstraintViolation,
@@ -200,21 +205,23 @@ def create_db_and_seed(
     data_dir: Path | None = None,
     legacy_database_path: Path | None = None,
 ) -> None:
-    from app.services.seed_service import seed_defaults
+    from app.services.seed_service import DEFAULT_RAW_DATA_PATH, seed_defaults
 
     if data_dir is None:
         factory = SessionLocal
         engines = _ENGINES
         legacy_path = legacy_database_path or LEGACY_DATABASE_PATH
+        raw_data_path = DEFAULT_RAW_DATA_PATH
     else:
         factory, engines = create_session_factory(data_dir)
         legacy_path = legacy_database_path or LEGACY_DATABASE_PATH
+        raw_data_path = data_dir / DEFAULT_RAW_DATA_PATH.name
 
     _create_split_tables(engines)
     db = factory()
     try:
         _copy_legacy_rows(db, legacy_path)
-        seed_defaults(db)
+        seed_defaults(db, raw_data_path=raw_data_path)
     finally:
         db.close()
         if data_dir is not None:
