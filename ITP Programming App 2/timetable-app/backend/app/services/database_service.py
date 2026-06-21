@@ -113,7 +113,7 @@ DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
             ColumnSpec("id", "ID", "number", read_only=True),
             ColumnSpec("code", "Code", required=True),
             ColumnSpec("name", "Name", required=True),
-            ColumnSpec("cluster", "Cluster"),
+            ColumnSpec("years", "Years", "number", aliases=("Duration", "Duration Years")),
         ),
         key_fields=("code",),
         serializer=programme_to_dict,
@@ -286,6 +286,7 @@ class DatabaseService:
                 payloads.append(self._row_to_payload(db, config, row))
             except ValueError as exc:
                 errors.append({"row": int(index) + 2, "field": "Row", "message": str(exc)})
+        payloads = self._sorted_payloads(config, payloads)
         errors.extend(self._duplicate_key_errors(config, payloads))
         if errors:
             raise DatabaseValidationError(errors)
@@ -472,6 +473,21 @@ class DatabaseService:
 
     def _replace_rows(self, db: DbSession, config: DatabaseTypeConfig, payloads: list[dict]) -> None:
         existing = db.query(config.model).all()
+        if existing:
+            try:
+                self._assert_can_remove(db, config, existing)
+            except DatabaseValidationError:
+                pass
+            else:
+                for item in existing:
+                    db.delete(item)
+                db.flush()
+                for payload in payloads:
+                    item = config.model()
+                    self._apply_model_data(item, payload)
+                    db.add(item)
+                return
+
         existing_by_key = {self._key(config, config.serializer(item)): item for item in existing}
         incoming_keys = set()
         for payload in payloads:
@@ -487,6 +503,21 @@ class DatabaseService:
         self._assert_can_remove(db, config, to_remove)
         for item in to_remove:
             db.delete(item)
+
+    def _sorted_payloads(self, config: DatabaseTypeConfig, payloads: list[dict]) -> list[dict]:
+        def sort_key(payload: dict) -> tuple:
+            values = []
+            for field in config.sort_fields:
+                value = payload.get(field)
+                if isinstance(value, str):
+                    values.append(value.casefold())
+                elif value is None:
+                    values.append("")
+                else:
+                    values.append(value)
+            return tuple(values)
+
+        return sorted(payloads, key=sort_key)
 
     def _duplicate_key_errors(self, config: DatabaseTypeConfig, payloads: list[dict]) -> list[dict]:
         seen = set()

@@ -17,6 +17,7 @@ import {
   moveScheduledSession,
 } from "../api/client";
 import ConflictTable from "../components/ConflictTable";
+import InlineActivity from "../components/InlineActivity";
 import StatusBadge from "../components/StatusBadge";
 import TimetableGrid from "../components/TimetableGrid";
 import { useSessionState } from "../sessionState";
@@ -65,10 +66,12 @@ export default function TimetableReviewPage() {
   const [filters, setFilters] = useSessionState<Filters>("review.filters", emptyFilters);
   const [moveDrafts, setMoveDrafts] = useSessionState<Record<number, MoveDraft>>("review.moveDrafts", {});
   const [savingMove, setSavingMove] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useSessionState<string | null>("review.error", null);
 
   const load = async () => {
     setError(null);
+    setLoading(true);
     try {
       const latest = await getLatestSchedule();
       setSchedule(latest);
@@ -90,6 +93,8 @@ export default function TimetableReviewPage() {
       setSchedule(null);
       setViolations([]);
       setError(err instanceof Error ? err.message : "Could not load schedule");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -160,12 +165,19 @@ export default function TimetableReviewPage() {
         </div>
         <div className="toolbar-row">
           <button className="button secondary" onClick={load}>
-            <RefreshCw size={17} />
+            <RefreshCw className={loading ? "spin" : ""} size={17} />
             Refresh
           </button>
         </div>
       </div>
       {error && <div className="notice bad">{error}</div>}
+      {loading && (
+        <InlineActivity
+          kind="review"
+          title="Preparing timetable review"
+          steps={["Loading latest run", "Reading conflicts", "Building timetable view"]}
+        />
+      )}
       {schedule && (
         <>
           <section className="status-card review-summary">

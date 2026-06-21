@@ -107,6 +107,7 @@ def test_raw_data_workbook_seeds_matching_reference_tables(tmp_path):
         assert db.query(Staff).filter_by(staff_id="A102199").one().staff_name == "AFIFAH BINTE ABDUL RAHMAN"
         assert {item.code for item in db.query(Programme).all()} >= {"ACC", "ASE", "DSC"}
         assert db.query(Programme).filter_by(code="DSC").one().name == "Digital Supply Chain"
+        assert db.query(Programme).filter_by(code="DSC").one().years == 3
     finally:
         db.close()
         dispose_engines(engines)
@@ -148,6 +149,30 @@ def test_staff_database_hides_duplicate_host_key(tmp_path):
 
     frame = pd.read_excel(BytesIO(workbook_response.content))
     assert "staff_host_key" not in frame.columns
+
+
+def test_programme_database_uses_years_not_cluster(tmp_path):
+    db, engine = _route_db(tmp_path)
+    client = _client_for(db)
+    try:
+        types_response = client.get("/api/database/types")
+        programme_type = next(item for item in types_response.json() if item["id"] == "programmes")
+        assert [column["key"] for column in programme_type["columns"]] == ["id", "code", "name", "years"]
+
+        rows_response = client.get("/api/database/programmes")
+        dsc = next(item for item in rows_response.json() if item["code"] == "DSC")
+        assert dsc["years"] == 3
+        assert "cluster" not in dsc
+
+        workbook_response = client.get("/api/database/programmes/current.xlsx")
+    finally:
+        app.dependency_overrides.clear()
+        db.close()
+        engine.dispose()
+
+    frame = pd.read_excel(BytesIO(workbook_response.content))
+    assert "years" in frame.columns
+    assert "cluster" not in frame.columns
 
 
 def test_replace_upload_success_and_validation_rollback(tmp_path):
@@ -196,6 +221,60 @@ def test_replace_upload_success_and_validation_rollback(tmp_path):
         assert response.json()["rows_failed"] == 1
         assert db.query(Room).count() == 1
         assert db.query(Room).filter_by(room_code="ROOM-A").one()
+    finally:
+        app.dependency_overrides.clear()
+        db.close()
+        engine.dispose()
+
+
+def test_replace_upload_assigns_ids_by_alphabetical_order(tmp_path):
+    db, engine = _route_db(tmp_path)
+    client = _client_for(db)
+    try:
+        upload = _workbook(
+            [
+                {
+                    "room_code": "ROOM-C",
+                    "room_name": "Room C",
+                    "room_type": "classroom",
+                    "capacity": 30,
+                    "is_virtual": False,
+                    "campus_mode": "Physical",
+                    "recording_available": False,
+                },
+                {
+                    "room_code": "ROOM-A",
+                    "room_name": "Room A",
+                    "room_type": "classroom",
+                    "capacity": 30,
+                    "is_virtual": False,
+                    "campus_mode": "Physical",
+                    "recording_available": False,
+                },
+                {
+                    "room_code": "ROOM-B",
+                    "room_name": "Room B",
+                    "room_type": "classroom",
+                    "capacity": 30,
+                    "is_virtual": False,
+                    "campus_mode": "Physical",
+                    "recording_available": False,
+                },
+            ]
+        )
+        response = client.post(
+            "/api/database/rooms/upload",
+            files={"file": ("rooms.xlsx", upload, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+        assert response.status_code == 200
+
+        rows_response = client.get("/api/database/rooms")
+        rows = rows_response.json()
+        assert [(row["id"], row["room_code"]) for row in rows] == [
+            (1, "ROOM-A"),
+            (2, "ROOM-B"),
+            (3, "ROOM-C"),
+        ]
     finally:
         app.dependency_overrides.clear()
         db.close()

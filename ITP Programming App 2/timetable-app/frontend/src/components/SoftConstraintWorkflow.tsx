@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, ChevronDown, Play, RefreshCw, Save, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import StatusBadge from "./StatusBadge";
 import type { ScheduleGenerateResult, SessionRow, SoftConstraintPriority } from "../types";
 
@@ -120,6 +120,56 @@ export function PriorityRanking({
   onMove: (index: number, direction: -1 | 1) => void;
   onSave: () => void;
 }) {
+  const rowRefs = useRef(new Map<string, HTMLDivElement>());
+  const previousRects = useRef(new Map<string, DOMRect>());
+
+  const setRowRef = (code: string) => (element: HTMLDivElement | null) => {
+    if (element) {
+      rowRefs.current.set(code, element);
+    } else {
+      rowRefs.current.delete(code);
+    }
+  };
+
+  const captureRowPositions = () => {
+    previousRects.current = new Map(
+      Array.from(rowRefs.current.entries()).map(([code, element]) => [code, element.getBoundingClientRect()]),
+    );
+  };
+
+  const moveWithAnimation = (index: number, direction: -1 | 1) => {
+    captureRowPositions();
+    onMove(index, direction);
+  };
+
+  useLayoutEffect(() => {
+    if (previousRects.current.size === 0 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      previousRects.current.clear();
+      return;
+    }
+
+    rowRefs.current.forEach((element, code) => {
+      const previous = previousRects.current.get(code);
+      if (!previous) return;
+      const next = element.getBoundingClientRect();
+      const deltaY = previous.top - next.top;
+      if (Math.abs(deltaY) < 1) return;
+
+      element.animate(
+        [
+          { transform: `translateY(${deltaY}px)`, boxShadow: "0 8px 20px rgba(79, 70, 229, 0.14)" },
+          { transform: "translateY(0)", boxShadow: "0 0 0 rgba(79, 70, 229, 0)" },
+        ],
+        {
+          duration: 240,
+          easing: "cubic-bezier(0.2, 0, 0.2, 1)",
+        },
+      );
+    });
+
+    previousRects.current.clear();
+  }, [priorities]);
+
   return (
     <section className="status-card priority-section">
       <div className="section-heading">
@@ -138,7 +188,7 @@ export function PriorityRanking({
       ) : (
         <div className="priority-list">
           {priorities.map((item, index) => (
-            <div className="priority-row" key={item.constraint_code}>
+            <div className="priority-row" key={item.constraint_code} ref={setRowRef(item.constraint_code)}>
               <div className="priority-rank">
                 <span>Rank</span>
                 <strong>{item.rank}</strong>
@@ -158,7 +208,7 @@ export function PriorityRanking({
                   type="button"
                   title={`Move ${item.label} up`}
                   disabled={index === 0 || saving || generating}
-                  onClick={() => onMove(index, -1)}
+                  onClick={() => moveWithAnimation(index, -1)}
                 >
                   <ArrowUp size={14} />
                 </button>
@@ -167,7 +217,7 @@ export function PriorityRanking({
                   type="button"
                   title={`Move ${item.label} down`}
                   disabled={index === priorities.length - 1 || saving || generating}
-                  onClick={() => onMove(index, 1)}
+                  onClick={() => moveWithAnimation(index, 1)}
                 >
                   <ArrowDown size={14} />
                 </button>

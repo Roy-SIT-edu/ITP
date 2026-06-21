@@ -55,6 +55,36 @@ PROGRAMME_NAMES = {
     "TCE": "Chemical Engineering - likely TUM Chemical Engineering prefix",
 }
 
+PROGRAMME_YEARS = {
+    "NUR": 2,
+    "AAI": 3,
+    "ACC": 3,
+    "ASE": 3,
+    "ATM": 3,
+    "BAC": 3,
+    "CDM": 3,
+    "CEG": 3,
+    "DSC": 3,
+    "EPE": 3,
+    "ESE": 3,
+    "HTM": 3,
+    "MDME": 3,
+    "MEC": 3,
+    "NAME": 3,
+    "SBE": 3,
+    "BICT": 4,
+    "CVE": 4,
+    "EDE": 4,
+    "EEE": 4,
+    "FDT": 4,
+    "ICT": 4,
+    "METS": 4,
+    "RSE": 4,
+    "RTY": 4,
+    "SLT": 4,
+    "TCE": 4,
+}
+
 
 def _get_or_create(db: DbSession, model, defaults: dict | None = None, **filters):
     instance = db.query(model).filter_by(**filters).first()
@@ -75,6 +105,7 @@ def seed_defaults(db: DbSession, raw_data_path: Path | None = DEFAULT_RAW_DATA_P
 def seed_reference_data(db: DbSession, raw_data_path: Path | None = None) -> None:
     if raw_data_path and raw_data_path.exists():
         seed_raw_data_workbook(db, raw_data_path)
+    _apply_programme_years(db)
     seed_time_slots(db)
 
 
@@ -100,13 +131,24 @@ def seed_raw_data_workbook(db: DbSession, workbook_path: Path) -> None:
     """Seed supported reference tables from the raw-data workbook."""
     with pd.ExcelFile(workbook_path) as workbook:
         if "Campus Restrictions" in workbook.sheet_names and db.query(Room).count() == 0:
-            _seed_rooms(db, pd.read_excel(workbook, sheet_name="Campus Restrictions"))
+            _seed_rooms(db, _sort_frame(pd.read_excel(workbook, sheet_name="Campus Restrictions"), "Location Name"))
         if "Module Code" in workbook.sheet_names and db.query(Module).count() == 0:
-            _seed_modules(db, pd.read_excel(workbook, sheet_name="Module Code"))
+            _seed_modules(db, _sort_frame(pd.read_excel(workbook, sheet_name="Module Code"), "Module Code"))
         if "Staff Information" in workbook.sheet_names and db.query(Staff).count() == 0:
-            _seed_staff(db, pd.read_excel(workbook, sheet_name="Staff Information"))
+            _seed_staff(db, _sort_frame(pd.read_excel(workbook, sheet_name="Staff Information"), "Name", "Host Key"))
         if "Common Modules" in workbook.sheet_names and db.query(Programme).count() == 0:
             _seed_programmes(db, pd.read_excel(workbook, sheet_name="Common Modules"))
+
+
+def _sort_frame(frame: pd.DataFrame, *columns: str) -> pd.DataFrame:
+    available = [column for column in columns if column in frame.columns]
+    if not available:
+        return frame
+    return frame.sort_values(
+        list(available),
+        key=lambda series: series.astype(str).str.casefold(),
+        na_position="last",
+    )
 
 
 def _seed_rooms(db: DbSession, frame: pd.DataFrame) -> None:
@@ -178,11 +220,21 @@ def _seed_programmes(db: DbSession, frame: pd.DataFrame) -> None:
             db,
             Programme,
             code=code,
-            defaults={"name": PROGRAMME_NAMES.get(code, code), "cluster": None},
+            defaults={"name": PROGRAMME_NAMES.get(code, code), "years": PROGRAMME_YEARS.get(code)},
         )
         canonical_name = PROGRAMME_NAMES.get(code)
         if canonical_name and programme.name != canonical_name:
             programme.name = canonical_name
+        canonical_years = PROGRAMME_YEARS.get(code)
+        if canonical_years and programme.years != canonical_years:
+            programme.years = canonical_years
+
+
+def _apply_programme_years(db: DbSession) -> None:
+    for programme in db.query(Programme).all():
+        canonical_years = PROGRAMME_YEARS.get(programme.code.upper())
+        if canonical_years and programme.years != canonical_years:
+            programme.years = canonical_years
 
 
 def _programme_codes(value: object) -> set[str]:
@@ -353,12 +405,12 @@ def seed_sample_sessions(db: DbSession) -> None:
 
 def _seed_demo_reference_data(db: DbSession) -> None:
     programmes = [
-        ("DSC", "Data Science", "Computing"),
-        ("ASE", "Applied Software Engineering", "Engineering"),
-        ("MDME", "Mechanical Design and Manufacturing Engineering", "Engineering"),
+        ("DSC", "Data Science", 3),
+        ("ASE", "Applied Software Engineering", 3),
+        ("MDME", "Mechanical Design and Manufacturing Engineering", 3),
     ]
-    for code, name, cluster in programmes:
-        _get_or_create(db, Programme, code=code, defaults={"name": name, "cluster": cluster})
+    for code, name, years in sorted(programmes):
+        _get_or_create(db, Programme, code=code, defaults={"name": name, "years": years})
 
     rooms = [
         ("VIRTUAL-ROOM-1", "Virtual Room 1", "virtual", 999, True, "Virtual", True),
@@ -368,7 +420,7 @@ def _seed_demo_reference_data(db: DbSession) -> None:
         ("LAB-01", "Lab 01", "lab", 30, False, "Physical", False),
         ("LECT-01", "Lectorial 01", "lectorial", 120, False, "Physical", True),
     ]
-    for code, name, room_type, capacity, is_virtual, campus_mode, recording in rooms:
+    for code, name, room_type, capacity, is_virtual, campus_mode, recording in sorted(rooms):
         _get_or_create(
             db,
             Room,

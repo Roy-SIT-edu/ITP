@@ -17,6 +17,7 @@ import {
   PriorityRanking,
   SoftPreferenceTable,
 } from "../components/SoftConstraintWorkflow";
+import InlineActivity from "../components/InlineActivity";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
 import { useSessionState } from "../sessionState";
 import type { ScheduleGenerateResult, SessionRow, SoftConstraintPriority, ValidationResult } from "../types";
@@ -175,6 +176,27 @@ export default function SoftConstraintsPage() {
 
       {error && <div className="notice bad">{error}</div>}
       {success && <div className="notice good">{success}</div>}
+      {loading && (
+        <InlineActivity
+          kind="validate"
+          title="Loading generation inputs"
+          steps={["Loading priorities", "Reading validation status", "Preparing session hints"]}
+        />
+      )}
+      {saving && (
+        <InlineActivity
+          kind="generate"
+          title="Saving soft priorities"
+          steps={["Ordering preferences", "Updating weights", "Preparing solver"]}
+        />
+      )}
+      {generating && (
+        <InlineActivity
+          kind="generate"
+          title="Generating timetable"
+          steps={["Applying hard constraints", "Scoring soft preferences", "Selecting timetable placements"]}
+        />
+      )}
 
       <GenerationReadinessPanel
         canGenerate={canGenerate}

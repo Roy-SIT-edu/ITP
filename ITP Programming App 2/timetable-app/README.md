@@ -101,7 +101,7 @@ If no upload is available, the backend seeds demo data for DSC, ASE, MDME, rooms
 
 Core tables:
 
-- `programmes`: programme code, name, cluster
+- `programmes`: programme code, name, years
 - `modules`: module code, host key, title, term
 - `student_groups`: group code, programme, year, size
 - `staff`: staff name, staff ID, host key

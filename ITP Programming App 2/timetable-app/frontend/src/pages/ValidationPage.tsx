@@ -13,6 +13,7 @@ import {
   updateSession,
 } from "../api/client";
 import RequirementsEditor from "../components/RequirementsEditor";
+import InlineActivity from "../components/InlineActivity";
 import StatusBadge from "../components/StatusBadge";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
 import { useSessionState } from "../sessionState";
@@ -274,6 +275,13 @@ export default function ValidationPage() {
         </div>
       </div>
       {error && <div className="notice bad">{error}</div>}
+      {isValidating && (
+        <InlineActivity
+          kind="validate"
+          title="Checking hard constraints"
+          steps={["Matching records", "Checking fixed-time clashes", "Reviewing staff and group conflicts"]}
+        />
+      )}
       <div className="status-board">
         <section className="status-card summary-card">
           <div className="status-card-title">Status</div>

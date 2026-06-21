@@ -14,7 +14,7 @@ from app.models.time_slot import TimeSlot
 
 
 def programme_to_dict(item: Programme) -> dict:
-    return {"id": item.id, "code": item.code, "name": item.name, "cluster": item.cluster}
+    return {"id": item.id, "code": item.code, "name": item.name, "years": item.years}
 
 
 def module_to_dict(item: Module) -> dict:

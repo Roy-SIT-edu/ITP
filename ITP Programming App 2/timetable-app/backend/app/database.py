@@ -7,7 +7,7 @@ file through SQLAlchemy binds so services can query related models normally.
 from collections.abc import Generator
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -130,6 +130,20 @@ def _create_split_tables(engines: dict[str, object]) -> None:
         model.__table__.create(bind=engines[database_name], checkfirst=True)
 
 
+def _ensure_programme_years_column(engine) -> None:
+    with engine.begin() as connection:
+        columns = {
+            row[1]
+            for row in connection.execute(text("PRAGMA table_info(programmes)")).fetchall()
+        }
+        if columns and "years" not in columns:
+            connection.execute(text("ALTER TABLE programmes ADD COLUMN years INTEGER"))
+
+
+def _ensure_split_schema(engines: dict[str, object]) -> None:
+    _ensure_programme_years_column(engines["programmes"])
+
+
 def _copy_legacy_rows(target_db: Session, legacy_database_path: Path) -> None:
     if not legacy_database_path.exists():
         return
@@ -148,6 +162,7 @@ def _copy_legacy_rows(target_db: Session, legacy_database_path: Path) -> None:
     from app.models.time_slot import TimeSlot
 
     legacy_engine = _sqlite_engine(legacy_database_path)
+    _ensure_programme_years_column(legacy_engine)
     LegacySession = sessionmaker(autocommit=False, autoflush=False, bind=legacy_engine)
     source_db = LegacySession()
     ordered_models = [
@@ -174,10 +189,7 @@ def _copy_legacy_rows(target_db: Session, legacy_database_path: Path) -> None:
             except Exception:
                 continue
             for row in rows:
-                data = {
-                    column.name: getattr(row, column.name)
-                    for column in model.__table__.columns
-                }
+                data = {column.name: getattr(row, column.name) for column in model.__table__.columns}
                 target_db.add(model(**data))
         target_db.commit()
     finally:
@@ -218,6 +230,7 @@ def create_db_and_seed(
         raw_data_path = data_dir / DEFAULT_RAW_DATA_PATH.name
 
     _create_split_tables(engines)
+    _ensure_split_schema(engines)
     db = factory()
     try:
         _copy_legacy_rows(db, legacy_path)

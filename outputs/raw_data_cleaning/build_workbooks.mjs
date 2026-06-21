@@ -24,7 +24,7 @@ const uploadConfigs = {
   programmes: {
     file: "programmes_import.xlsx",
     sheet: "Programmes",
-    columns: ["code", "name", "cluster"],
+    columns: ["code", "name", "years"],
   },
 };
 

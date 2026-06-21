@@ -68,7 +68,12 @@ def infer_room_type(resource_type=None, suitability=None, name=None):
 
 
 def load_sheet(name):
-    frame = pd.read_excel(RAW_PATH, sheet_name=name)
+    try:
+        frame = pd.read_excel(RAW_PATH, sheet_name=name)
+    except ValueError as exc:
+        if f"Worksheet named '{name}' not found" in str(exc):
+            return pd.DataFrame()
+        raise
     frame = frame.dropna(how="all")
     frame.columns = [str(column).strip() for column in frame.columns]
     return frame
@@ -265,6 +270,36 @@ PROGRAMME_STOPWORDS = {
     "YEAR",
 }
 
+PROGRAMME_YEARS = {
+    "NUR": 2,
+    "AAI": 3,
+    "ACC": 3,
+    "ASE": 3,
+    "ATM": 3,
+    "BAC": 3,
+    "CDM": 3,
+    "CEG": 3,
+    "DSC": 3,
+    "EPE": 3,
+    "ESE": 3,
+    "HTM": 3,
+    "MDME": 3,
+    "MEC": 3,
+    "NAME": 3,
+    "SBE": 3,
+    "BICT": 4,
+    "CVE": 4,
+    "EDE": 4,
+    "EEE": 4,
+    "FDT": 4,
+    "ICT": 4,
+    "METS": 4,
+    "RSE": 4,
+    "RTY": 4,
+    "SLT": 4,
+    "TCE": 4,
+}
+
 
 def split_programme_tokens(value):
     text = clean_text(value)
@@ -317,12 +352,11 @@ def clean_programmes(modules_with_programmes, common_mappings):
 
     programmes = []
     for code in sorted(programme_sources):
-        sources = sorted(programme_sources[code])
         programmes.append(
             {
                 "code": code,
                 "name": code,
-                "cluster": ", ".join(sources),
+                "years": PROGRAMME_YEARS.get(code),
             }
         )
     return programmes

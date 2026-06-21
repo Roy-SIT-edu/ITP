@@ -52,7 +52,7 @@ def main() -> None:
                 Programme,
                 "code",
                 payload["programmes"],
-                ["code", "name", "cluster"],
+                ["code", "name", "years"],
             ),
             "modules": upsert_by_field(
                 db,

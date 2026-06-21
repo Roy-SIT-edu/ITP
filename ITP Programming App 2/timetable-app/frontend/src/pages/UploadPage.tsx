@@ -7,6 +7,7 @@ import { useState } from "react";
 import { resetRequirementInputs, uploadTemplate } from "../api/client";
 import { formatApiError } from "../api/errors";
 import ImportSummary from "../components/ImportSummary";
+import InlineActivity from "../components/InlineActivity";
 import UploadBox from "../components/UploadBox";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
 import { clearSessionState, useSessionState } from "../sessionState";
@@ -77,6 +78,20 @@ export default function UploadPage() {
         </div>
       </div>
 
+      {busy && (
+        <InlineActivity
+          kind="import"
+          title="Importing workbook data"
+          steps={["Reading sheets", "Detecting columns", "Preparing validation"]}
+        />
+      )}
+      {resetting && (
+        <InlineActivity
+          kind="import"
+          title="Clearing imported data"
+          steps={["Removing requirements", "Clearing generated schedules", "Refreshing workflow"]}
+        />
+      )}
       <section className="status-card">
         <div className="section-heading">
           <div>
