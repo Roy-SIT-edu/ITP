@@ -6,13 +6,9 @@ the health of what is currently saved and any issues from the latest run.
 
 from __future__ import annotations
 
-from sqlalchemy.orm import Session as DbSession
-from sqlalchemy import func
-
-from app.models.schedule_run import ScheduleRun
 from app.models.constraint_violation import ConstraintViolation
-
 from app.models.room import Room
+from app.models.schedule_run import ScheduleRun
 from app.models.session import Session
 from app.models.time_slot import TimeSlot
 from app.services.compatibility import (
@@ -31,6 +27,8 @@ from app.services.scheduling_rules import (
     staff_label,
     student_group_label,
 )
+from sqlalchemy import func
+from sqlalchemy.orm import Session as DbSession
 
 
 class ValidationService:
@@ -108,10 +106,7 @@ class ValidationService:
             "hard_count": int(hard),
             "soft_count": int(soft),
             "total": int(hard + soft),
-            "breakdown": [
-                {"constraint_code": code, "severity": severity, "count": int(count)}
-                for code, severity, count in breakdown
-            ],
+            "breakdown": [{"constraint_code": code, "severity": severity, "count": int(count)} for code, severity, count in breakdown],
         }
 
     def _required_checks(self, session: Session, row: int, errors: list[dict]) -> None:
@@ -186,11 +181,7 @@ class ValidationService:
         return set(self._session_staff_ids(left)) & set(self._session_staff_ids(right))
 
     def _session_staff_ids(self, session: Session) -> list[int]:
-        ids = [
-            assignment.staff_id
-            for assignment in getattr(session, "staff_assignments", []) or []
-            if assignment.staff_id is not None
-        ]
+        ids = [assignment.staff_id for assignment in getattr(session, "staff_assignments", []) or [] if assignment.staff_id is not None]
         if not ids and session.staff_id is not None:
             ids.append(session.staff_id)
         return ids
@@ -216,12 +207,7 @@ class ValidationService:
                 if key in seen_groups:
                     continue
                 seen_groups.add(key)
-                compatible_room_ids = {
-                    room.id
-                    for session in overlapping
-                    for room in rooms
-                    if candidate_room_allowed(session, room)
-                }
+                compatible_room_ids = {room.id for session in overlapping for room in rooms if candidate_room_allowed(session, room)}
                 if len(overlapping) > len(compatible_room_ids):
                     first = overlapping[0]
                     labels = ", ".join(session_label(session) for session in overlapping)
@@ -283,11 +269,7 @@ class ValidationService:
                     "message": "Duration must be numeric and greater than 0",
                 }
             )
-        if (
-            session.start_week is not None
-            and session.end_week is not None
-            and session.start_week > session.end_week
-        ):
+        if session.start_week is not None and session.end_week is not None and session.start_week > session.end_week:
             errors.append(
                 {
                     "row": row,

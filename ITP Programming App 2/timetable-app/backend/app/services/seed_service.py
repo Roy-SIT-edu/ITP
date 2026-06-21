@@ -11,8 +11,6 @@ import re
 from pathlib import Path
 
 import pandas as pd
-from sqlalchemy.orm import Session as DbSession
-
 from app.models.module import Module
 from app.models.programme import Programme
 from app.models.room import Room
@@ -20,8 +18,8 @@ from app.models.session import Session
 from app.models.staff import Staff
 from app.models.student_group import StudentGroup
 from app.models.time_slot import TimeSlot
-from app.services.compatibility import clean_text
-from app.services.compatibility import minutes_to_time
+from app.services.compatibility import clean_text, minutes_to_time
+from sqlalchemy.orm import Session as DbSession
 
 DEFAULT_RAW_DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "Raw Data.xlsx"
 
@@ -244,11 +242,7 @@ def _programme_codes(value: object) -> set[str]:
     cleaned = re.sub(r"\([^)]*\)", "", text)
     cleaned = re.sub(r"\bAll programmes\b|\bexcept\b|\band\b", ",", cleaned, flags=re.IGNORECASE)
     parts = re.split(r"[,/&+]", cleaned)
-    return {
-        part.strip().upper()
-        for part in parts
-        if re.fullmatch(r"[A-Z][A-Z0-9]{1,9}", part.strip().upper())
-    }
+    return {part.strip().upper() for part in parts if re.fullmatch(r"[A-Z][A-Z0-9]{1,9}", part.strip().upper())}
 
 
 def _clean_staff_name(value: object) -> str | None:

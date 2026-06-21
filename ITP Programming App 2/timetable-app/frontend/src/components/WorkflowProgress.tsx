@@ -88,7 +88,7 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
       id: "review",
       step: 4,
       label: "Review Timetable",
-      detail: generationRan ? latest?.solver_status ?? latest?.status ?? "Review schedule" : "Generate first",
+      detail: generationRan ? (latest?.solver_status ?? latest?.status ?? "Review schedule") : "Generate first",
       state: generationClear ? "complete" : generationRan ? "attention" : "pending",
       locked: !generationRan,
     },
@@ -112,13 +112,9 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
           <span>Current Step</span>
           <strong>{activeStage?.label ?? "Overview"}</strong>
         </div>
-        <p>{error ? "Unable to refresh workflow status" : activeStage?.detail ?? "Open a workflow step to begin."}</p>
+        <p>{error ? "Unable to refresh workflow status" : (activeStage?.detail ?? "Open a workflow step to begin.")}</p>
         {nextStage && (
-          <a
-            className="button secondary slim"
-            href={`#${nextStage.id}`}
-            onClick={() => onNavigate(nextStage.id)}
-          >
+          <a className="button secondary slim" href={`#${nextStage.id}`} onClick={() => onNavigate(nextStage.id)}>
             Next: {nextStage.label}
           </a>
         )}
@@ -127,7 +123,10 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
         {processStages.map((stage, index) => {
           const active = route === stage.id;
           return (
-            <div className={`workflow-stage ${stage.state} ${active ? "active" : ""} ${stage.locked ? "locked" : ""}`} key={stage.id}>
+            <div
+              className={`workflow-stage ${stage.state} ${active ? "active" : ""} ${stage.locked ? "locked" : ""}`}
+              key={stage.id}
+            >
               <a
                 aria-current={active ? "page" : undefined}
                 aria-disabled={stage.locked}

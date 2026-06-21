@@ -13,8 +13,7 @@ export function useSessionState<T>(key: string, initialValue: T): [T, Dispatch<S
   const setSessionValue = useCallback<Dispatch<SetStateAction<T>>>(
     (nextValue) => {
       setValue((previous) => {
-        const resolved =
-          typeof nextValue === "function" ? (nextValue as (current: T) => T)(previous) : nextValue;
+        const resolved = typeof nextValue === "function" ? (nextValue as (current: T) => T)(previous) : nextValue;
         sessionStore.set(key, resolved);
         return resolved;
       });

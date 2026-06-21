@@ -6,8 +6,6 @@ for the review and validation pages after a timetable has been generated.
 
 from __future__ import annotations
 
-from sqlalchemy.orm import Session as DbSession
-
 from app.models.constraint_violation import ConstraintViolation
 from app.models.scheduled_session import ScheduledSession
 from app.services.compatibility import (
@@ -18,6 +16,13 @@ from app.services.compatibility import (
     time_to_minutes,
     weeks_conflict,
 )
+from app.services.scheduling_constants import (
+    DEFAULT_SOFT_CONSTRAINT_WEIGHTS,
+    LONG_CONSECUTIVE_DAY_MINUTES,
+    SHORT_CAMPUS_DAY_MAX_MINUTES,
+    TUTOR_IDLE_GAP_MINUTES,
+)
+from sqlalchemy.orm import Session as DbSession
 
 
 class ConstraintService:
@@ -44,7 +49,7 @@ class ConstraintService:
         soft_count = sum(1 for item in violations if item["severity"] == "SOFT")
         weights = soft_constraint_weights or {}
         weighted_soft_score = sum(
-            weights.get(item["constraint_code"], 1)
+            weights.get(item["constraint_code"], DEFAULT_SOFT_CONSTRAINT_WEIGHTS.get(item["constraint_code"], 1))
             for item in violations
             if item["severity"] == "SOFT"
         )
@@ -186,7 +191,7 @@ class ConstraintService:
             ordered = sorted(items, key=lambda item: item.start_time)
             for left, right in zip(ordered, ordered[1:]):
                 gap = (time_to_minutes(right.start_time) or 0) - (time_to_minutes(left.end_time) or 0)
-                if gap > 120:
+                if gap > TUTOR_IDLE_GAP_MINUTES:
                     violations.append(
                         {
                             "constraint_code": "TUTOR_IDLE_GAP",
@@ -209,7 +214,7 @@ class ConstraintService:
                 for item in ordered
                 if not item.room.is_virtual
             )
-            if 0 < campus_minutes <= 120:
+            if 0 < campus_minutes <= SHORT_CAMPUS_DAY_MAX_MINUTES:
                 violations.append(
                     {
                         "constraint_code": "SHORT_CAMPUS_DAY",
@@ -232,7 +237,7 @@ class ConstraintService:
                 else:
                     current_end = max(current_end, end)
                     current_ids.append(item.session_id)
-                if current_start is not None and current_end - current_start > 240:
+                if current_start is not None and current_end - current_start > LONG_CONSECUTIVE_DAY_MINUTES:
                     violations.append(
                         {
                             "constraint_code": "LONG_CONSECUTIVE_DAY",

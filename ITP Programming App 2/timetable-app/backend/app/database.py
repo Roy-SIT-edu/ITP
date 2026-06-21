@@ -54,10 +54,7 @@ def _sqlite_engine(path: Path):
 
 
 def _build_engines(data_dir: Path = DATA_DIR) -> dict[str, object]:
-    return {
-        name: _sqlite_engine(data_dir / filename)
-        for name, filename in SPLIT_DATABASE_FILES.items()
-    }
+    return {name: _sqlite_engine(data_dir / filename) for name, filename in SPLIT_DATABASE_FILES.items()}
 
 
 def _model_database_names():
@@ -132,10 +129,7 @@ def _create_split_tables(engines: dict[str, object]) -> None:
 
 def _ensure_programme_years_column(engine) -> None:
     with engine.begin() as connection:
-        columns = {
-            row[1]
-            for row in connection.execute(text("PRAGMA table_info(programmes)")).fetchall()
-        }
+        columns = {row[1] for row in connection.execute(text("PRAGMA table_info(programmes)")).fetchall()}
         if columns and "years" not in columns:
             connection.execute(text("ALTER TABLE programmes ADD COLUMN years INTEGER"))
 

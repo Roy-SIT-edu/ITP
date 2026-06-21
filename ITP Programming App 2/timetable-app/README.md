@@ -46,11 +46,22 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
+Backend checks:
+
+```powershell
+cd backend
+pip install -r requirements-dev.txt
+ruff format --check .
+ruff check .
+pytest
+pip check
+```
+
 Frontend:
 
 ```powershell
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -144,15 +155,22 @@ Post-solve soft warnings include long tutor gaps, short campus days, long consec
 
 ```powershell
 cd backend
+pip install -r requirements-dev.txt
+ruff format --check .
+ruff check .
 pytest
+pip check
 ```
 
 Coverage includes import validation, hard constraint detection, solver feasibility, infeasible capacity, and invalid fixed-time handling.
 
-Frontend build check:
+Frontend checks:
 
 ```powershell
 cd frontend
+npm ci
+npm run format:check
+npm run lint
 npm run build
 ```
 

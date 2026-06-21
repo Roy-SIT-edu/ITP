@@ -1,7 +1,7 @@
 """Tests for strict requirements import validation and rollback behavior."""
 
-from app.models.session import Session
 from app.models.module import Module
+from app.models.session import Session
 from app.models.session_staff import SessionStaff
 from app.services.import_service import ImportService
 from app.services.validation_service import ValidationService
@@ -22,7 +22,10 @@ def test_valid_template_imports_successfully(db_session, tmp_path):
 
 
 def test_online_synchronous_delivery_mode_imports_as_online(db_session, tmp_path):
-    path = write_template(tmp_path / "input.xlsx", [valid_row(**{"Delivery Mode": "Online Synchronous", "Campus Mode": "Online", "Venue Type Required": "Virtual Room"})])
+    path = write_template(
+        tmp_path / "input.xlsx",
+        [valid_row(**{"Delivery Mode": "Online Synchronous", "Campus Mode": "Online", "Venue Type Required": "Virtual Room"})],
+    )
 
     ImportService().import_input_template(db_session, path)
     session = db_session.query(Session).filter_by(requirement_id="REQ-TEST-001").one()
@@ -77,11 +80,11 @@ def test_invalid_class_size_produces_validation_error(db_session, tmp_path):
 def test_upload_with_one_bad_row_saves_nothing(db_session, tmp_path):
     path = write_template(
         tmp_path / "input.xlsx",
-            [
-                valid_row(**{"Requirement ID": "REQ-GOOD-001"}),
-                valid_row(**{"Requirement ID": "REQ-BAD-001", "Staff 1 ID": "UNKNOWN-STAFF"}),
-            ],
-        )
+        [
+            valid_row(**{"Requirement ID": "REQ-GOOD-001"}),
+            valid_row(**{"Requirement ID": "REQ-BAD-001", "Staff 1 ID": "UNKNOWN-STAFF"}),
+        ],
+    )
 
     before_count = db_session.query(Session).count()
     summary = ImportService().import_input_template(db_session, path)
@@ -193,7 +196,15 @@ def test_two_tab_template_stores_co_teachers_and_validation_detects_clash(db_ses
         tmp_path / "two-tab-coteachers.xlsx",
         [
             new_template_row(**{"Requirement ID": "REQ-CO-001", "Staff 2 ID": "S002", "Staff 2 Name": "Prof Lim"}),
-            new_template_row(**{"Requirement ID": "REQ-CO-002", "Staff 1 ID": "S003", "Staff 1 Name": "Ms Wong", "Staff 2 ID": "S002", "Staff 2 Name": "Prof Lim"}),
+            new_template_row(
+                **{
+                    "Requirement ID": "REQ-CO-002",
+                    "Staff 1 ID": "S003",
+                    "Staff 1 Name": "Ms Wong",
+                    "Staff 2 ID": "S002",
+                    "Staff 2 Name": "Prof Lim",
+                }
+            ),
         ],
         [
             {"Requirement ID": "REQ-CO-001", "Specific Day": "Monday", "Start Time": "09:00", "End Time": "11:00"},

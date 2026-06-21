@@ -1,16 +1,14 @@
 """Tests for requirements workbook upload routes."""
 
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
 from app import models  # noqa: F401
-from app.database import Base
-from app.database import get_db
+from app.database import Base, get_db
 from app.main import app
 from app.models.session import Session
 from app.services.seed_service import seed_reference_data, seed_sample_sessions
 from app.tests.conftest import valid_row, write_template
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 
 def _client_for(db) -> TestClient:

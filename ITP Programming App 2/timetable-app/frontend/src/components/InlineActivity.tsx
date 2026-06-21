@@ -32,10 +32,8 @@ export default function InlineActivity({ kind, title, steps }: Props) {
       <div className="inline-activity-copy">
         <strong>{title}</strong>
         <div className="inline-activity-steps">
-          {steps.map((step, index) => (
-            <span key={step} style={{ animationDelay: `${index * 0.18}s` }}>
-              {step}
-            </span>
+          {steps.map((step) => (
+            <span key={step}>{step}</span>
           ))}
         </div>
       </div>

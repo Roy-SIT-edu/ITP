@@ -238,7 +238,7 @@ export default function RequirementsEditor({ refreshSignal = 0, onChanged }: Pro
 
       <ConstraintStudio sessions={sessions} disabled={saving || loading} onApply={applyConstraintPreset} />
 
-      <div className="filter-bar" style={{ justifyContent: "space-between" }}>
+      <div className="filter-bar requirements-filter-bar">
         <div className="requirements-search">
           <Filter size={18} />
           <input
@@ -255,7 +255,7 @@ export default function RequirementsEditor({ refreshSignal = 0, onChanged }: Pro
         <table>
           <thead>
             <tr>
-              <th style={{ width: 90 }}>Actions</th>
+              <th className="requirements-actions-col">Actions</th>
               <th>Req ID</th>
               <th>Programme</th>
               <th>Module</th>
@@ -272,10 +272,20 @@ export default function RequirementsEditor({ refreshSignal = 0, onChanged }: Pro
               <tr key={row.id}>
                 <td>
                   <div className="row-actions">
-                    <button className="button secondary slim" title="Edit" type="button" onClick={() => handleOpenEdit(row)}>
+                    <button
+                      className="button secondary slim"
+                      title="Edit"
+                      type="button"
+                      onClick={() => handleOpenEdit(row)}
+                    >
                       <Edit2 size={14} />
                     </button>
-                    <button className="button danger slim" title="Delete" type="button" onClick={() => handleDelete(row.id)}>
+                    <button
+                      className="button danger slim"
+                      title="Delete"
+                      type="button"
+                      onClick={() => handleDelete(row.id)}
+                    >
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -304,7 +314,7 @@ export default function RequirementsEditor({ refreshSignal = 0, onChanged }: Pro
             ))}
             {!loading && filteredSessions.length === 0 && (
               <tr>
-                <td colSpan={10} style={{ padding: 24, textAlign: "center" }}>
+                <td className="table-empty-cell" colSpan={10}>
                   No requirements found.
                 </td>
               </tr>

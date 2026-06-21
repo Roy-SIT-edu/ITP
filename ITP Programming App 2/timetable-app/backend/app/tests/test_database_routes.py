@@ -3,10 +3,6 @@
 from io import BytesIO
 
 import pandas as pd
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
 from app import models  # noqa: F401
 from app.database import Base, create_db_and_seed, create_session_factory, dispose_engines, get_db
 from app.main import app
@@ -17,6 +13,9 @@ from app.models.schedule_run import ScheduleRun
 from app.models.staff import Staff
 from app.services.schedule_service import ScheduleService
 from app.services.seed_service import seed_reference_data, seed_sample_sessions
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 
 def _workbook(rows: list[dict]) -> bytes:
@@ -124,7 +123,7 @@ def test_database_current_workbook_contains_live_data(tmp_path):
         engine.dispose()
 
     assert response.status_code == 200
-    assert 'filename=rooms-current-input.xlsx' in response.headers["content-disposition"]
+    assert "filename=rooms-current-input.xlsx" in response.headers["content-disposition"]
     frame = pd.read_excel(BytesIO(response.content))
     assert "room_code" in frame.columns
     assert "SR-01" in set(frame["room_code"])

@@ -1,23 +1,16 @@
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
 from sqlalchemy import func
 
 
-ROOT = Path(r"C:/Users/Admin/Desktop/Code/Codes/INF1009/ITP")
-BACKEND = ROOT / "ITP Programming App 2" / "timetable-app" / "backend"
-DATA_JSON = ROOT / "outputs" / "raw_data_cleaning" / "cleaned_raw_data.json"
-
-sys.path.insert(0, str(BACKEND))
-
-from app.database import SessionLocal, create_db_and_seed  # noqa: E402
-from app.models.module import Module  # noqa: E402
-from app.models.programme import Programme  # noqa: E402
-from app.models.room import Room  # noqa: E402
-from app.models.staff import Staff  # noqa: E402
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_ROOT = Path(os.environ.get("ITP_ROOT", SCRIPT_DIR.parents[1]))
 
 
 def upsert_by_field(db, model, field_name: str, rows: list[dict], columns: list[str]) -> dict:
@@ -41,9 +34,26 @@ def upsert_by_field(db, model, field_name: str, rows: list[dict], columns: list[
     return {"created": created, "updated": updated}
 
 
-def main() -> None:
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Upsert cleaned reference data into the timetable app database.")
+    parser.add_argument("--root", type=Path, default=DEFAULT_ROOT, help="Project root containing the timetable app.")
+    parser.add_argument("--data-json", type=Path, default=None, help="Path to cleaned_raw_data.json.")
+    return parser.parse_args()
+
+
+def main(root: Path, data_json: Path) -> None:
+    backend = root / "ITP Programming App 2" / "timetable-app" / "backend"
+    if str(backend) not in sys.path:
+        sys.path.insert(0, str(backend))
+
+    from app.database import SessionLocal, create_db_and_seed
+    from app.models.module import Module
+    from app.models.programme import Programme
+    from app.models.room import Room
+    from app.models.staff import Staff
+
     create_db_and_seed()
-    payload = json.loads(DATA_JSON.read_text(encoding="utf-8"))
+    payload = json.loads(data_json.read_text(encoding="utf-8"))
     db = SessionLocal()
     try:
         results = {
@@ -100,4 +110,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(args.root, args.data_json or args.root / "outputs" / "raw_data_cleaning" / "cleaned_raw_data.json")

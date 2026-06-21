@@ -4,6 +4,8 @@ This file wires middleware, API routers, database startup, and the health check
 that the frontend/dev server uses to confirm the backend is alive.
 """
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -11,8 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import create_db_and_seed
 from app.routes import (
-    database_routes,
     data_routes,
+    database_routes,
     export_routes,
     schedule_routes,
     soft_constraint_routes,
@@ -22,7 +24,14 @@ from app.routes import (
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 
-app = FastAPI(title="Timetable Scheduling API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    create_db_and_seed()
+    yield
+
+
+app = FastAPI(title="Timetable Scheduling API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -40,11 +49,6 @@ app.include_router(database_routes.router)
 app.include_router(soft_constraint_routes.router)
 app.include_router(schedule_routes.router)
 app.include_router(export_routes.router)
-
-
-@app.on_event("startup")
-def startup() -> None:
-    create_db_and_seed()
 
 
 @app.get("/health")

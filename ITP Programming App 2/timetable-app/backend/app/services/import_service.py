@@ -13,16 +13,12 @@ from pathlib import Path
 from typing import BinaryIO
 
 import pandas as pd
-from sqlalchemy.orm import Session as DbSession
-
-from app.models.constraint_violation import ConstraintViolation
-from app.models.schedule_run import ScheduleRun
-from app.models.scheduled_session import ScheduledSession
 from app.models.session import Session
 from app.models.session_staff import SessionStaff
-from app.services.compatibility import clean_text
+from app.services.compatibility import clean_text, positive_float, positive_int
 from app.services.requirement_input_service import RequirementInputService, RequirementUploadRow
-
+from app.services.schedule_state_service import clear_schedule_state
+from sqlalchemy.orm import Session as DbSession
 
 CANONICAL_COLUMNS = {
     "Requirement ID": ["requirement id", "requirement_id", "req id", "req no"],
@@ -81,9 +77,7 @@ def _normalise_column_name(value: str) -> str:
 
 
 ALIAS_LOOKUP = {
-    _normalise_column_name(alias): canonical
-    for canonical, aliases in CANONICAL_COLUMNS.items()
-    for alias in [canonical, *aliases]
+    _normalise_column_name(alias): canonical for canonical, aliases in CANONICAL_COLUMNS.items() for alias in [canonical, *aliases]
 }
 
 
@@ -121,10 +115,7 @@ class ImportService:
         db: DbSession,
         workbooks: list[tuple[bytes, str]],
     ) -> dict:
-        prepared = [
-            (self._read_workbook(BytesIO(workbook_bytes)), source_filename)
-            for workbook_bytes, source_filename in workbooks
-        ]
+        prepared = [(self._read_workbook(BytesIO(workbook_bytes)), source_filename) for workbook_bytes, source_filename in workbooks]
         return self._import_prepared(db, prepared)
 
     def preview_input_template_files(
@@ -132,10 +123,7 @@ class ImportService:
         db: DbSession,
         workbooks: list[tuple[bytes, str]],
     ) -> dict:
-        prepared = [
-            (self._read_workbook(BytesIO(workbook_bytes)), source_filename)
-            for workbook_bytes, source_filename in workbooks
-        ]
+        prepared = [(self._read_workbook(BytesIO(workbook_bytes)), source_filename) for workbook_bytes, source_filename in workbooks]
         return self._preview_prepared(db, prepared)
 
     def import_input_template_bytes(
@@ -273,7 +261,11 @@ class ImportService:
         for prepared, source_filename in prepared_workbooks:
             frame = prepared.frame
             for index, row in frame.iterrows():
-                upload_rows.append(RequirementUploadRow(row=row, source_filename=source_filename, source_row_no=self._source_row_no(row.get("Source Row No"), int(index))))
+                upload_rows.append(
+                    RequirementUploadRow(
+                        row=row, source_filename=source_filename, source_row_no=self._source_row_no(row.get("Source Row No"), int(index))
+                    )
+                )
 
         session_data, validation_errors = RequirementInputService().validate_upload_rows(db, upload_rows)
         errors.extend(validation_errors)
@@ -337,13 +329,23 @@ class ImportService:
                     continue
                 key = requirement_id.lower()
                 if key in seen:
-                    errors.append(self._template_issue(row_no, "Requirement ID", f"Duplicate Requirement ID '{requirement_id}'. First seen on row {seen[key]}."))
+                    errors.append(
+                        self._template_issue(
+                            row_no, "Requirement ID", f"Duplicate Requirement ID '{requirement_id}'. First seen on row {seen[key]}."
+                        )
+                    )
                 else:
                     seen[key] = row_no
 
         if not optional.empty:
             if "Requirement ID" not in optional.columns:
-                errors.append(self._template_issue(1, "Remarks_(optional)", "Remarks_(optional) must include Requirement ID so optional values can join to Input_Template."))
+                errors.append(
+                    self._template_issue(
+                        1,
+                        "Remarks_(optional)",
+                        "Remarks_(optional) must include Requirement ID so optional values can join to Input_Template.",
+                    )
+                )
             else:
                 required_ids = {
                     (clean_text(value) or "").lower()
@@ -355,13 +357,27 @@ class ImportService:
                     row_no = int(index) + 2
                     requirement_id = clean_text(row.get("Requirement ID"))
                     if not requirement_id:
-                        errors.append(self._template_issue(row_no, "Requirement ID", "Optional rows must include Requirement ID or be left completely blank."))
+                        errors.append(
+                            self._template_issue(
+                                row_no, "Requirement ID", "Optional rows must include Requirement ID or be left completely blank."
+                            )
+                        )
                         continue
                     key = requirement_id.lower()
                     if key in seen_optional:
-                        errors.append(self._template_issue(row_no, "Requirement ID", f"Duplicate optional row for Requirement ID '{requirement_id}'. First seen on row {seen_optional[key]}."))
+                        errors.append(
+                            self._template_issue(
+                                row_no,
+                                "Requirement ID",
+                                f"Duplicate optional row for Requirement ID '{requirement_id}'. First seen on row {seen_optional[key]}.",
+                            )
+                        )
                     elif key not in required_ids:
-                        errors.append(self._template_issue(row_no, "Requirement ID", f"Optional row references unknown Requirement ID '{requirement_id}'."))
+                        errors.append(
+                            self._template_issue(
+                                row_no, "Requirement ID", f"Optional row references unknown Requirement ID '{requirement_id}'."
+                            )
+                        )
                     else:
                         seen_optional[key] = row_no
 
@@ -418,8 +434,7 @@ class ImportService:
         if "Week Pattern" not in frame.columns:
             frame["Week Pattern"] = None
         frame["Week Pattern"] = frame.apply(
-            lambda row: clean_text(row.get("Week Pattern"))
-            or ("Custom" if clean_text(row.get("Custom Weeks")) else "Weekly"),
+            lambda row: clean_text(row.get("Week Pattern")) or ("Custom" if clean_text(row.get("Custom Weeks")) else "Weekly"),
             axis=1,
         )
         if "Start Week" not in frame.columns:
@@ -528,26 +543,16 @@ class ImportService:
         explicit = clean_text(row.get("Scheduling Type"))
         if explicit:
             return explicit
-        has_fixed_time = any(
-            clean_text(row.get(column))
-            for column in ["Fixed Day", "Fixed Date", "Fixed Start Time", "Fixed End Time"]
-        )
+        has_fixed_time = any(clean_text(row.get(column)) for column in ["Fixed Day", "Fixed Date", "Fixed Start Time", "Fixed End Time"])
         return "Fixed" if has_fixed_time else "Flexible"
 
     def _clear_sessions_and_schedules(self, db: DbSession) -> None:
-        db.query(ConstraintViolation).delete()
-        db.query(ScheduledSession).delete()
-        db.query(ScheduleRun).delete()
+        clear_schedule_state(db)
         db.query(SessionStaff).delete()
         db.query(Session).delete()
 
     def _positive_int(self, value) -> int | None:
-        number = self._positive_float(value)
-        if number is None:
-            return None
-        if number <= 0:
-            return None
-        return int(number)
+        return positive_int(value)
 
     def _source_row_no(self, value, index: int) -> int:
         row_no = self._positive_int(value)
@@ -556,12 +561,4 @@ class ImportService:
         return index + 2
 
     def _positive_float(self, value) -> float | None:
-        if isinstance(value, bool):
-            return None
-        text = clean_text(value)
-        if not text:
-            return None
-        try:
-            return float(text)
-        except ValueError:
-            return None
+        return positive_float(value)

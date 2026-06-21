@@ -4,7 +4,7 @@
  */
 
 import { ChevronDown, Filter, RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   compareSchedules,
   getLatestSchedule,
@@ -69,20 +69,22 @@ export default function TimetableReviewPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useSessionState<string | null>("review.error", null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
       const latest = await getLatestSchedule();
       setSchedule(latest);
-      const [nextViolations, nextRuns, nextComparisons, nextExplanations, nextRooms, nextTimeSlots] = await Promise.all([
-        getViolations(latest.schedule_run.id),
-        getScheduleRuns(),
-        compareSchedules(),
-        getScheduleExplanations(latest.schedule_run.id),
-        getRooms(),
-        getTimeSlots(),
-      ]);
+      const [nextViolations, nextRuns, nextComparisons, nextExplanations, nextRooms, nextTimeSlots] = await Promise.all(
+        [
+          getViolations(latest.schedule_run.id),
+          getScheduleRuns(),
+          compareSchedules(),
+          getScheduleExplanations(latest.schedule_run.id),
+          getRooms(),
+          getTimeSlots(),
+        ],
+      );
       setViolations(nextViolations);
       setRuns(nextRuns);
       setComparisons(nextComparisons);
@@ -96,13 +98,13 @@ export default function TimetableReviewPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [setComparisons, setError, setExplanations, setRooms, setRuns, setSchedule, setTimeSlots, setViolations]);
 
   useEffect(() => {
-    load();
-  }, []);
+    void load();
+  }, [load]);
 
-  const rows = schedule?.scheduled_sessions ?? [];
+  const rows = useMemo(() => schedule?.scheduled_sessions ?? [], [schedule]);
   const filteredRows = useMemo(
     () =>
       rows.filter(
@@ -257,11 +259,36 @@ export default function TimetableReviewPage() {
             </div>
             <div className="filter-bar">
               <Filter size={18} />
-              <FilterSelect label="Programme" value={filters.programme} values={unique(rows, "programme")} onChange={(value) => setFilters({ ...filters, programme: value })} />
-              <FilterSelect label="Group" value={filters.group} values={unique(rows, "student_group_code")} onChange={(value) => setFilters({ ...filters, group: value })} />
-              <FilterSelect label="Staff" value={filters.staff} values={unique(rows, "co_teacher_names")} onChange={(value) => setFilters({ ...filters, staff: value })} />
-              <FilterSelect label="Room" value={filters.room} values={unique(rows, "room")} onChange={(value) => setFilters({ ...filters, room: value })} />
-              <FilterSelect label="Day" value={filters.day} values={unique(rows, "day")} onChange={(value) => setFilters({ ...filters, day: value })} />
+              <FilterSelect
+                label="Programme"
+                value={filters.programme}
+                values={unique(rows, "programme")}
+                onChange={(value) => setFilters({ ...filters, programme: value })}
+              />
+              <FilterSelect
+                label="Group"
+                value={filters.group}
+                values={unique(rows, "student_group_code")}
+                onChange={(value) => setFilters({ ...filters, group: value })}
+              />
+              <FilterSelect
+                label="Staff"
+                value={filters.staff}
+                values={uniqueStaff(rows)}
+                onChange={(value) => setFilters({ ...filters, staff: value })}
+              />
+              <FilterSelect
+                label="Room"
+                value={filters.room}
+                values={unique(rows, "room")}
+                onChange={(value) => setFilters({ ...filters, room: value })}
+              />
+              <FilterSelect
+                label="Day"
+                value={filters.day}
+                values={unique(rows, "day")}
+                onChange={(value) => setFilters({ ...filters, day: value })}
+              />
               <button className="button secondary slim" onClick={() => setFilters(emptyFilters)}>
                 Clear
               </button>
@@ -311,7 +338,9 @@ export default function TimetableReviewPage() {
                   </ul>
                 </article>
               ))}
-              {explanations.length === 0 && <div className="empty-state">No schedule explanations are available yet.</div>}
+              {explanations.length === 0 && (
+                <div className="empty-state">No schedule explanations are available yet.</div>
+              )}
             </div>
           </section>
         </>
@@ -347,7 +376,25 @@ function FilterSelect({
 }
 
 function unique(rows: ScheduledRow[], key: keyof ScheduledRow) {
-  return Array.from(new Set(rows.map((row) => row[key]).filter(Boolean).map(String))).sort();
+  return Array.from(
+    new Set(
+      rows
+        .map((row) => row[key])
+        .filter(Boolean)
+        .map(String),
+    ),
+  ).sort();
+}
+
+function uniqueStaff(rows: ScheduledRow[]) {
+  return Array.from(
+    new Set(
+      rows
+        .map((row) => row.co_teacher_names || row.staff_name)
+        .filter(Boolean)
+        .map(String),
+    ),
+  ).sort();
 }
 
 function matches(value: string | null, filter: string) {

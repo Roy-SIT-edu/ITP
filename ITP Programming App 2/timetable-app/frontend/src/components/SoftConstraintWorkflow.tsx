@@ -230,13 +230,7 @@ export function PriorityRanking({
   );
 }
 
-export function SoftPreferenceTable({
-  rows,
-  warningCount,
-}: {
-  rows: SoftPreferenceRow[];
-  warningCount: number;
-}) {
+export function SoftPreferenceTable({ rows, warningCount }: { rows: SoftPreferenceRow[]; warningCount: number }) {
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<PreferenceFilter>("all");
   const [expanded, setExpanded] = useState(false);
@@ -274,7 +268,11 @@ export function SoftPreferenceTable({
   }, [activeFilter, query, rows]);
 
   return (
-    <details className="status-card preference-dropdown" open={expanded} onToggle={(event) => setExpanded(event.currentTarget.open)}>
+    <details
+      className="status-card preference-dropdown"
+      open={expanded}
+      onToggle={(event) => setExpanded(event.currentTarget.open)}
+    >
       <summary className="preference-summary">
         <div>
           <div className="status-card-title">Soft Preferences In Current Input</div>
@@ -350,7 +348,10 @@ export function SoftPreferenceTable({
                           {chips.length > 0 && (
                             <div className="preference-chip-row">
                               {chips.map((hint) => (
-                                <span className={`preference-chip ${hint.tone}`} key={`${session.id}-${hint.label}-${hint.value}`}>
+                                <span
+                                  className={`preference-chip ${hint.tone}`}
+                                  key={`${session.id}-${hint.label}-${hint.value}`}
+                                >
                                   <strong>{hint.label}</strong>
                                   {hint.value}
                                 </span>

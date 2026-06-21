@@ -6,21 +6,16 @@ serializer so the routes can share one implementation across split DB tables.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from io import BytesIO
-import re
-from typing import Any, Callable
+from typing import Any
 
 import pandas as pd
-from sqlalchemy import func
-from sqlalchemy.orm import Session as DbSession
-
-from app.models.constraint_violation import ConstraintViolation
 from app.models.module import Module
 from app.models.programme import Programme
 from app.models.room import Room
-from app.models.schedule_run import ScheduleRun
-from app.models.scheduled_session import ScheduledSession
 from app.models.session import Session
 from app.models.session_staff import SessionStaff
 from app.models.staff import Staff
@@ -34,6 +29,7 @@ from app.services.compatibility import (
     minutes_to_time,
     time_to_minutes,
 )
+from app.services.schedule_state_service import clear_schedule_state
 from app.services.serializers import (
     group_to_dict,
     module_to_dict,
@@ -43,6 +39,8 @@ from app.services.serializers import (
     staff_to_dict,
     time_slot_to_dict,
 )
+from sqlalchemy import func
+from sqlalchemy.orm import Session as DbSession
 
 
 class DatabaseValidationError(ValueError):
@@ -540,7 +538,10 @@ class DatabaseService:
             )
 
     def _key(self, config: DatabaseTypeConfig, payload: dict) -> tuple:
-        return tuple((payload.get(field) or "").strip().lower() if isinstance(payload.get(field), str) else payload.get(field) for field in config.key_fields)
+        return tuple(
+            (payload.get(field) or "").strip().lower() if isinstance(payload.get(field), str) else payload.get(field)
+            for field in config.key_fields
+        )
 
     def _assert_can_remove(self, db: DbSession, config: DatabaseTypeConfig, items: list) -> None:
         if not items:
@@ -596,6 +597,4 @@ class DatabaseService:
         return staff
 
     def _clear_schedule_state(self, db: DbSession) -> None:
-        db.query(ConstraintViolation).delete()
-        db.query(ScheduledSession).delete()
-        db.query(ScheduleRun).delete()
+        clear_schedule_state(db)

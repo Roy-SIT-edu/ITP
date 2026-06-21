@@ -20,27 +20,22 @@ from app.models.staff import Staff
 from app.models.student_group import StudentGroup
 from app.models.time_slot import TimeSlot
 from app.schemas.session import SessionInput
+from app.services.requirement_input_service import RequirementInputService, RequirementInputValidationError
+from app.services.schedule_state_service import clear_schedule_state
 from app.services.serializers import (
     group_to_dict,
     module_to_dict,
     programme_to_dict,
     room_to_dict,
     schedule_run_to_dict,
+    session_staff_items,
     session_to_dict,
     staff_to_dict,
     time_slot_to_dict,
-    session_staff_items,
 )
-from app.services.requirement_input_service import RequirementInputService, RequirementInputValidationError
 from app.services.validation_service import ValidationService
 
 router = APIRouter(prefix="/api", tags=["data"])
-
-
-def clear_schedule_state(db: DbSession) -> None:
-    db.query(ConstraintViolation).delete()
-    db.query(ScheduledSession).delete()
-    db.query(ScheduleRun).delete()
 
 
 def validation_http_error(exc: RequirementInputValidationError) -> HTTPException:
@@ -74,10 +69,7 @@ def rooms(db: DbSession = Depends(get_db)):
 
 @router.get("/timeslots")
 def time_slots(db: DbSession = Depends(get_db)):
-    return [
-        time_slot_to_dict(item)
-        for item in db.query(TimeSlot).order_by(TimeSlot.day, TimeSlot.start_time, TimeSlot.week_pattern).all()
-    ]
+    return [time_slot_to_dict(item) for item in db.query(TimeSlot).order_by(TimeSlot.day, TimeSlot.start_time, TimeSlot.week_pattern).all()]
 
 
 @router.get("/sessions")
@@ -152,8 +144,7 @@ def constraint_insights(db: DbSession = Depends(get_db)):
     schedule_issues = []
     if latest_run:
         schedule_issues = [
-            violation_to_summary(item)
-            for item in db.query(ConstraintViolation).filter_by(schedule_run_id=latest_run.id).all()
+            violation_to_summary(item) for item in db.query(ConstraintViolation).filter_by(schedule_run_id=latest_run.id).all()
         ]
 
     counts: dict[str, dict] = {}
@@ -238,4 +229,3 @@ def delete_session(session_id: int, db: DbSession = Depends(get_db)):
     db.delete(session)
     db.commit()
     return {"message": "Session deleted successfully"}
-

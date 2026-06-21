@@ -6,13 +6,10 @@ the references exist and the row can be scheduled against current rooms/slots.
 
 from __future__ import annotations
 
-import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import Any, Mapping
-
-from sqlalchemy import func
-from sqlalchemy.orm import Session as DbSession
+from typing import Any
 
 from app.models.module import Module
 from app.models.programme import Programme
@@ -36,11 +33,15 @@ from app.services.compatibility import (
     normalize_token,
     parse_custom_weeks,
     parse_day_list,
+    positive_float,
+    positive_int,
     room_capacity_fits,
     time_to_minutes,
     venue_room_compatible,
     weeks_conflict,
 )
+from sqlalchemy import func
+from sqlalchemy.orm import Session as DbSession
 
 
 class RequirementInputValidationError(ValueError):
@@ -250,23 +251,17 @@ class RequirementInputService:
         venue_type = self._required_text(row, source_row_no, "Venue Type Required", errors)
         duration = self._duration_minutes(row)
         if duration is None:
-            errors.append(
-                self._issue(source_row_no, "Duration", "Duration must be numeric and greater than 0.")
-            )
+            errors.append(self._issue(source_row_no, "Duration", "Duration must be numeric and greater than 0."))
         sessions_per_week = self._required_positive_int(row, source_row_no, "Sessions Per Week", errors)
         start_week = self._required_positive_int(row, source_row_no, "Start Week", errors)
         end_week = self._required_positive_int(row, source_row_no, "End Week", errors)
         if start_week and end_week and start_week > end_week:
-            errors.append(
-                self._issue(source_row_no, "Start Week", "Start Week must be less than or equal to End Week.")
-            )
+            errors.append(self._issue(source_row_no, "Start Week", "Start Week must be less than or equal to End Week."))
 
         week_pattern = self._week_pattern(row, source_row_no, errors)
         custom_weeks = clean_text(self._value(row, "Custom Weeks"))
         if week_pattern == "Custom" and not parse_custom_weeks(custom_weeks):
-            errors.append(
-                self._issue(source_row_no, "Custom Weeks", "Custom week pattern requires at least one week number.")
-            )
+            errors.append(self._issue(source_row_no, "Custom Weeks", "Custom week pattern requires at least one week number."))
 
         scheduling_type = self._scheduling_type(row, source_row_no, errors)
         fixed_day = self._fixed_day(row, source_row_no, errors, required=scheduling_type == "Fixed")
@@ -281,13 +276,9 @@ class RequirementInputService:
             delivery_token = normalize_token(delivery_mode)
             campus_token = normalize_token(campus_mode)
             if delivery_token in {"online", "asynchronous", "async"} and campus_token not in {"online", "virtual", "remote"}:
-                errors.append(
-                    self._issue(source_row_no, "Campus Mode", "Online sessions must use online or virtual campus mode.")
-                )
+                errors.append(self._issue(source_row_no, "Campus Mode", "Online sessions must use online or virtual campus mode."))
             if delivery_token in {"face to face", "f2f", "physical", "in person"} and campus_token in {"online", "virtual", "remote"}:
-                errors.append(
-                    self._issue(source_row_no, "Campus Mode", "Face-to-face sessions cannot use virtual campus mode.")
-                )
+                errors.append(self._issue(source_row_no, "Campus Mode", "Face-to-face sessions cannot use virtual campus mode."))
             if delivery_token in {"online", "asynchronous", "async"}:
                 self._ensure_virtual_room(db)
 
@@ -426,7 +417,9 @@ class RequirementInputService:
         if not group:
             if not allow_reference_upsert:
                 errors.append(
-                    self._issue(source_row_no, "Student Group Code", f"Student group '{group_code}' does not exist in Database > Student Groups.")
+                    self._issue(
+                        source_row_no, "Student Group Code", f"Student group '{group_code}' does not exist in Database > Student Groups."
+                    )
                 )
                 return None
             group = StudentGroup(
@@ -516,7 +509,9 @@ class RequirementInputService:
         if not staff and staff_name:
             staff = db.query(Staff).filter(func.lower(Staff.staff_name) == staff_name.lower()).first()
             if not staff:
-                errors.append(self._issue(source_row_no, "Staff 1 Name", f"Staff name '{staff_name}' does not exactly match Database > Staff."))
+                errors.append(
+                    self._issue(source_row_no, "Staff 1 Name", f"Staff name '{staff_name}' does not exactly match Database > Staff.")
+                )
                 return None
 
         if staff and staff_name and staff.staff_name and staff.staff_name.lower() != staff_name.lower():
@@ -584,11 +579,7 @@ class RequirementInputService:
         for room in db.query(Room).all():
             if not self._campus_room_compatible(campus_mode, room):
                 continue
-            if (
-                delivery_room_compatible(probe, room)
-                and venue_room_compatible(probe, room)
-                and room_capacity_fits(probe, room)
-            ):
+            if delivery_room_compatible(probe, room) and venue_room_compatible(probe, room) and room_capacity_fits(probe, room):
                 return True
         return False
 
@@ -625,9 +616,7 @@ class RequirementInputService:
             return "Virtual"
         if token == "external":
             return "External"
-        errors.append(
-            self._issue(source_row_no, "Campus Mode", "Campus Mode must be Physical, Virtual, Online, Remote, or External.")
-        )
+        errors.append(self._issue(source_row_no, "Campus Mode", "Campus Mode must be Physical, Virtual, Online, Remote, or External."))
         return raw
 
     def _week_pattern(self, row: Mapping[str, Any], source_row_no: int, errors: list[dict]) -> str | None:
@@ -702,9 +691,7 @@ class RequirementInputService:
         days = parse_day_list(raw)
         invalid_days = [day for day in days if day not in DAY_ORDER]
         if invalid_days:
-            errors.append(
-                self._issue(source_row_no, field, f"{field} contains invalid day values: {', '.join(invalid_days)}.")
-            )
+            errors.append(self._issue(source_row_no, field, f"{field} contains invalid day values: {', '.join(invalid_days)}."))
         return raw
 
     def _duration_minutes(self, row: Mapping[str, Any]) -> int | None:
@@ -751,21 +738,10 @@ class RequirementInputService:
         return value
 
     def _positive_int(self, value: Any) -> int | None:
-        number = self._positive_float(value)
-        if number is None or number <= 0:
-            return None
-        return int(number)
+        return positive_int(value)
 
     def _positive_float(self, value: Any) -> float | None:
-        if isinstance(value, bool):
-            return None
-        text = clean_text(value)
-        if not text:
-            return None
-        try:
-            return float(text)
-        except ValueError:
-            return None
+        return positive_float(value)
 
     def _programme_code(self, value: str | None) -> str | None:
         text = clean_text(value)
@@ -776,13 +752,7 @@ class RequirementInputService:
     def _value(self, row: Mapping[str, Any], key: str) -> Any:
         if key in row:
             return row[key]
-        snake_key = (
-            key.lower()
-            .replace("?", "")
-            .replace("/", "_")
-            .replace(" ", "_")
-            .replace("-", "_")
-        )
+        snake_key = key.lower().replace("?", "").replace("/", "_").replace(" ", "_").replace("-", "_")
         if snake_key in row:
             return row[snake_key]
         return None

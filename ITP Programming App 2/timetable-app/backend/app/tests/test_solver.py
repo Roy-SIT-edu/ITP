@@ -1,9 +1,9 @@
+"""Tests for CP-SAT timetable solver behavior."""
+
 from app.models.room import Room
 from app.models.session import Session
 from app.models.time_slot import TimeSlot
 from app.services.validation_service import ValidationService
-"""Tests for CP-SAT timetable solver behavior."""
-
 from app.solver.cp_sat_solver import CpSatTimetableSolver
 
 

@@ -4,12 +4,11 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
 from app import models  # noqa: F401
 from app.database import Base
 from app.services.seed_service import seed_reference_data, seed_sample_sessions
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 
 @pytest.fixture()
@@ -36,20 +35,23 @@ def write_two_tab_template(path: Path, required_rows: list[dict], optional_rows:
     optional_rows = optional_rows or []
     with pd.ExcelWriter(path) as writer:
         pd.DataFrame(required_rows).to_excel(writer, index=False, sheet_name="Input_Template")
-        pd.DataFrame(optional_rows, columns=[
-            "Requirement ID",
-            "Start Week",
-            "End Week",
-            "Specific Week",
-            "Specific Date",
-            "Specific Day",
-            "Start Time",
-            "End Time",
-            "Venue Request",
-            "Shared Session Group ID",
-            "Combined With Programmes",
-            "Cleanup Notes",
-        ]).to_excel(writer, index=False, sheet_name="Remarks_(optional)")
+        pd.DataFrame(
+            optional_rows,
+            columns=[
+                "Requirement ID",
+                "Start Week",
+                "End Week",
+                "Specific Week",
+                "Specific Date",
+                "Specific Day",
+                "Start Time",
+                "End Time",
+                "Venue Request",
+                "Shared Session Group ID",
+                "Combined With Programmes",
+                "Cleanup Notes",
+            ],
+        ).to_excel(writer, index=False, sheet_name="Remarks_(optional)")
     return path
 
 

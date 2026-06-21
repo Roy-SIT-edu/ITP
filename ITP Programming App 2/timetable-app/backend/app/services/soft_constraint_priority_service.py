@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from sqlalchemy.orm import Session as DbSession
-
 from app.models.soft_constraint_priority import SoftConstraintPriority
-
+from sqlalchemy.orm import Session as DbSession
 
 SOFT_CONSTRAINT_DEFINITIONS = [
     {
@@ -56,10 +54,7 @@ SOFT_CONSTRAINT_DEFINITIONS = [
 class SoftConstraintPriorityService:
     def list_priorities(self, db: DbSession) -> list[dict]:
         self._ensure_defaults(db)
-        rows = {
-            item.constraint_code: item
-            for item in db.query(SoftConstraintPriority).order_by(SoftConstraintPriority.rank).all()
-        }
+        rows = {item.constraint_code: item for item in db.query(SoftConstraintPriority).order_by(SoftConstraintPriority.rank).all()}
         priorities = [
             {
                 **definition,
@@ -94,20 +89,14 @@ class SoftConstraintPriorityService:
         return self.list_priorities(db)
 
     def weights(self, db: DbSession) -> dict[str, int]:
-        return {
-            item["constraint_code"]: item["weight"]
-            for item in self.list_priorities(db)
-        }
+        return {item["constraint_code"]: item["weight"] for item in self.list_priorities(db)}
 
     @staticmethod
     def weight_for_rank(rank: int, total: int) -> int:
         return max(1, total - rank + 1) * 5
 
     def _ensure_defaults(self, db: DbSession) -> None:
-        existing = {
-            item.constraint_code: item
-            for item in db.query(SoftConstraintPriority).all()
-        }
+        existing = {item.constraint_code: item for item in db.query(SoftConstraintPriority).all()}
         total = len(SOFT_CONSTRAINT_DEFINITIONS)
         changed = False
         for definition in SOFT_CONSTRAINT_DEFINITIONS:

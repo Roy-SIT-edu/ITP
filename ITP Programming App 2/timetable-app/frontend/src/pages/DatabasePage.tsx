@@ -3,8 +3,21 @@
  * Renders any configured split database type as a searchable, editable table.
  */
 
-import { ArrowDown, ArrowUp, ArrowUpDown, Download, Edit2, Plus, RefreshCw, Save, Search, Trash2, Upload, X } from "lucide-react";
-import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Download,
+  Edit2,
+  Plus,
+  RefreshCw,
+  Save,
+  Search,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createDatabaseRow,
   databaseCurrentInputUrl,
@@ -14,6 +27,7 @@ import {
   updateDatabaseRow,
   uploadDatabaseFile,
 } from "../api/client";
+import DatabaseUploadWarning from "../components/database/DatabaseUploadWarning";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
 import type { DatabaseColumn, DatabaseRow, DatabaseTypeInfo, UploadSummary } from "../types";
 
@@ -49,7 +63,9 @@ function displayValue(value: DatabaseRow[string]) {
 }
 
 function buildBlankDraft(columns: DatabaseColumn[]) {
-  return Object.fromEntries(columns.filter((column) => !column.read_only).map((column) => [column.key, initialValue(column)]));
+  return Object.fromEntries(
+    columns.filter((column) => !column.read_only).map((column) => [column.key, initialValue(column)]),
+  );
 }
 
 function compareRows(left: DatabaseRow, right: DatabaseRow, column: DatabaseColumn, direction: "asc" | "desc") {
@@ -57,7 +73,8 @@ function compareRows(left: DatabaseRow, right: DatabaseRow, column: DatabaseColu
   const leftValue = left[column.key];
   const rightValue = right[column.key];
 
-  if (leftValue === null || leftValue === undefined || leftValue === "") return rightValue === null || rightValue === undefined || rightValue === "" ? 0 : 1;
+  if (leftValue === null || leftValue === undefined || leftValue === "")
+    return rightValue === null || rightValue === undefined || rightValue === "" ? 0 : 1;
   if (rightValue === null || rightValue === undefined || rightValue === "") return -1;
 
   if (column.kind === "number") {
@@ -66,7 +83,9 @@ function compareRows(left: DatabaseRow, right: DatabaseRow, column: DatabaseColu
   if (column.kind === "boolean") {
     return (Number(Boolean(leftValue)) - Number(Boolean(rightValue))) * modifier;
   }
-  return String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true, sensitivity: "base" }) * modifier;
+  return (
+    String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true, sensitivity: "base" }) * modifier
+  );
 }
 
 export default function DatabasePage({ dataType }: Props) {
@@ -86,16 +105,16 @@ export default function DatabasePage({ dataType }: Props) {
   const [sort, setSort] = useState<SortState>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const config = types.find((item) => item.id === dataType);
-  const columns = config?.columns ?? [];
-  const editableColumns = columns.filter((column) => !column.read_only);
+  const config = useMemo(() => types.find((item) => item.id === dataType), [dataType, types]);
+  const columns = useMemo(() => config?.columns ?? [], [config]);
+  const editableColumns = useMemo(() => columns.filter((column) => !column.read_only), [columns]);
   const title = config?.label ?? fallbackLabels[dataType] ?? "Database";
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [typeData, rowData] = await Promise.all([types.length ? Promise.resolve(types) : getDatabaseTypes(), getDatabaseRows(dataType)]);
+      const [typeData, rowData] = await Promise.all([getDatabaseTypes(), getDatabaseRows(dataType)]);
       setTypes(typeData);
       setRows(rowData);
     } catch (err) {
@@ -103,7 +122,7 @@ export default function DatabasePage({ dataType }: Props) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [dataType]);
 
   useEffect(() => {
     setEditingId(null);
@@ -114,9 +133,8 @@ export default function DatabasePage({ dataType }: Props) {
     setSort(null);
     setUploadSummary(null);
     setSuccess(null);
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataType]);
+    void load();
+  }, [dataType, load]);
 
   useEffect(() => {
     if (config && adding && Object.keys(newDraft).length === 0) {
@@ -126,7 +144,9 @@ export default function DatabasePage({ dataType }: Props) {
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const matches = query ? rows.filter((row) => columns.some((column) => displayValue(row[column.key]).toLowerCase().includes(query))) : rows;
+    const matches = query
+      ? rows.filter((row) => columns.some((column) => displayValue(row[column.key]).toLowerCase().includes(query)))
+      : rows;
     if (!sort) return matches;
     const column = columns.find((item) => item.key === sort.key);
     if (!column) return matches;
@@ -143,7 +163,9 @@ export default function DatabasePage({ dataType }: Props) {
 
   const beginEdit = (row: DatabaseRow) => {
     setEditingId(row.id);
-    setDraft(Object.fromEntries(editableColumns.map((column) => [column.key, row[column.key] ?? initialValue(column)])));
+    setDraft(
+      Object.fromEntries(editableColumns.map((column) => [column.key, row[column.key] ?? initialValue(column)])),
+    );
     setAdding(false);
     setError(null);
     setSuccess(null);
@@ -222,7 +244,9 @@ export default function DatabasePage({ dataType }: Props) {
         // Replace uploads rollback on validation errors, so reload only on success.
         setError(`Upload failed with ${summary.rows_failed} issue${summary.rows_failed === 1 ? "" : "s"}.`);
       } else {
-        setSuccess(`Uploaded ${summary.rows_imported} ${title.toLowerCase()} row${summary.rows_imported === 1 ? "" : "s"}.`);
+        setSuccess(
+          `Uploaded ${summary.rows_imported} ${title.toLowerCase()} row${summary.rows_imported === 1 ? "" : "s"}.`,
+        );
         await load();
         notifyWorkflowProgressChange();
       }
@@ -265,7 +289,9 @@ export default function DatabasePage({ dataType }: Props) {
         required={column.required}
         type={column.kind === "number" ? "number" : column.kind === "time" ? "time" : "text"}
         value={value === null || value === undefined ? "" : String(value)}
-        onChange={(event) => updateDraft(target, column.key, column.kind === "number" ? event.target.value : event.target.value)}
+        onChange={(event) =>
+          updateDraft(target, column.key, column.kind === "number" ? event.target.value : event.target.value)
+        }
       />
     );
   };
@@ -299,38 +325,12 @@ export default function DatabasePage({ dataType }: Props) {
       </div>
 
       {showUploadWarning && (
-        <div className="modal-backdrop" role="presentation">
-          <div className="modal-content upload-warning-modal" role="dialog" aria-modal="true" aria-labelledby="upload-warning-title">
-            <div className="modal-header">
-              <h2 id="upload-warning-title">Replace {title} data?</h2>
-              <button className="icon-button" type="button" onClick={() => setShowUploadWarning(false)} aria-label="Close upload warning">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="modal-body upload-warning-body">
-              <div className="upload-warning-copy">
-                <strong>This Excel upload replaces all current {title.toLowerCase()} rows.</strong>
-                <span>
-                  Download the current database first if you may need to restore or compare the existing information.
-                  Validation errors will stop the replacement, but a valid upload will overwrite this table.
-                </span>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="button secondary" type="button" onClick={() => setShowUploadWarning(false)}>
-                Cancel
-              </button>
-              <a className="button secondary" href={databaseCurrentInputUrl(dataType)}>
-                <Download size={17} />
-                Download Current Data
-              </a>
-              <button className="button danger" type="button" onClick={continueUpload}>
-                <Upload size={17} />
-                Continue to Upload
-              </button>
-            </div>
-          </div>
-        </div>
+        <DatabaseUploadWarning
+          title={title}
+          currentUrl={databaseCurrentInputUrl(dataType)}
+          onCancel={() => setShowUploadWarning(false)}
+          onContinue={continueUpload}
+        />
       )}
 
       {error && <div className="notice bad">{error}</div>}
@@ -378,95 +378,125 @@ export default function DatabasePage({ dataType }: Props) {
 
         <div className="filter-bar database-filter">
           <Search size={18} />
-          <input placeholder={`Search ${title.toLowerCase()}...`} value={search} onChange={(event) => setSearch(event.target.value)} />
+          <input
+            placeholder={`Search ${title.toLowerCase()}...`}
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
           <span className="muted">{filteredRows.length} rows</span>
         </div>
 
         <div className="table-wrap database-table">
-        <table>
-          <thead>
-            <tr>
-              <th className="action-col">Actions</th>
-              {columns.map((column) => (
-                <th key={column.key}>
-                  <button
-                    aria-label={`Sort by ${column.label}`}
-                    aria-pressed={sort?.key === column.key}
-                    className="table-sort-button"
-                    onClick={() => toggleSort(column)}
-                    type="button"
-                  >
-                    <span>{column.label}</span>
-                    {sort?.key === column.key ? (
-                      sort.direction === "asc" ? <ArrowUp size={13} /> : <ArrowDown size={13} />
-                    ) : (
-                      <ArrowUpDown size={13} />
-                    )}
-                  </button>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {adding && (
+          <table>
+            <thead>
               <tr>
-                <td className="action-cell">
-                  <form className="row-actions" id="new-database-row" onSubmit={saveNew}>
-                    <button className="button slim" disabled={busy} title="Save" type="submit">
-                      <Save size={14} />
-                    </button>
-                    <button className="button secondary slim" title="Cancel" type="button" onClick={() => setAdding(false)}>
-                      <X size={14} />
-                    </button>
-                  </form>
-                </td>
+                <th className="action-col">Actions</th>
                 {columns.map((column) => (
-                  <td key={column.key}>{column.read_only ? "" : fieldInput(column, newDraft[column.key], "new")}</td>
+                  <th key={column.key}>
+                    <button
+                      aria-label={`Sort by ${column.label}`}
+                      aria-pressed={sort?.key === column.key}
+                      className="table-sort-button"
+                      onClick={() => toggleSort(column)}
+                      type="button"
+                    >
+                      <span>{column.label}</span>
+                      {sort?.key === column.key ? (
+                        sort.direction === "asc" ? (
+                          <ArrowUp size={13} />
+                        ) : (
+                          <ArrowDown size={13} />
+                        )
+                      ) : (
+                        <ArrowUpDown size={13} />
+                      )}
+                    </button>
+                  </th>
                 ))}
               </tr>
-            )}
-            {filteredRows.map((row) => {
-              const editing = editingId === row.id;
-              return (
-                <tr key={row.id}>
+            </thead>
+            <tbody>
+              {adding && (
+                <tr>
                   <td className="action-cell">
-                    {editing ? (
-                      <form className="row-actions" onSubmit={saveEdit}>
-                        <button className="button slim" disabled={busy} title="Save" type="submit">
-                          <Save size={14} />
-                        </button>
-                        <button className="button secondary slim" title="Cancel" type="button" onClick={() => setEditingId(null)}>
-                          <X size={14} />
-                        </button>
-                      </form>
-                    ) : (
-                      <div className="row-actions">
-                        <button className="button secondary slim" title="Edit" type="button" onClick={() => beginEdit(row)}>
-                          <Edit2 size={14} />
-                        </button>
-                        <button className="button danger slim" title="Delete" type="button" onClick={() => removeRow(row)}>
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    )}
+                    <form className="row-actions" id="new-database-row" onSubmit={saveNew}>
+                      <button className="button slim" disabled={busy} title="Save" type="submit">
+                        <Save size={14} />
+                      </button>
+                      <button
+                        className="button secondary slim"
+                        title="Cancel"
+                        type="button"
+                        onClick={() => setAdding(false)}
+                      >
+                        <X size={14} />
+                      </button>
+                    </form>
                   </td>
                   {columns.map((column) => (
-                    <td key={column.key}>
-                      {editing && !column.read_only ? fieldInput(column, draft[column.key], "edit") : displayValue(row[column.key])}
-                    </td>
+                    <td key={column.key}>{column.read_only ? "" : fieldInput(column, newDraft[column.key], "new")}</td>
                   ))}
                 </tr>
-              );
-            })}
-            {!loading && filteredRows.length === 0 && !adding && (
-              <tr>
-                <td colSpan={columns.length + 1} style={{ textAlign: "center", padding: 24 }}>
-                  No rows found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+              {filteredRows.map((row) => {
+                const editing = editingId === row.id;
+                return (
+                  <tr key={row.id}>
+                    <td className="action-cell">
+                      {editing ? (
+                        <form className="row-actions" onSubmit={saveEdit}>
+                          <button className="button slim" disabled={busy} title="Save" type="submit">
+                            <Save size={14} />
+                          </button>
+                          <button
+                            className="button secondary slim"
+                            title="Cancel"
+                            type="button"
+                            onClick={() => setEditingId(null)}
+                          >
+                            <X size={14} />
+                          </button>
+                        </form>
+                      ) : (
+                        <div className="row-actions">
+                          <button
+                            className="button secondary slim"
+                            title="Edit"
+                            type="button"
+                            onClick={() => beginEdit(row)}
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            className="button danger slim"
+                            title="Delete"
+                            type="button"
+                            onClick={() => removeRow(row)}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                    {columns.map((column) => (
+                      <td key={column.key}>
+                        {editing && !column.read_only
+                          ? fieldInput(column, draft[column.key], "edit")
+                          : displayValue(row[column.key])}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+              {!loading && filteredRows.length === 0 && !adding && (
+                <tr>
+                  <td className="table-empty-cell" colSpan={columns.length + 1}>
+                    No rows found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
     </div>

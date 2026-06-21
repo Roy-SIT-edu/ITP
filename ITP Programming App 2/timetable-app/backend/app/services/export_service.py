@@ -5,10 +5,9 @@ from __future__ import annotations
 from io import BytesIO, StringIO
 
 import pandas as pd
-from sqlalchemy.orm import Session as DbSession
-
 from app.models.scheduled_session import ScheduledSession
 from app.services.serializers import session_staff_ids, session_staff_names
+from sqlalchemy.orm import Session as DbSession
 
 
 class ExportService:

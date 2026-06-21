@@ -62,11 +62,7 @@ def candidate_slot_allowed(session: Session, slot: TimeSlot) -> bool:
 def candidate_room_allowed(session: Session, room: Room) -> bool:
     """Return whether a saved requirement can be assigned to a room."""
 
-    return (
-        room_capacity_fits(session, room)
-        and delivery_room_compatible(session, room)
-        and venue_room_compatible(session, room)
-    )
+    return room_capacity_fits(session, room) and delivery_room_compatible(session, room) and venue_room_compatible(session, room)
 
 
 def fixed_sessions_conflict(left: Session, right: Session) -> bool:

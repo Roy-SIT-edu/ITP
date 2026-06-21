@@ -29,7 +29,9 @@ export default function UploadPage() {
       const nextSummary = await uploadTemplate(files);
       if (nextSummary.rows_failed > 0) {
         setSummary(nextSummary);
-        setError("No requirements were imported because validation failed. Fix the row-level errors below and upload again.");
+        setError(
+          "No requirements were imported because validation failed. Fix the row-level errors below and upload again.",
+        );
       } else {
         clearSessionState();
         setSummary(nextSummary);
