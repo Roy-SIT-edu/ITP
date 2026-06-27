@@ -6,8 +6,6 @@ stores post-generation constraint checks for review/export screens.
 
 from __future__ import annotations
 
-from sqlalchemy.orm import Session as DbSession
-
 from app.models.room import Room
 from app.models.schedule_run import ScheduleRun
 from app.models.scheduled_session import ScheduledSession
@@ -17,6 +15,7 @@ from app.services.constraint_service import ConstraintService
 from app.services.soft_constraint_priority_service import SoftConstraintPriorityService
 from app.services.validation_service import ValidationService
 from app.solver.cp_sat_solver import CpSatTimetableSolver
+from sqlalchemy.orm import Session as DbSession
 
 
 class ScheduleService:

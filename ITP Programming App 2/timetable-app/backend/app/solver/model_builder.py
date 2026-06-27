@@ -21,6 +21,12 @@ from app.services.compatibility import (
     time_to_minutes,
     weeks_conflict,
 )
+from app.services.scheduling_constants import (
+    DEFAULT_SOFT_CONSTRAINT_WEIGHTS,
+    LONG_CONSECUTIVE_DAY_MINUTES,
+    SHORT_CAMPUS_DAY_MAX_MINUTES,
+    TUTOR_IDLE_GAP_MINUTES,
+)
 from app.services.scheduling_rules import candidate_room_allowed, candidate_slot_allowed
 
 
@@ -76,11 +82,7 @@ class TimetableModelBuilder:
 
         if not no_candidate_reasons:
             self._add_no_overlap_constraints(model, assignments, lambda item: item["room"].id)
-            self._add_no_overlap_constraints(
-                model,
-                assignments,
-                lambda item: item["session"].staff_id,
-            )
+            self._add_staff_no_overlap_constraints(model, assignments)
             self._add_no_overlap_constraints(
                 model,
                 assignments,
@@ -114,6 +116,20 @@ class TimetableModelBuilder:
                     if slot_conflicts(left["time_slot"], right["time_slot"]):
                         model.Add(left["variable"] + right["variable"] <= 1)
 
+    def _add_staff_no_overlap_constraints(self, model, assignments) -> None:
+        grouped: dict[int, list[dict]] = {}
+        for item in assignments:
+            for staff_id in self._session_staff_ids(item["session"]):
+                grouped.setdefault(staff_id, []).append(item)
+
+        for group in grouped.values():
+            for index, left in enumerate(group):
+                for right in group[index + 1 :]:
+                    if left["session"].id == right["session"].id:
+                        continue
+                    if slot_conflicts(left["time_slot"], right["time_slot"]):
+                        model.Add(left["variable"] + right["variable"] <= 1)
+
     def _single_assignment_soft_penalty(self, assignment: dict, weights: dict[str, int]) -> int:
         session = assignment["session"]
         slot = assignment["time_slot"]
@@ -122,13 +138,13 @@ class TimetableModelBuilder:
         preferred = parse_day_list(session.preferred_days)
         avoid = parse_day_list(session.avoid_days)
         if preferred and slot.day not in preferred:
-            penalty += weights.get("PREFERRED_DAY_MISMATCH", 15)
+            penalty += self._soft_weight(weights, "PREFERRED_DAY_MISMATCH")
         if avoid and normalize_token(session.priority) != "hard" and slot.day in avoid:
-            penalty += weights.get("AVOID_DAY", 30)
+            penalty += self._soft_weight(weights, "AVOID_DAY")
         if is_online_mode(session.delivery_mode) and slot.day not in {"Monday", "Tuesday"}:
-            penalty += weights.get("ONLINE_NOT_MON_TUE", 5)
-        if not room.is_virtual and (slot.duration_minutes or 0) <= 120:
-            penalty += weights.get("SHORT_CAMPUS_DAY", 10)
+            penalty += self._soft_weight(weights, "ONLINE_NOT_MON_TUE")
+        if not room.is_virtual and (slot.duration_minutes or 0) <= SHORT_CAMPUS_DAY_MAX_MINUTES:
+            penalty += self._soft_weight(weights, "SHORT_CAMPUS_DAY")
         return penalty
 
     def _pair_soft_penalties(
@@ -150,16 +166,16 @@ class TimetableModelBuilder:
         weights: dict[str, int],
         penalties: list[cp_model.LinearExpr],
     ) -> None:
-        weight = weights.get("TUTOR_IDLE_GAP", 25)
+        weight = self._soft_weight(weights, "TUTOR_IDLE_GAP")
         if weight <= 0:
             return
-        grouped = self._group_assignments(assignments, lambda item: (item["session"].staff_id, item["time_slot"].day))
+        grouped = self._group_assignments_by_staff_day(assignments)
         for items in grouped.values():
             for left, right in self._assignment_pairs(items):
                 if not self._compatible_pair(left, right):
                     continue
                 gap = self._gap_minutes(left["time_slot"], right["time_slot"])
-                if gap > 120:
+                if gap > TUTOR_IDLE_GAP_MINUTES:
                     penalties.append(self._both_selected(model, left, right, "TUTOR_IDLE_GAP") * weight)
 
     def _add_student_day_penalties(
@@ -169,14 +185,18 @@ class TimetableModelBuilder:
         weights: dict[str, int],
         penalties: list[cp_model.LinearExpr],
     ) -> None:
-        long_weight = weights.get("LONG_CONSECUTIVE_DAY", 20)
+        long_weight = self._soft_weight(weights, "LONG_CONSECUTIVE_DAY")
         grouped = self._group_assignments(assignments, lambda item: (item["session"].student_group_id, item["time_slot"].day))
         for items in grouped.values():
             for left, right in self._assignment_pairs(items):
                 if not self._compatible_pair(left, right):
                     continue
                 span = self._span_minutes(left["time_slot"], right["time_slot"])
-                if long_weight > 0 and self._gap_minutes(left["time_slot"], right["time_slot"]) == 0 and span > 240:
+                if (
+                    long_weight > 0
+                    and self._gap_minutes(left["time_slot"], right["time_slot"]) == 0
+                    and span > LONG_CONSECUTIVE_DAY_MINUTES
+                ):
                     penalties.append(self._both_selected(model, left, right, "LONG_CONSECUTIVE_DAY") * long_weight)
 
     def _add_online_switch_penalties(
@@ -186,11 +206,11 @@ class TimetableModelBuilder:
         weights: dict[str, int],
         penalties: list[cp_model.LinearExpr],
     ) -> None:
-        weight = weights.get("ONLINE_F2F_ADJACENT_SWITCH", 15)
+        weight = self._soft_weight(weights, "ONLINE_F2F_ADJACENT_SWITCH")
         if weight <= 0:
             return
         groups = [
-            ("STAFF", self._group_assignments(assignments, lambda item: (item["session"].staff_id, item["time_slot"].day))),
+            ("STAFF", self._group_assignments_by_staff_day(assignments)),
             (
                 "GROUP",
                 self._group_assignments(assignments, lambda item: (item["session"].student_group_id, item["time_slot"].day)),
@@ -217,11 +237,27 @@ class TimetableModelBuilder:
             grouped.setdefault(key, []).append(item)
         return grouped
 
+    def _group_assignments_by_staff_day(self, assignments: list[dict]) -> dict[tuple[int, str], list[dict]]:
+        grouped: dict[tuple[int, str], list[dict]] = {}
+        for item in assignments:
+            for staff_id in self._session_staff_ids(item["session"]):
+                grouped.setdefault((staff_id, item["time_slot"].day), []).append(item)
+        return grouped
+
+    def _session_staff_ids(self, session: Session) -> list[int]:
+        ids = [assignment.staff_id for assignment in getattr(session, "staff_assignments", []) or [] if assignment.staff_id is not None]
+        if not ids and session.staff_id is not None:
+            ids.append(session.staff_id)
+        return ids
+
     def _assignment_pairs(self, assignments: list[dict]):
         for index, left in enumerate(assignments):
             for right in assignments[index + 1 :]:
                 if left["session"].id != right["session"].id:
                     yield left, right
+
+    def _soft_weight(self, weights: dict[str, int], code: str) -> int:
+        return weights.get(code, DEFAULT_SOFT_CONSTRAINT_WEIGHTS[code])
 
     def _compatible_pair(self, left: dict, right: dict) -> bool:
         return weeks_conflict(left["time_slot"].week_pattern, right["time_slot"].week_pattern)

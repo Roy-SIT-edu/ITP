@@ -1,7 +1,7 @@
-from app.models.room import Room
-from app.models.schedule_run import ScheduleRun
 """Tests for post-generation constraint detection."""
 
+from app.models.room import Room
+from app.models.schedule_run import ScheduleRun
 from app.models.scheduled_session import ScheduledSession
 from app.models.session import Session
 from app.models.time_slot import TimeSlot
@@ -9,11 +9,7 @@ from app.services.constraint_service import ConstraintService
 
 
 def _slot(db_session):
-    return (
-        db_session.query(TimeSlot)
-        .filter_by(day="Monday", start_time="09:00", end_time="11:00", week_pattern="Weekly")
-        .one()
-    )
+    return db_session.query(TimeSlot).filter_by(day="Monday", start_time="09:00", end_time="11:00", week_pattern="Weekly").one()
 
 
 def _room(db_session, code):

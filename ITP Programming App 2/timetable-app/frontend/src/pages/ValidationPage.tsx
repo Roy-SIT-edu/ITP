@@ -4,35 +4,22 @@
  */
 
 import { CheckCircle2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import {
-  ApiError,
-  getSession,
-  getTimeSlots,
-  getValidation,
-  updateSession,
-} from "../api/client";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ApiError, getSession, getTimeSlots, getValidation, updateSession } from "../api/client";
 import RequirementsEditor from "../components/RequirementsEditor";
-import StatusBadge from "../components/StatusBadge";
+import InlineActivity from "../components/InlineActivity";
+import ValidationQuickEditModal from "../components/validation/ValidationQuickEditModal";
+import ValidationStatusBoard from "../components/validation/ValidationStatusBoard";
+import type {
+  ConflictSessions,
+  QuickEditValues,
+  QuickSuggestion,
+  ValidationIssueRow,
+} from "../components/validation/types";
+import { labelForStatus } from "../components/validation/validationDisplay";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
 import { useSessionState } from "../sessionState";
 import type { SessionRow, TimeSlot, ValidationIssue, ValidationResult } from "../types";
-
-const ISSUE_LABELS: Record<string, string> = {
-  "Fixed Time": "Fixed session conflict",
-};
-
-function formatIssueType(field: string) {
-  return ISSUE_LABELS[field] ?? field;
-}
-
-function labelForStatus(errorCount: number) {
-  return errorCount === 0 ? "Clean: Ready to Generate" : `Attention Required: ${errorCount} Conflict${errorCount === 1 ? "" : "s"} Found`;
-}
-
-type ValidationIssueRow = ValidationIssue & {
-  level: "Error";
-};
 
 export default function ValidationPage() {
   const [validation, setValidation] = useSessionState<ValidationResult | null>("validation.result", null);
@@ -41,12 +28,12 @@ export default function ValidationPage() {
   const [isValidating, setIsValidating] = useState(false);
   const [editorRefreshSignal, setEditorRefreshSignal] = useSessionState("validation.editorRefreshSignal", 0);
   const [activeIssue, setActiveIssue] = useSessionState<ValidationIssue | null>("validation.activeIssue", null);
-  const [conflictSessions, setConflictSessions] = useSessionState<{ anchor?: SessionRow; target?: SessionRow } | null>(
+  const [conflictSessions, setConflictSessions] = useSessionState<ConflictSessions>(
     "validation.conflictSessions",
     null,
   );
   const [timeslots, setTimeSlots] = useState<TimeSlot[]>([]);
-  const [editValues, setEditValues] = useSessionState("validation.editValues", {
+  const [editValues, setEditValues] = useSessionState<QuickEditValues>("validation.editValues", {
     fixed_day: "",
     fixed_start_time: "",
     fixed_end_time: "",
@@ -75,7 +62,9 @@ export default function ValidationPage() {
   };
 
   useEffect(() => {
-    getTimeSlots().then(setTimeSlots).catch(() => setTimeSlots([]));
+    getTimeSlots()
+      .then(setTimeSlots)
+      .catch(() => setTimeSlots([]));
   }, []);
 
   const issueRows = useMemo<ValidationIssueRow[]>(() => {
@@ -96,11 +85,7 @@ export default function ValidationPage() {
       return Array.from(new Set(timeslots.map((slot) => slot.start_time))).sort();
     }
     return Array.from(
-      new Set(
-        timeslots
-          .filter((slot) => slot.day === editValues.fixed_day)
-          .map((slot) => slot.start_time),
-      ),
+      new Set(timeslots.filter((slot) => slot.day === editValues.fixed_day).map((slot) => slot.start_time)),
     ).sort();
   }, [timeslots, editValues.fixed_day]);
 
@@ -117,7 +102,7 @@ export default function ValidationPage() {
     ).sort();
   }, [timeslots, editValues.fixed_day, editValues.fixed_start_time]);
 
-  const closeQuickEdit = () => {
+  const closeQuickEdit = useCallback(() => {
     setActiveIssue(null);
     setConflictSessions(null);
     setSaveError(null);
@@ -129,7 +114,7 @@ export default function ValidationPage() {
       scheduling_type: "Flexible",
       student_group_code: "",
     });
-  };
+  }, [setActiveIssue, setConflictSessions, setEditValues, setSaveError]);
 
   const refreshValidationAfterEdit = async () => {
     if (!hasValidated) return;
@@ -166,7 +151,7 @@ export default function ValidationPage() {
         scheduling_type: target.scheduling_type ?? "Flexible",
         student_group_code: target.student_group_code ?? "",
       });
-    } catch (err) {
+    } catch {
       setSaveError("Unable to load conflicting rows for quick edit.");
     }
   };
@@ -213,7 +198,7 @@ export default function ValidationPage() {
     }
   };
 
-  const quickSuggestions = useMemo(() => {
+  const quickSuggestions = useMemo<QuickSuggestion[]>(() => {
     if (!activeIssue) return [];
     const suggestions = [
       {
@@ -233,7 +218,9 @@ export default function ValidationPage() {
     const candidate = timeslots.find(
       (slot) =>
         slot.duration_minutes === conflictSessions?.target?.duration_minutes &&
-        (slot.day !== anchor?.fixed_day || slot.start_time !== anchor?.fixed_start_time || slot.end_time !== anchor?.fixed_end_time),
+        (slot.day !== anchor?.fixed_day ||
+          slot.start_time !== anchor?.fixed_start_time ||
+          slot.end_time !== anchor?.fixed_end_time),
     );
     if (candidate) {
       suggestions.push({
@@ -257,7 +244,7 @@ export default function ValidationPage() {
       });
     }
     return suggestions;
-  }, [activeIssue, conflictSessions, timeslots]);
+  }, [activeIssue, closeQuickEdit, conflictSessions, setEditValues, timeslots]);
 
   return (
     <div className="page">
@@ -274,93 +261,21 @@ export default function ValidationPage() {
         </div>
       </div>
       {error && <div className="notice bad">{error}</div>}
-      <div className="status-board">
-        <section className="status-card summary-card">
-          <div className="status-card-title">Status</div>
-          <div className="status-row">
-            <StatusBadge
-              label={!hasValidated ? "Not validated" : hasErrors ? "Blocked" : "Ready"}
-              tone={!hasValidated ? "neutral" : hasErrors ? "bad" : "good"}
-            />
-            <span>{statusLabel}</span>
-            {hasValidated && validation && (
-              <span>{validation.error_count} hard errors</span>
-            )}
-          </div>
-          <p>
-            {!hasValidated
-              ? "Run validation to reveal hard blockers such as missing fields, impossible rooms, and fixed-time clashes."
-              : hasErrors
-                ? "Fix all hard conflicts before generating the timetable."
-                : "No hard validation conflicts detected. You may proceed to generate."}
-          </p>
-        </section>
-
-        <section className="status-card issue-card">
-          <div className="status-card-title">Hard conflicts found</div>
-          {!hasValidated ? (
-            <div className="empty-state">Click Validate to run hard-constraint checks and show conflicts.</div>
-          ) : issueRows.length === 0 ? (
-            <div className="empty-state">No hard validation conflicts found.</div>
-          ) : (
-            <div className="table-wrap validation-table-wrap">
-              <table className="validation-issue-table">
-                <colgroup>
-                  <col className="validation-severity-col" />
-                  <col className="validation-type-col" />
-                  <col className="validation-requirement-col" />
-                  <col />
-                  <col className="validation-action-col" />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th>Severity</th>
-                    <th>Issue Type</th>
-                    <th>Affected Requirement</th>
-                    <th>Details</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {issueRows.map((item, index) => (
-                    <tr key={`${item.level}-${item.row}-${item.field}-${index}`}>
-                      <td>
-                        <StatusBadge label={item.level} tone="bad" />
-                      </td>
-                      <td>{formatIssueType(item.field)}</td>
-                      <td>{item.requirement_id ?? `Row ${item.row}`}</td>
-                      <td>{item.message}</td>
-                      <td>
-                        {item.conflict_session_ids?.length ? (
-                          <button className="button secondary slim" type="button" onClick={() => void openQuickEdit(item)}>
-                            Quick Edit
-                          </button>
-                        ) : (
-                          <button
-                            className="button secondary slim"
-                            type="button"
-                            onClick={() => document.getElementById("requirements-editor")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                          >
-                            Edit Below
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
-        <section className="status-card gate-card">
-          <div className="status-card-title">Next step</div>
-          <p>After hard validation passes, set priorities and generate the timetable.</p>
-          <a className={`button large ${hasValidated && validation?.error_count === 0 ? "" : "disabled-link"}`} href="#soft-constraints">
-            Priorities & Generate
-          </a>
-        </section>
-      </div>
+      {isValidating && (
+        <InlineActivity
+          kind="validate"
+          title="Checking hard constraints"
+          steps={["Matching records", "Checking fixed-time clashes", "Reviewing staff and group conflicts"]}
+        />
+      )}
+      <ValidationStatusBoard
+        hasValidated={hasValidated}
+        hasErrors={hasErrors}
+        validation={validation}
+        statusLabel={statusLabel}
+        issueRows={issueRows}
+        onQuickEdit={(item) => void openQuickEdit(item)}
+      />
 
       {hasValidated && (
         <RequirementsEditor
@@ -372,174 +287,20 @@ export default function ValidationPage() {
       )}
 
       {hasValidated && activeIssue && (
-        <div className="modal-backdrop" role="dialog" aria-modal="true">
-          <div className="modal-content quick-edit-panel">
-            <div className="modal-header">
-              <div>
-                <h2>Quick Edit</h2>
-                <p>Review the conflicting rows and apply a fix without reuploading.</p>
-              </div>
-              <button className="button secondary slim" type="button" onClick={closeQuickEdit}>
-                Close
-              </button>
-            </div>
-
-            <div className="modal-body">
-              <div className="detail-row">
-                <strong>Issue Type</strong>
-                <span>{formatIssueType(activeIssue.field)}</span>
-              </div>
-              <div className="detail-row">
-                <strong>Affected Requirement</strong>
-                <span>{activeIssue.requirement_id ?? `Row ${activeIssue.row}`}</span>
-              </div>
-              <div className="detail-row">
-                <strong>Details</strong>
-                <span>{activeIssue.message}</span>
-              </div>
-
-              <div className="suggestion-list">
-                <strong>Suggested fixes</strong>
-                {quickSuggestions.map((suggestion) => (
-                  <button className="suggestion-button" key={suggestion.label} type="button" onClick={suggestion.apply}>
-                    <span>{suggestion.label}</span>
-                    <small>{suggestion.detail}</small>
-                  </button>
-                ))}
-              </div>
-
-              {conflictSessions?.anchor && conflictSessions?.target ? (
-                <div className="quick-edit-grid">
-                  <div>
-                    <h3>Other conflicting row</h3>
-                    <div className="detail-row">
-                      <strong>Requirement</strong>
-                      <span>
-                        {conflictSessions.anchor.requirement_id ??
-                          `Row ${conflictSessions.anchor.source_row_no ?? conflictSessions.anchor.id}`}
-                      </span>
-                    </div>
-                    <div className="detail-row">
-                      <strong>Student Group</strong>
-                      <span>{conflictSessions.anchor.student_group_code ?? "Not set"}</span>
-                    </div>
-                    <div className="detail-row">
-                      <strong>Fixed Day</strong>
-                      <span>{conflictSessions.anchor.fixed_day ?? "None"}</span>
-                    </div>
-                    <div className="detail-row">
-                      <strong>Fixed Start</strong>
-                      <span>{conflictSessions.anchor.fixed_start_time ?? "None"}</span>
-                    </div>
-                    <div className="detail-row">
-                      <strong>Fixed End</strong>
-                      <span>{conflictSessions.anchor.fixed_end_time ?? "None"}</span>
-                    </div>
-                    <div className="detail-row">
-                      <strong>Scheduling Type</strong>
-                      <span>{conflictSessions.anchor.scheduling_type ?? "Flexible"}</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h3>Editable row</h3>
-                    <div className="detail-row">
-                      <strong>Requirement</strong>
-                      <span>
-                        {conflictSessions.target.requirement_id ??
-                          `Row ${conflictSessions.target.source_row_no ?? conflictSessions.target.id}`}
-                      </span>
-                    </div>
-                    <div className="detail-row">
-                      <label>
-                        <strong>Student Group</strong>
-                        <input
-                          value={editValues.student_group_code}
-                          onChange={(event) => setEditValues((prev) => ({ ...prev, student_group_code: event.target.value }))}
-                        />
-                      </label>
-                    </div>
-                    <div className="detail-row">
-                      <label>
-                        <strong>Fixed Day</strong>
-                        <select
-                          value={editValues.fixed_day}
-                          onChange={(event) => setEditValues((prev) => ({ ...prev, fixed_day: event.target.value }))}
-                        >
-                          <option value="">Select day</option>
-                          {dayOptions.map((day) => (
-                            <option key={day} value={day}>
-                              {day}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-                    <div className="detail-row">
-                      <label>
-                        <strong>Fixed Start Time</strong>
-                        <select
-                          value={editValues.fixed_start_time}
-                          onChange={(event) => setEditValues((prev) => ({ ...prev, fixed_start_time: event.target.value }))}
-                        >
-                          <option value="">Select time</option>
-                          {startTimeOptions.map((time) => (
-                            <option key={time} value={time}>
-                              {time}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-                    <div className="detail-row">
-                      <label>
-                        <strong>Fixed End Time</strong>
-                        <select
-                          value={editValues.fixed_end_time}
-                          onChange={(event) => setEditValues((prev) => ({ ...prev, fixed_end_time: event.target.value }))}
-                        >
-                          <option value="">Select time</option>
-                          {endTimeOptions.map((time) => (
-                            <option key={time} value={time}>
-                              {time}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-                    <div className="detail-row">
-                      <label>
-                        <strong>Scheduling Type</strong>
-                        <select
-                          value={editValues.scheduling_type}
-                          onChange={(event) => setEditValues((prev) => ({ ...prev, scheduling_type: event.target.value }))}
-                        >
-                          <option value="Flexible">Flexible</option>
-                          <option value="Fixed">Fixed</option>
-                        </select>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="detail-row">
-                  <span>Conflict rows are unavailable for editing.</span>
-                </div>
-              )}
-
-              {saveError && <div className="notice bad">{saveError}</div>}
-            </div>
-
-            <div className="modal-footer">
-              <button className="button secondary" type="button" onClick={closeQuickEdit}>
-                Close
-              </button>
-              <button className="button" type="button" onClick={saveQuickEdit} disabled={isSaving || !conflictSessions?.target}>
-                {isSaving ? "Saving..." : "Save changes"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ValidationQuickEditModal
+          activeIssue={activeIssue}
+          conflictSessions={conflictSessions}
+          editValues={editValues}
+          saveError={saveError}
+          isSaving={isSaving}
+          dayOptions={dayOptions}
+          startTimeOptions={startTimeOptions}
+          endTimeOptions={endTimeOptions}
+          quickSuggestions={quickSuggestions}
+          setEditValues={setEditValues}
+          onClose={closeQuickEdit}
+          onSave={saveQuickEdit}
+        />
       )}
     </div>
   );

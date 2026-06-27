@@ -6,21 +6,18 @@ serializer so the routes can share one implementation across split DB tables.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from io import BytesIO
-from typing import Any, Callable
+from typing import Any
 
 import pandas as pd
-from sqlalchemy import func
-from sqlalchemy.orm import Session as DbSession
-
-from app.models.constraint_violation import ConstraintViolation
 from app.models.module import Module
 from app.models.programme import Programme
 from app.models.room import Room
-from app.models.schedule_run import ScheduleRun
-from app.models.scheduled_session import ScheduledSession
 from app.models.session import Session
+from app.models.session_staff import SessionStaff
 from app.models.staff import Staff
 from app.models.student_group import StudentGroup
 from app.models.time_slot import TimeSlot
@@ -32,6 +29,7 @@ from app.services.compatibility import (
     minutes_to_time,
     time_to_minutes,
 )
+from app.services.schedule_state_service import clear_schedule_state
 from app.services.serializers import (
     group_to_dict,
     module_to_dict,
@@ -41,6 +39,8 @@ from app.services.serializers import (
     staff_to_dict,
     time_slot_to_dict,
 )
+from sqlalchemy import func
+from sqlalchemy.orm import Session as DbSession
 
 
 class DatabaseValidationError(ValueError):
@@ -57,6 +57,7 @@ class ColumnSpec:
     kind: str = "text"
     required: bool = False
     read_only: bool = False
+    aliases: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -77,13 +78,13 @@ DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
         model=Room,
         columns=(
             ColumnSpec("id", "ID", "number", read_only=True),
-            ColumnSpec("room_code", "Room Code", required=True),
-            ColumnSpec("room_name", "Room Name", required=True),
-            ColumnSpec("room_type", "Room Type", required=True),
+            ColumnSpec("room_code", "Address", required=True, aliases=("Location Name",)),
+            ColumnSpec("room_name", "Room Code", required=True, aliases=("Location Description",)),
+            ColumnSpec("room_type", "Room Type", required=True, aliases=("Resource Type",)),
             ColumnSpec("capacity", "Capacity", "number", required=True),
-            ColumnSpec("is_virtual", "Virtual", "boolean", required=True),
-            ColumnSpec("campus_mode", "Campus Mode", required=True),
-            ColumnSpec("recording_available", "Recording", "boolean", required=True),
+            ColumnSpec("is_virtual", "Virtual", "boolean"),
+            ColumnSpec("campus_mode", "Campus Mode"),
+            ColumnSpec("recording_available", "Recording", "boolean", required=True, aliases=("Recording Available",)),
         ),
         key_fields=("room_code",),
         serializer=room_to_dict,
@@ -95,9 +96,8 @@ DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
         model=Staff,
         columns=(
             ColumnSpec("id", "ID", "number", read_only=True),
-            ColumnSpec("staff_id", "Staff ID", required=True),
-            ColumnSpec("staff_name", "Staff Name", required=True),
-            ColumnSpec("staff_host_key", "Host Key"),
+            ColumnSpec("staff_id", "Staff ID", required=True, aliases=("Host Key",)),
+            ColumnSpec("staff_name", "Staff Name", required=True, aliases=("Name",)),
         ),
         key_fields=("staff_id",),
         serializer=staff_to_dict,
@@ -111,7 +111,7 @@ DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
             ColumnSpec("id", "ID", "number", read_only=True),
             ColumnSpec("code", "Code", required=True),
             ColumnSpec("name", "Name", required=True),
-            ColumnSpec("cluster", "Cluster"),
+            ColumnSpec("years", "Years", "number", aliases=("Duration", "Duration Years")),
         ),
         key_fields=("code",),
         serializer=programme_to_dict,
@@ -203,6 +203,8 @@ DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
     ),
 }
 
+ADMIN_DATABASE_TYPE_IDS = ("rooms", "staff", "programmes", "modules")
+
 
 class DatabaseService:
     def types(self) -> list[dict]:
@@ -221,7 +223,7 @@ class DatabaseService:
                     for column in config.columns
                 ],
             }
-            for config in DATABASE_TYPES.values()
+            for config in (DATABASE_TYPES[data_type] for data_type in ADMIN_DATABASE_TYPE_IDS)
         ]
 
     def list_rows(self, db: DbSession, data_type: str) -> list[dict]:
@@ -270,7 +272,7 @@ class DatabaseService:
 
     def replace_from_excel(self, db: DbSession, data_type: str, workbook_bytes: bytes) -> dict:
         config = self._config(data_type)
-        frame = self._read_excel(workbook_bytes)
+        frame = self._read_excel(config, workbook_bytes)
         rows_read = int(len(frame.index))
         errors = self._validate_columns(config, frame)
         if errors:
@@ -282,6 +284,7 @@ class DatabaseService:
                 payloads.append(self._row_to_payload(db, config, row))
             except ValueError as exc:
                 errors.append({"row": int(index) + 2, "field": "Row", "message": str(exc)})
+        payloads = self._sorted_payloads(config, payloads)
         errors.extend(self._duplicate_key_errors(config, payloads))
         if errors:
             raise DatabaseValidationError(errors)
@@ -308,18 +311,32 @@ class DatabaseService:
         except KeyError as exc:
             raise KeyError(f"Unknown database type: {data_type}") from exc
 
-    def _read_excel(self, workbook_bytes: bytes) -> pd.DataFrame:
+    def _read_excel(self, config: DatabaseTypeConfig, workbook_bytes: bytes) -> pd.DataFrame:
         with pd.ExcelFile(BytesIO(workbook_bytes)) as xls:
-            frame = pd.read_excel(xls, sheet_name=xls.sheet_names[0])
+            sheet_name = self._matching_sheet_name(config, xls)
+            frame = pd.read_excel(xls, sheet_name=sheet_name)
         return frame.dropna(how="all")
 
+    def _matching_sheet_name(self, config: DatabaseTypeConfig, xls: pd.ExcelFile) -> str:
+        expected = self._expected_column_names(config)
+        best_sheet = xls.sheet_names[0]
+        best_score = -1
+        for sheet_name in xls.sheet_names:
+            headers = pd.read_excel(xls, sheet_name=sheet_name, nrows=0).columns
+            actual = {str(column).strip().lower() for column in headers}
+            score = len(expected & actual)
+            if score > best_score:
+                best_sheet = sheet_name
+                best_score = score
+        return best_sheet
+
     def _validate_columns(self, config: DatabaseTypeConfig, frame: pd.DataFrame) -> list[dict]:
-        expected = [column.key for column in config.columns if not column.read_only]
         actual = {str(column).strip().lower(): column for column in frame.columns}
         errors = []
-        for column in expected:
-            if column.lower() not in actual:
-                errors.append({"row": 1, "field": column, "message": f"Missing required column '{column}'."})
+        for column in (column for column in config.columns if not column.read_only):
+            names = self._column_names(column)
+            if not any(name.lower() in actual for name in names):
+                errors.append({"row": 1, "field": column.key, "message": f"Missing required column '{column.key}'."})
         return errors
 
     def _row_to_payload(self, db: DbSession, config: DatabaseTypeConfig, row) -> dict:
@@ -328,9 +345,19 @@ class DatabaseService:
         for column in config.columns:
             if column.read_only:
                 continue
-            source = lookup.get(column.key.lower())
+            source = next((lookup.get(name.lower()) for name in self._column_names(column) if name.lower() in lookup), None)
             payload[column.key] = row.get(source) if source is not None else None
         return self._coerce_payload(db, config, payload)
+
+    def _expected_column_names(self, config: DatabaseTypeConfig) -> set[str]:
+        names = set()
+        for column in config.columns:
+            if not column.read_only:
+                names.update(name.lower() for name in self._column_names(column))
+        return names
+
+    def _column_names(self, column: ColumnSpec) -> tuple[str, ...]:
+        return (column.key, column.label, *column.aliases)
 
     def _coerce_payload(self, db: DbSession, config: DatabaseTypeConfig, payload: dict) -> dict:
         data = {}
@@ -358,7 +385,29 @@ class DatabaseService:
                 if start is None or end is None or end <= start:
                     raise ValueError("End time must be after start time.")
                 data["duration_minutes"] = data.get("duration_minutes") or end - start
+        elif config.id == "rooms":
+            room_address, room_name = self._split_room_location(data.get("room_code"))
+            data["room_code"] = room_address
+            data["room_name"] = room_name if room_name != room_address else data.get("room_name")
+            is_virtual = "virtual" in (data.get("room_type") or "").lower()
+            data["is_virtual"] = data.get("is_virtual") if data.get("is_virtual") is not None else is_virtual
+            data["campus_mode"] = data.get("campus_mode") or ("Virtual" if data["is_virtual"] else "Physical")
+        elif config.id == "staff":
+            if data.get("staff_name"):
+                data["staff_name"] = re.sub(r"\s+\.$", "", data["staff_name"]).strip()
+            data["staff_host_key"] = data.get("staff_host_key") or data.get("staff_id")
+        elif config.id == "modules":
+            data["module_title"] = data.get("module_title") or data.get("module_code")
         return data
+
+    def _split_room_location(self, room_code: str | None) -> tuple[str | None, str | None]:
+        text = clean_text(room_code)
+        if not text:
+            return None, None
+        match = re.match(r"^([A-Za-z0-9]+-[A-Za-z0-9]+-\d{2})-(.+)$", text)
+        if not match:
+            return text, text
+        return match.group(1), match.group(2).strip()
 
     def _coerce_requirement(self, db: DbSession, data: dict) -> dict:
         programme = self._lookup_programme(db, clean_text(data.pop("programme", None)))
@@ -422,6 +471,21 @@ class DatabaseService:
 
     def _replace_rows(self, db: DbSession, config: DatabaseTypeConfig, payloads: list[dict]) -> None:
         existing = db.query(config.model).all()
+        if existing:
+            try:
+                self._assert_can_remove(db, config, existing)
+            except DatabaseValidationError:
+                pass
+            else:
+                for item in existing:
+                    db.delete(item)
+                db.flush()
+                for payload in payloads:
+                    item = config.model()
+                    self._apply_model_data(item, payload)
+                    db.add(item)
+                return
+
         existing_by_key = {self._key(config, config.serializer(item)): item for item in existing}
         incoming_keys = set()
         for payload in payloads:
@@ -437,6 +501,21 @@ class DatabaseService:
         self._assert_can_remove(db, config, to_remove)
         for item in to_remove:
             db.delete(item)
+
+    def _sorted_payloads(self, config: DatabaseTypeConfig, payloads: list[dict]) -> list[dict]:
+        def sort_key(payload: dict) -> tuple:
+            values = []
+            for field in config.sort_fields:
+                value = payload.get(field)
+                if isinstance(value, str):
+                    values.append(value.casefold())
+                elif value is None:
+                    values.append("")
+                else:
+                    values.append(value)
+            return tuple(values)
+
+        return sorted(payloads, key=sort_key)
 
     def _duplicate_key_errors(self, config: DatabaseTypeConfig, payloads: list[dict]) -> list[dict]:
         seen = set()
@@ -459,7 +538,10 @@ class DatabaseService:
             )
 
     def _key(self, config: DatabaseTypeConfig, payload: dict) -> tuple:
-        return tuple((payload.get(field) or "").strip().lower() if isinstance(payload.get(field), str) else payload.get(field) for field in config.key_fields)
+        return tuple(
+            (payload.get(field) or "").strip().lower() if isinstance(payload.get(field), str) else payload.get(field)
+            for field in config.key_fields
+        )
 
     def _assert_can_remove(self, db: DbSession, config: DatabaseTypeConfig, items: list) -> None:
         if not items:
@@ -468,6 +550,8 @@ class DatabaseService:
         errors = []
         if config.id == "staff" and db.query(Session).filter(Session.staff_id.in_(ids)).first():
             errors.append("Cannot remove staff used by requirements.")
+        if config.id == "staff" and db.query(SessionStaff).filter(SessionStaff.staff_id.in_(ids)).first():
+            errors.append("Cannot remove staff used as requirement co-teachers.")
         if config.id == "modules" and db.query(Session).filter(Session.module_id.in_(ids)).first():
             errors.append("Cannot remove modules used by requirements.")
         if config.id == "programmes":
@@ -513,6 +597,4 @@ class DatabaseService:
         return staff
 
     def _clear_schedule_state(self, db: DbSession) -> None:
-        db.query(ConstraintViolation).delete()
-        db.query(ScheduledSession).delete()
-        db.query(ScheduleRun).delete()
+        clear_schedule_state(db)

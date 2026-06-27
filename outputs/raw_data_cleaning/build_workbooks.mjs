@@ -1,9 +1,20 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { SpreadsheetFile, Workbook } from "@oai/artifact-tool";
 
-const outputDir = "C:/Users/Admin/Desktop/Code/Codes/INF1009/ITP/outputs/raw_data_cleaning";
-const payload = JSON.parse(await fs.readFile(path.join(outputDir, "cleaned_raw_data.json"), "utf8"));
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const defaultRoot = process.env.ITP_ROOT ?? path.resolve(scriptDir, "..", "..");
+
+function argValue(name) {
+  const index = process.argv.indexOf(name);
+  return index >= 0 ? process.argv[index + 1] : undefined;
+}
+
+const root = path.resolve(argValue("--root") ?? defaultRoot);
+const outputDir = path.resolve(argValue("--out-dir") ?? process.env.RAW_DATA_OUT_DIR ?? path.join(root, "outputs", "raw_data_cleaning"));
+const dataJson = path.resolve(argValue("--data-json") ?? path.join(outputDir, "cleaned_raw_data.json"));
+const payload = JSON.parse(await fs.readFile(dataJson, "utf8"));
 
 const uploadConfigs = {
   rooms: {
@@ -24,7 +35,7 @@ const uploadConfigs = {
   programmes: {
     file: "programmes_import.xlsx",
     sheet: "Programmes",
-    columns: ["code", "name", "cluster"],
+    columns: ["code", "name", "years"],
   },
 };
 

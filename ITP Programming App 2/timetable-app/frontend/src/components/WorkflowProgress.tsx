@@ -4,7 +4,6 @@
  * primary navigation path.
  */
 
-import { CheckCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getDashboard } from "../api/client";
 import type { Dashboard } from "../types";
@@ -15,6 +14,15 @@ type Props = {
 };
 
 const refreshEventName = "workflow-progress-refresh";
+
+type ProcessStage = {
+  id: string;
+  step?: number;
+  label: string;
+  detail: string;
+  state: string;
+  locked: boolean;
+};
 
 export function notifyWorkflowProgressChange() {
   window.dispatchEvent(new Event(refreshEventName));
@@ -48,10 +56,9 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
   const generationClear = !!latest && latest.status !== "FAILED";
   const success = !!latest && latest.status === "COMPLETED" && latest.hard_violation_count === 0;
 
-  const processStages = [
+  const processStages: ProcessStage[] = [
     {
       id: "upload",
-      step: 1,
       label: "Import Data",
       detail: hasImport ? `${dashboard?.imported_rows ?? 0} rows loaded` : "Waiting for data",
       state: hasImport ? "complete" : "pending",
@@ -81,7 +88,7 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
       id: "review",
       step: 4,
       label: "Review Timetable",
-      detail: generationRan ? latest?.solver_status ?? latest?.status ?? "Review schedule" : "Generate first",
+      detail: generationRan ? (latest?.solver_status ?? latest?.status ?? "Review schedule") : "Generate first",
       state: generationClear ? "complete" : generationRan ? "attention" : "pending",
       locked: !generationRan,
     },
@@ -94,39 +101,56 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
       locked: !generationRan,
     },
   ];
+  const activeIndex = processStages.findIndex((stage) => stage.id === route);
+  const activeStage = activeIndex >= 0 ? processStages[activeIndex] : null;
+  const nextStage = processStages.find((stage, index) => index > activeIndex && !stage.locked) ?? null;
 
   return (
-    <nav className="workflow-stepper" aria-label="Scheduling workflow">
-      {processStages.map((stage, index) => {
-        const active = route === stage.id;
-        return (
-          <div className={`workflow-stage ${stage.state} ${active ? "active" : ""} ${stage.locked ? "locked" : ""}`} key={stage.id}>
-            <a
-              aria-current={active ? "page" : undefined}
-              aria-disabled={stage.locked}
-              className="workflow-step-link"
-              href={`#${stage.id}`}
-              onClick={(event) => {
-                if (stage.locked) {
-                  event.preventDefault();
-                  return;
-                }
-                onNavigate(stage.id);
-              }}
-              title={stage.locked ? stage.detail : undefined}
+    <>
+      <div className="workflow-compact" aria-label="Current workflow status">
+        <div>
+          <span>Current Step</span>
+          <strong>{activeStage?.label ?? "Overview"}</strong>
+        </div>
+        <p>{error ? "Unable to refresh workflow status" : (activeStage?.detail ?? "Open a workflow step to begin.")}</p>
+        {nextStage && (
+          <a className="button secondary slim" href={`#${nextStage.id}`} onClick={() => onNavigate(nextStage.id)}>
+            Next: {nextStage.label}
+          </a>
+        )}
+      </div>
+      <nav className="workflow-stepper" aria-label="Scheduling workflow">
+        {processStages.map((stage, index) => {
+          const active = route === stage.id;
+          return (
+            <div
+              className={`workflow-stage ${stage.state} ${active ? "active" : ""} ${stage.locked ? "locked" : ""}`}
+              key={stage.id}
             >
-              <span className="workflow-step-number workflow-step-marker">
-                {stage.state === "complete" ? <CheckCircle2 size={15} /> : stage.step}
-              </span>
-              <div>
-                <strong>{stage.label}</strong>
-                <span>{error ? "Unable to refresh" : stage.detail}</span>
-              </div>
-            </a>
-            {index < processStages.length - 1 && <div className={`workflow-line ${stage.state}`} />}
-          </div>
-        );
-      })}
-    </nav>
+              <a
+                aria-current={active ? "page" : undefined}
+                aria-disabled={stage.locked}
+                className="workflow-step-link"
+                href={`#${stage.id}`}
+                onClick={(event) => {
+                  if (stage.locked) {
+                    event.preventDefault();
+                    return;
+                  }
+                  onNavigate(stage.id);
+                }}
+                title={stage.locked ? stage.detail : undefined}
+              >
+                <div>
+                  <strong>{stage.label}</strong>
+                  <span>{error ? "Unable to refresh" : stage.detail}</span>
+                </div>
+              </a>
+              {index < processStages.length - 1 && <div className={`workflow-line ${stage.state}`} />}
+            </div>
+          );
+        })}
+      </nav>
+    </>
   );
 }

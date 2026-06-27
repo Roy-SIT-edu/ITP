@@ -3,7 +3,16 @@
  * Shows current import/validation/generation metrics; the flow chart lives in the global layout.
  */
 
-import { AlertTriangle, CalendarDays, CalendarCheck, FileSpreadsheet, Info, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarDays,
+  CalendarCheck,
+  FileSpreadsheet,
+  Info,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { getAvailability, getConstraintInsights, getDashboard } from "../api/client";
 import type { Availability, ConstraintInsights, Dashboard } from "../types";
@@ -56,7 +65,11 @@ export default function DashboardPage() {
         />
       ),
       helper: (
-        <span title={"Input validation checks uploaded session data for missing or invalid fields. Schedule issues are constraint violations detected after generating a timetable (conflicts in scheduled sessions)."}>
+        <span
+          title={
+            "Input validation checks uploaded session data for missing or invalid fields. Schedule issues are constraint violations detected after generating a timetable (conflicts in scheduled sessions)."
+          }
+        >
           <Info size={14} />
         </span>
       ),
@@ -200,11 +213,23 @@ function AvailabilityList({
       ))}
       {items.length > 6 && <span className="muted">Showing 6 of {items.length}</span>}
       <div className="heatmap-legend" aria-label="Teaching load colour legend">
-        <span><i className="heat-0" />0</span>
-        <span><i className="heat-1" />1</span>
-        <span><i className="heat-2" />2</span>
-        <span><i className="heat-4" />3-4</span>
-        <span><i className="heat-5" />5+</span>
+        <span>
+          <i className="heat-0" />0
+        </span>
+        <span>
+          <i className="heat-1" />1
+        </span>
+        <span>
+          <i className="heat-2" />2
+        </span>
+        <span>
+          <i className="heat-4" />
+          3-4
+        </span>
+        <span>
+          <i className="heat-5" />
+          5+
+        </span>
       </div>
     </div>
   );
@@ -218,7 +243,9 @@ function AvailabilityRow({ days, item }: { days: string[][]; item: { label: stri
 
   return (
     <div className="availability-row">
-      <span className="availability-name" title={item.label}>{item.label}</span>
+      <span className="availability-name" title={item.label}>
+        {item.label}
+      </span>
       {days.map(([day]) => (
         <small className={`heat-cell ${heatClass(counts[day] ?? 0)}`} key={day} title={`${day}: ${counts[day] ?? 0}`}>
           {counts[day] ?? 0}

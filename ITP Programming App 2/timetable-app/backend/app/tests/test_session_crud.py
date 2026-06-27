@@ -1,15 +1,14 @@
 """Tests for manual requirement CRUD and strict reference validation."""
 
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
 from app.database import Base, get_db
 from app.main import app
 from app.models.module import Module
 from app.models.schedule_run import ScheduleRun
 from app.models.session import Session
 from app.services.seed_service import seed_reference_data, seed_sample_sessions
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 
 def _route_db(tmp_path):
@@ -50,6 +49,7 @@ def _valid_payload(**overrides):
     payload.update(overrides)
     return payload
 
+
 def _client_for(db) -> TestClient:
     def override_db():
         yield db
@@ -61,7 +61,7 @@ def _client_for(db) -> TestClient:
 def test_create_session(tmp_path):
     db = _route_db(tmp_path)
     client = _client_for(db)
-    
+
     try:
         response = client.post(
             "/api/sessions",
@@ -69,7 +69,7 @@ def test_create_session(tmp_path):
         )
     finally:
         app.dependency_overrides.clear()
-        
+
     assert response.status_code == 200
     data = response.json()
     assert data["requirement_id"] == "REQ-CRUD-001"
@@ -102,7 +102,7 @@ def test_get_session_by_id(tmp_path):
 
 def test_update_session(tmp_path):
     db = _route_db(tmp_path)
-    
+
     # Create an initial session via API
     client = _client_for(db)
     create_resp = client.post(
@@ -110,15 +110,12 @@ def test_update_session(tmp_path):
         json=_valid_payload(requirement_id="REQ-CRUD-002"),
     )
     session_id = create_resp.json()["id"]
-    
+
     try:
-        response = client.put(
-            f"/api/sessions/{session_id}",
-            json=_valid_payload(requirement_id="REQ-CRUD-002-MOD", duration_minutes=60)
-        )
+        response = client.put(f"/api/sessions/{session_id}", json=_valid_payload(requirement_id="REQ-CRUD-002-MOD", duration_minutes=60))
     finally:
         app.dependency_overrides.clear()
-        
+
     assert response.status_code == 200
     data = response.json()
     assert data["requirement_id"] == "REQ-CRUD-002-MOD"
@@ -130,15 +127,15 @@ def test_update_session(tmp_path):
 def test_delete_session(tmp_path):
     db = _route_db(tmp_path)
     client = _client_for(db)
-    
+
     create_resp = client.post("/api/sessions", json=_valid_payload(requirement_id="REQ-DEL"))
     session_id = create_resp.json()["id"]
-    
+
     try:
         response = client.delete(f"/api/sessions/{session_id}")
     finally:
         app.dependency_overrides.clear()
-        
+
     assert response.status_code == 200
     assert response.json()["message"] == "Session deleted successfully"
     assert db.query(Session).filter_by(id=session_id).first() is None
@@ -192,7 +189,9 @@ def test_create_session_blocks_duplicate_requirement_id(tmp_path):
     try:
         response = client.post(
             "/api/sessions",
-            json=_valid_payload(requirement_id="REQ-DEMO-001", student_group_code="DSC-Y2-G1", year=2, exact_class_size=80, venue_type_required="lectorial"),
+            json=_valid_payload(
+                requirement_id="REQ-DEMO-001", student_group_code="DSC-Y2-G1", year=2, exact_class_size=80, venue_type_required="lectorial"
+            ),
         )
     finally:
         app.dependency_overrides.clear()

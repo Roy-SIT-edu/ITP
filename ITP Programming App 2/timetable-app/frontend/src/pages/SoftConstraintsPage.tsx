@@ -4,7 +4,7 @@
  */
 
 import { RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   generateSchedule,
   getSessions,
@@ -12,11 +12,8 @@ import {
   getValidation,
   updateSoftConstraintPriorities,
 } from "../api/client";
-import {
-  GenerationReadinessPanel,
-  PriorityRanking,
-  SoftPreferenceTable,
-} from "../components/SoftConstraintWorkflow";
+import { GenerationReadinessPanel, PriorityRanking, SoftPreferenceTable } from "../components/SoftConstraintWorkflow";
+import InlineActivity from "../components/InlineActivity";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
 import { useSessionState } from "../sessionState";
 import type { ScheduleGenerateResult, SessionRow, SoftConstraintPriority, ValidationResult } from "../types";
@@ -41,7 +38,10 @@ export default function SoftConstraintsPage() {
   const [priorities, setPriorities] = useSessionState<SoftConstraintPriority[]>("soft.priorities", []);
   const [validation, setValidation] = useSessionState<ValidationResult | null>("soft.validation", null);
   const [sessions, setSessions] = useSessionState<SessionRow[]>("soft.sessions", []);
-  const [generationResult, setGenerationResult] = useSessionState<ScheduleGenerateResult | null>("soft.generationResult", null);
+  const [generationResult, setGenerationResult] = useSessionState<ScheduleGenerateResult | null>(
+    "soft.generationResult",
+    null,
+  );
   const [error, setError] = useSessionState<string | null>("soft.error", null);
   const [success, setSuccess] = useSessionState<string | null>("soft.success", null);
   const [loading, setLoading] = useState(false);
@@ -49,7 +49,7 @@ export default function SoftConstraintsPage() {
   const [generating, setGenerating] = useState(false);
   const [dirty, setDirty] = useSessionState("soft.dirty", false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -67,13 +67,14 @@ export default function SoftConstraintsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [setDirty, setError, setPriorities, setSessions, setValidation]);
 
   useEffect(() => {
-    if (priorities.length === 0 && sessions.length === 0 && !validation && !generationResult) {
+    const shouldLoadInitial = priorities.length === 0 && sessions.length === 0 && !validation && !generationResult;
+    if (shouldLoadInitial) {
       void load();
     }
-  }, []);
+  }, [generationResult, load, priorities.length, sessions.length, validation]);
 
   const rankedPriorities = useMemo(
     () =>
@@ -175,6 +176,27 @@ export default function SoftConstraintsPage() {
 
       {error && <div className="notice bad">{error}</div>}
       {success && <div className="notice good">{success}</div>}
+      {loading && (
+        <InlineActivity
+          kind="validate"
+          title="Loading generation inputs"
+          steps={["Loading priorities", "Reading validation status", "Preparing session hints"]}
+        />
+      )}
+      {saving && (
+        <InlineActivity
+          kind="generate"
+          title="Saving soft priorities"
+          steps={["Ordering preferences", "Updating weights", "Preparing solver"]}
+        />
+      )}
+      {generating && (
+        <InlineActivity
+          kind="generate"
+          title="Generating timetable"
+          steps={["Applying hard constraints", "Scoring soft preferences", "Selecting timetable placements"]}
+        />
+      )}
 
       <GenerationReadinessPanel
         canGenerate={canGenerate}

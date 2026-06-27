@@ -17993,197 +17993,197 @@
     {
       "code": "AAI",
       "name": "AAI",
-      "cluster": "Common Modules"
+      "years": 3
     },
     {
       "code": "ACC",
       "name": "ACC",
-      "cluster": "Common Modules"
+      "years": 3
     },
     {
       "code": "ASE",
       "name": "ASE",
-      "cluster": "Common Modules"
+      "years": 3
     },
     {
       "code": "ATM",
       "name": "ATM",
-      "cluster": "Common Modules"
+      "years": 3
     },
     {
       "code": "BAC",
       "name": "BAC",
-      "cluster": "Common Modules"
+      "years": 3
     },
     {
       "code": "BCD",
       "name": "BCD",
-      "cluster": "Module host key"
+      "years": null
     },
     {
       "code": "BICT",
       "name": "BICT",
-      "cluster": "Common Modules"
+      "years": 4
     },
     {
       "code": "CBE",
       "name": "CBE",
-      "cluster": "Common Modules"
+      "years": null
     },
     {
       "code": "CDM",
       "name": "CDM",
-      "cluster": "Common Modules"
+      "years": 3
     },
     {
       "code": "CEG",
       "name": "CEG",
-      "cluster": "Common Modules"
+      "years": 3
     },
     {
       "code": "CLASIC",
       "name": "CLASIC",
-      "cluster": "Module host key"
+      "years": null
     },
     {
       "code": "CPC",
       "name": "CPC",
-      "cluster": "Module host key"
+      "years": null
     },
     {
       "code": "CVE",
       "name": "CVE",
-      "cluster": "Common Modules"
+      "years": 4
     },
     {
       "code": "DSC",
       "name": "DSC",
-      "cluster": "Common Modules"
+      "years": 3
     },
     {
       "code": "EDE",
       "name": "EDE",
-      "cluster": "Common Modules"
+      "years": 4
     },
     {
       "code": "EEE",
       "name": "EEE",
-      "cluster": "Common Modules"
+      "years": 4
     },
     {
       "code": "ENG",
       "name": "ENG",
-      "cluster": "Module host key"
+      "years": null
     },
     {
       "code": "EPE",
       "name": "EPE",
-      "cluster": "Common Modules"
+      "years": 3
     },
     {
       "code": "ESE",
       "name": "ESE",
-      "cluster": "Common Modules"
+      "years": 3
     },
     {
       "code": "FCB",
       "name": "FCB",
-      "cluster": "Module host key"
+      "years": null
     },
     {
       "code": "FDT",
       "name": "FDT",
-      "cluster": "Common Modules"
+      "years": 4
     },
     {
       "code": "HSS",
       "name": "HSS",
-      "cluster": "Module host key"
+      "years": null
     },
     {
       "code": "HTM",
       "name": "HTM",
-      "cluster": "Common Modules"
+      "years": 3
     },
     {
       "code": "ICT",
       "name": "ICT",
-      "cluster": "Common Modules, Module host key"
+      "years": 4
     },
     {
       "code": "IS",
       "name": "IS",
-      "cluster": "Common Modules"
+      "years": null
     },
     {
       "code": "MDME",
       "name": "MDME",
-      "cluster": "Common Modules"
+      "years": 3
     },
     {
       "code": "MEC",
       "name": "MEC",
-      "cluster": "Common Modules"
+      "years": 3
     },
     {
       "code": "METS",
       "name": "METS",
-      "cluster": "Common Modules"
+      "years": 4
     },
     {
       "code": "NAME",
       "name": "NAME",
-      "cluster": "Common Modules"
+      "years": 3
     },
     {
       "code": "NUR",
       "name": "NUR",
-      "cluster": "Common Modules"
+      "years": 2
     },
     {
       "code": "POST",
       "name": "POST",
-      "cluster": "Common Modules"
+      "years": null
     },
     {
       "code": "PRE",
       "name": "PRE",
-      "cluster": "Common Modules"
+      "years": null
     },
     {
       "code": "RSE",
       "name": "RSE",
-      "cluster": "Common Modules"
+      "years": 4
     },
     {
       "code": "RTY",
       "name": "RTY",
-      "cluster": "Common Modules"
+      "years": 4
     },
     {
       "code": "SBE",
       "name": "SBE",
-      "cluster": "Common Modules"
+      "years": 3
     },
     {
       "code": "SE",
       "name": "SE",
-      "cluster": "Common Modules"
+      "years": null
     },
     {
       "code": "SLT",
       "name": "SLT",
-      "cluster": "Common Modules"
+      "years": 4
     },
     {
       "code": "TCE",
       "name": "TCE",
-      "cluster": "Common Modules"
+      "years": 4
     },
     {
       "code": "TITO",
       "name": "TITO",
-      "cluster": "Common Modules"
+      "years": null
     }
   ],
   "common_modules": [

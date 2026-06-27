@@ -11,3 +11,4 @@ dist/
 **/dist/
 *.log
 *.db
+**/backend/data/Raw Data.xlsx

@@ -1,35 +1,53 @@
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
 
-ROOT = Path(r"C:/Users/Admin/Desktop/Code/Codes/INF1009/ITP")
-BACKEND = ROOT / "ITP Programming App 2" / "timetable-app" / "backend"
-DATA_JSON = ROOT / "outputs" / "raw_data_cleaning" / "cleaned_raw_data.json"
-
-sys.path.insert(0, str(BACKEND))
-
-from app.database import SessionLocal  # noqa: E402
-from app.models.constraint_violation import ConstraintViolation  # noqa: E402
-from app.models.module import Module  # noqa: E402
-from app.models.programme import Programme  # noqa: E402
-from app.models.room import Room  # noqa: E402
-from app.models.schedule_run import ScheduleRun  # noqa: E402
-from app.models.scheduled_session import ScheduledSession  # noqa: E402
-from app.models.session import Session as Requirement  # noqa: E402
-from app.models.staff import Staff  # noqa: E402
-from app.models.student_group import StudentGroup  # noqa: E402
-from app.models.time_slot import TimeSlot  # noqa: E402
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_ROOT = Path(os.environ.get("ITP_ROOT", SCRIPT_DIR.parents[1]))
 
 
 def bulk_insert(db, model, rows: list[dict]) -> None:
     db.add_all(model(**row) for row in rows)
 
 
-def main() -> None:
-    payload = json.loads(DATA_JSON.read_text(encoding="utf-8"))
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Replace app data with cleaned raw reference data only.")
+    parser.add_argument("--root", type=Path, default=DEFAULT_ROOT, help="Project root containing the timetable app.")
+    parser.add_argument("--data-json", type=Path, default=None, help="Path to cleaned_raw_data.json.")
+    parser.add_argument(
+        "--confirm-replace",
+        action="store_true",
+        help="Required. Confirms destructive deletion and replacement of app database rows.",
+    )
+    return parser.parse_args()
+
+
+def main(root: Path, data_json: Path, confirm_replace: bool) -> None:
+    if not confirm_replace:
+        raise SystemExit("Refusing to replace database rows without --confirm-replace.")
+
+    backend = root / "ITP Programming App 2" / "timetable-app" / "backend"
+    if str(backend) not in sys.path:
+        sys.path.insert(0, str(backend))
+
+    from app.database import SessionLocal
+    from app.models.constraint_violation import ConstraintViolation
+    from app.models.module import Module
+    from app.models.programme import Programme
+    from app.models.room import Room
+    from app.models.schedule_run import ScheduleRun
+    from app.models.scheduled_session import ScheduledSession
+    from app.models.session import Session as Requirement
+    from app.models.staff import Staff
+    from app.models.student_group import StudentGroup
+    from app.models.time_slot import TimeSlot
+
+    payload = json.loads(data_json.read_text(encoding="utf-8"))
     db = SessionLocal()
     try:
         for model in [
@@ -71,4 +89,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(
+        args.root,
+        args.data_json or args.root / "outputs" / "raw_data_cleaning" / "cleaned_raw_data.json",
+        args.confirm_replace,
+    )

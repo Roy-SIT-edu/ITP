@@ -30,19 +30,38 @@ export default function RequirementFormModal({
         <div className="modal-body">
           <label>
             Requirement ID
-            <input required value={formData.requirement_id || ""} onChange={(event) => onUpdate("requirement_id", event.target.value)} />
+            <input
+              required
+              value={formData.requirement_id || ""}
+              onChange={(event) => onUpdate("requirement_id", event.target.value)}
+            />
           </label>
           <label>
             Programme
-            <input required placeholder="e.g. DSC" value={formData.programme || ""} onChange={(event) => onUpdate("programme", event.target.value)} />
+            <input
+              required
+              placeholder="e.g. DSC"
+              value={formData.programme || ""}
+              onChange={(event) => onUpdate("programme", event.target.value)}
+            />
           </label>
           <label>
             Module Code
-            <input required placeholder="e.g. DSC2204" value={formData.module_code || ""} onChange={(event) => onUpdate("module_code", event.target.value)} />
+            <input
+              required
+              placeholder="e.g. DSC2204"
+              value={formData.module_code || ""}
+              onChange={(event) => onUpdate("module_code", event.target.value)}
+            />
           </label>
           <label>
             Student Group
-            <input required placeholder="e.g. DSC-Y2-G1" value={formData.student_group_code || ""} onChange={(event) => onUpdate("student_group_code", event.target.value)} />
+            <input
+              required
+              placeholder="e.g. DSC-Y2-G1"
+              value={formData.student_group_code || ""}
+              onChange={(event) => onUpdate("student_group_code", event.target.value)}
+            />
           </label>
           <label>
             Exact Class Size
@@ -51,7 +70,9 @@ export default function RequirementFormModal({
               min="1"
               type="number"
               value={formData.exact_class_size ?? ""}
-              onChange={(event) => onUpdate("exact_class_size", event.target.value ? Number.parseInt(event.target.value, 10) : null)}
+              onChange={(event) =>
+                onUpdate("exact_class_size", event.target.value ? Number.parseInt(event.target.value, 10) : null)
+              }
             />
           </label>
           <label>
@@ -73,7 +94,10 @@ export default function RequirementFormModal({
           </label>
           <label>
             Delivery Mode
-            <select value={formData.delivery_mode || ""} onChange={(event) => onUpdate("delivery_mode", event.target.value)}>
+            <select
+              value={formData.delivery_mode || ""}
+              onChange={(event) => onUpdate("delivery_mode", event.target.value)}
+            >
               <option value="Face-to-face">Face-to-face</option>
               <option value="Online">Online</option>
               <option value="Hybrid">Hybrid</option>
@@ -82,7 +106,10 @@ export default function RequirementFormModal({
           </label>
           <label>
             Campus Mode
-            <select value={formData.campus_mode || ""} onChange={(event) => onUpdate("campus_mode", event.target.value)}>
+            <select
+              value={formData.campus_mode || ""}
+              onChange={(event) => onUpdate("campus_mode", event.target.value)}
+            >
               <option value="Physical">Physical</option>
               <option value="Virtual">Virtual</option>
             </select>
@@ -95,7 +122,9 @@ export default function RequirementFormModal({
               step="15"
               type="number"
               value={formData.duration_minutes ?? ""}
-              onChange={(event) => onUpdate("duration_minutes", event.target.value ? Number.parseInt(event.target.value, 10) : null)}
+              onChange={(event) =>
+                onUpdate("duration_minutes", event.target.value ? Number.parseInt(event.target.value, 10) : null)
+              }
             />
           </label>
           <label>
@@ -105,7 +134,9 @@ export default function RequirementFormModal({
               min="1"
               type="number"
               value={formData.sessions_per_week ?? ""}
-              onChange={(event) => onUpdate("sessions_per_week", event.target.value ? Number.parseInt(event.target.value, 10) : null)}
+              onChange={(event) =>
+                onUpdate("sessions_per_week", event.target.value ? Number.parseInt(event.target.value, 10) : null)
+              }
             />
           </label>
           <label>
@@ -115,7 +146,9 @@ export default function RequirementFormModal({
               min="1"
               type="number"
               value={formData.start_week ?? ""}
-              onChange={(event) => onUpdate("start_week", event.target.value ? Number.parseInt(event.target.value, 10) : null)}
+              onChange={(event) =>
+                onUpdate("start_week", event.target.value ? Number.parseInt(event.target.value, 10) : null)
+              }
             />
           </label>
           <label>
@@ -125,12 +158,17 @@ export default function RequirementFormModal({
               min="1"
               type="number"
               value={formData.end_week ?? ""}
-              onChange={(event) => onUpdate("end_week", event.target.value ? Number.parseInt(event.target.value, 10) : null)}
+              onChange={(event) =>
+                onUpdate("end_week", event.target.value ? Number.parseInt(event.target.value, 10) : null)
+              }
             />
           </label>
           <label>
             Week Pattern
-            <select value={formData.week_pattern || ""} onChange={(event) => onUpdate("week_pattern", event.target.value)}>
+            <select
+              value={formData.week_pattern || ""}
+              onChange={(event) => onUpdate("week_pattern", event.target.value)}
+            >
               <option value="Weekly">Weekly</option>
               <option value="Odd">Odd</option>
               <option value="Even">Even</option>
@@ -140,12 +178,19 @@ export default function RequirementFormModal({
           {formData.week_pattern === "Custom" && (
             <label>
               Custom Weeks
-              <input placeholder="e.g. 1,2,3" value={formData.custom_weeks || ""} onChange={(event) => onUpdate("custom_weeks", event.target.value)} />
+              <input
+                placeholder="e.g. 1,2,3"
+                value={formData.custom_weeks || ""}
+                onChange={(event) => onUpdate("custom_weeks", event.target.value)}
+              />
             </label>
           )}
           <label>
             Scheduling Type
-            <select value={formData.scheduling_type || ""} onChange={(event) => onUpdate("scheduling_type", event.target.value)}>
+            <select
+              value={formData.scheduling_type || ""}
+              onChange={(event) => onUpdate("scheduling_type", event.target.value)}
+            >
               <option value="Flexible">Flexible</option>
               <option value="Fixed">Fixed</option>
             </select>
@@ -154,7 +199,10 @@ export default function RequirementFormModal({
             <>
               <label>
                 Fixed Day
-                <select value={formData.fixed_day || ""} onChange={(event) => onUpdate("fixed_day", event.target.value)}>
+                <select
+                  value={formData.fixed_day || ""}
+                  onChange={(event) => onUpdate("fixed_day", event.target.value)}
+                >
                   <option value="">Select Day</option>
                   <option value="Monday">Monday</option>
                   <option value="Tuesday">Tuesday</option>
@@ -165,11 +213,19 @@ export default function RequirementFormModal({
               </label>
               <label>
                 Fixed Start Time
-                <input type="time" value={formData.fixed_start_time || ""} onChange={(event) => onUpdate("fixed_start_time", event.target.value)} />
+                <input
+                  type="time"
+                  value={formData.fixed_start_time || ""}
+                  onChange={(event) => onUpdate("fixed_start_time", event.target.value)}
+                />
               </label>
               <label>
                 Fixed End Time
-                <input type="time" value={formData.fixed_end_time || ""} onChange={(event) => onUpdate("fixed_end_time", event.target.value)} />
+                <input
+                  type="time"
+                  value={formData.fixed_end_time || ""}
+                  onChange={(event) => onUpdate("fixed_end_time", event.target.value)}
+                />
               </label>
             </>
           )}
@@ -177,11 +233,19 @@ export default function RequirementFormModal({
             <>
               <label>
                 Preferred Days
-                <input placeholder="e.g. Monday, Wednesday" value={formData.preferred_days || ""} onChange={(event) => onUpdate("preferred_days", event.target.value)} />
+                <input
+                  placeholder="e.g. Monday, Wednesday"
+                  value={formData.preferred_days || ""}
+                  onChange={(event) => onUpdate("preferred_days", event.target.value)}
+                />
               </label>
               <label>
                 Avoid Days
-                <input placeholder="e.g. Friday" value={formData.avoid_days || ""} onChange={(event) => onUpdate("avoid_days", event.target.value)} />
+                <input
+                  placeholder="e.g. Friday"
+                  value={formData.avoid_days || ""}
+                  onChange={(event) => onUpdate("avoid_days", event.target.value)}
+                />
               </label>
               <label>
                 Priority

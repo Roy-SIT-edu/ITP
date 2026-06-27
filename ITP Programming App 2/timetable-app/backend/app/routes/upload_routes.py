@@ -4,8 +4,8 @@ The upload accepts one or more Excel files and delegates validation/import to
 ImportService so failed batches leave existing requirements untouched.
 """
 
-from zipfile import BadZipFile
 from pathlib import Path
+from zipfile import BadZipFile
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from openpyxl.utils.exceptions import InvalidFileException

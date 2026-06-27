@@ -35,6 +35,25 @@ def clean_text(value: object) -> str | None:
     return text
 
 
+def positive_float(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    text = clean_text(value)
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def positive_int(value: object) -> int | None:
+    number = positive_float(value)
+    if number is None or number <= 0:
+        return None
+    return int(number)
+
+
 def normalize_token(value: object) -> str:
     text = clean_text(value) or ""
     return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
@@ -113,7 +132,7 @@ def parse_custom_weeks(value: object) -> list[int]:
 
 
 def time_to_minutes(value: object) -> int | None:
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
+    if isinstance(value, int | float) and not isinstance(value, bool):
         numeric = float(value)
         if math.isnan(numeric):
             return None
@@ -212,7 +231,7 @@ def venue_room_compatible(session, room) -> bool:
     if "virtual" in venue or "online" in venue:
         return bool(getattr(room, "is_virtual", False))
     if "lab" in venue:
-        return "lab" in room_type
+        return "lab" in room_type or "computer" in room_type
     if "lect" in venue:
         return "lect" in room_type
     if any(token in venue for token in ["class", "tutorial", "seminar"]):

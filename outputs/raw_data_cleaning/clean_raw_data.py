@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import re
 from pathlib import Path
 
 import pandas as pd
 
 
-RAW_PATH = Path(r"C:/Users/Admin/Downloads/Raw Data.xlsx")
-OUT_DIR = Path(r"C:/Users/Admin/Desktop/Code/Codes/INF1009/ITP/outputs/raw_data_cleaning")
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_ROOT = Path(os.environ.get("ITP_ROOT", SCRIPT_DIR.parents[1]))
+DEFAULT_RAW_PATH = Path(os.environ.get("RAW_DATA_PATH", Path.home() / "Downloads" / "Raw Data.xlsx"))
+
+RAW_PATH = DEFAULT_RAW_PATH
+OUT_DIR = Path(os.environ.get("RAW_DATA_OUT_DIR", DEFAULT_ROOT / "outputs" / "raw_data_cleaning"))
 OUT_JSON = OUT_DIR / "cleaned_raw_data.json"
 
 
@@ -68,7 +74,12 @@ def infer_room_type(resource_type=None, suitability=None, name=None):
 
 
 def load_sheet(name):
-    frame = pd.read_excel(RAW_PATH, sheet_name=name)
+    try:
+        frame = pd.read_excel(RAW_PATH, sheet_name=name)
+    except ValueError as exc:
+        if f"Worksheet named '{name}' not found" in str(exc):
+            return pd.DataFrame()
+        raise
     frame = frame.dropna(how="all")
     frame.columns = [str(column).strip() for column in frame.columns]
     return frame
@@ -265,6 +276,36 @@ PROGRAMME_STOPWORDS = {
     "YEAR",
 }
 
+PROGRAMME_YEARS = {
+    "NUR": 2,
+    "AAI": 3,
+    "ACC": 3,
+    "ASE": 3,
+    "ATM": 3,
+    "BAC": 3,
+    "CDM": 3,
+    "CEG": 3,
+    "DSC": 3,
+    "EPE": 3,
+    "ESE": 3,
+    "HTM": 3,
+    "MDME": 3,
+    "MEC": 3,
+    "NAME": 3,
+    "SBE": 3,
+    "BICT": 4,
+    "CVE": 4,
+    "EDE": 4,
+    "EEE": 4,
+    "FDT": 4,
+    "ICT": 4,
+    "METS": 4,
+    "RSE": 4,
+    "RTY": 4,
+    "SLT": 4,
+    "TCE": 4,
+}
+
 
 def split_programme_tokens(value):
     text = clean_text(value)
@@ -317,18 +358,31 @@ def clean_programmes(modules_with_programmes, common_mappings):
 
     programmes = []
     for code in sorted(programme_sources):
-        sources = sorted(programme_sources[code])
         programmes.append(
             {
                 "code": code,
                 "name": code,
-                "cluster": ", ".join(sources),
+                "years": PROGRAMME_YEARS.get(code),
             }
         )
     return programmes
 
 
-def main():
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Clean raw timetable reference data into JSON for app import.")
+    parser.add_argument("--root", type=Path, default=DEFAULT_ROOT, help="Project root used to resolve default output paths.")
+    parser.add_argument("--raw-path", type=Path, default=DEFAULT_RAW_PATH, help="Raw Excel workbook path.")
+    parser.add_argument("--out-dir", type=Path, default=None, help="Directory for cleaned_raw_data.json.")
+    return parser.parse_args()
+
+
+def main(raw_path: Path, out_dir: Path) -> None:
+    global OUT_DIR, OUT_JSON, RAW_PATH
+
+    RAW_PATH = raw_path
+    OUT_DIR = out_dir
+    OUT_JSON = OUT_DIR / "cleaned_raw_data.json"
+
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     rooms, room_excluded = clean_rooms()
     staff, staff_excluded = clean_staff()
@@ -383,4 +437,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(args.raw_path, args.out_dir or args.root / "outputs" / "raw_data_cleaning")

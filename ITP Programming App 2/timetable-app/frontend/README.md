@@ -14,7 +14,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\quicklaunch.ps1
 Manual frontend-only setup:
 
 ```powershell
-npm install
+npm ci
 npm run dev
 ```
 
@@ -49,5 +49,7 @@ Set `VITE_API_URL` only when you want the browser to call a backend URL directly
 ## Build
 
 ```powershell
+npm run format:check
+npm run lint
 npm run build
 ```

@@ -46,11 +46,22 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
+Backend checks:
+
+```powershell
+cd backend
+pip install -r requirements-dev.txt
+ruff format --check .
+ruff check .
+pytest
+pip check
+```
+
 Frontend:
 
 ```powershell
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -101,7 +112,7 @@ If no upload is available, the backend seeds demo data for DSC, ASE, MDME, rooms
 
 Core tables:
 
-- `programmes`: programme code, name, cluster
+- `programmes`: programme code, name, years
 - `modules`: module code, host key, title, term
 - `student_groups`: group code, programme, year, size
 - `staff`: staff name, staff ID, host key
@@ -144,15 +155,22 @@ Post-solve soft warnings include long tutor gaps, short campus days, long consec
 
 ```powershell
 cd backend
+pip install -r requirements-dev.txt
+ruff format --check .
+ruff check .
 pytest
+pip check
 ```
 
 Coverage includes import validation, hard constraint detection, solver feasibility, infeasible capacity, and invalid fixed-time handling.
 
-Frontend build check:
+Frontend checks:
 
 ```powershell
 cd frontend
+npm ci
+npm run format:check
+npm run lint
 npm run build
 ```
 

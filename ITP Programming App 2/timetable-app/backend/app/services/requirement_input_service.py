@@ -6,17 +6,16 @@ the references exist and the row can be scheduled against current rooms/slots.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import Any, Mapping
-
-from sqlalchemy import func
-from sqlalchemy.orm import Session as DbSession
+from typing import Any
 
 from app.models.module import Module
 from app.models.programme import Programme
 from app.models.room import Room
 from app.models.session import Session as RequirementSession
+from app.models.session_staff import SessionStaff
 from app.models.staff import Staff
 from app.models.student_group import StudentGroup
 from app.models.time_slot import TimeSlot
@@ -34,11 +33,15 @@ from app.services.compatibility import (
     normalize_token,
     parse_custom_weeks,
     parse_day_list,
+    positive_float,
+    positive_int,
     room_capacity_fits,
     time_to_minutes,
     venue_room_compatible,
     weeks_conflict,
 )
+from sqlalchemy import func
+from sqlalchemy.orm import Session as DbSession
 
 
 class RequirementInputValidationError(ValueError):
@@ -88,6 +91,7 @@ class RequirementInputService:
                 item.source_filename,
                 item.source_row_no,
                 check_existing_duplicate=False,
+                allow_reference_upsert=True,
             )
             for issue in row_errors:
                 issue["source_file"] = item.source_filename
@@ -140,6 +144,7 @@ class RequirementInputService:
             0,
             existing_session_id=existing_session_id,
             check_existing_duplicate=True,
+            allow_reference_upsert=False,
         )
         if errors:
             raise RequirementInputValidationError(errors)
@@ -151,8 +156,18 @@ class RequirementInputService:
         return session
 
     def apply_data(self, session: RequirementSession, data: dict) -> None:
+        staff_assignments = data.pop("staff_assignments", None)
         for key, value in data.items():
             setattr(session, key, value)
+        if staff_assignments is not None:
+            session.staff_assignments = [
+                SessionStaff(
+                    staff_id=item["staff_id"],
+                    staff_order=item["staff_order"],
+                    is_primary=item["is_primary"],
+                )
+                for item in staff_assignments
+            ]
 
     def has_feasible_room_for_session(self, db: DbSession, session: RequirementSession) -> bool:
         if session.exact_class_size is None:
@@ -173,6 +188,7 @@ class RequirementInputService:
         source_row_no: int,
         existing_session_id: int | None = None,
         check_existing_duplicate: bool = True,
+        allow_reference_upsert: bool = False,
     ) -> tuple[dict, list[dict]]:
         errors: list[dict] = []
 
@@ -183,25 +199,30 @@ class RequirementInputService:
             source_row_no,
             errors,
         )
-        module = self._lookup_module(
+        module = self._lookup_or_create_module(
             db,
             self._required_text(row, source_row_no, "Module Code", errors),
+            clean_text(self._value(row, "Module Host Key")),
+            clean_text(self._value(row, "Module Title")),
             source_row_no,
             errors,
+            allow_reference_upsert,
         )
-        group = self._lookup_group(
+        year = self._required_positive_int(row, source_row_no, "Year", errors)
+        exact_class_size = self._required_positive_int(row, source_row_no, "Exact Class Size", errors)
+        group = self._lookup_or_create_group(
             db,
-            self._required_text(row, source_row_no, "Student Group Code", errors),
+            clean_text(self._value(row, "Student Group Code")),
+            programme,
+            year,
+            exact_class_size,
+            requirement_id,
             source_row_no,
             errors,
+            allow_reference_upsert,
         )
-        staff = self._lookup_staff(
-            db,
-            clean_text(self._value(row, "Staff 1 ID")),
-            clean_text(self._value(row, "Staff 1 Name")),
-            source_row_no,
-            errors,
-        )
+        staff_assignments = self._staff_assignments(db, row, source_row_no, errors)
+        staff = staff_assignments[0]["staff"] if staff_assignments else None
 
         if requirement_id and check_existing_duplicate:
             self._check_existing_requirement_id(db, requirement_id, source_row_no, errors, existing_session_id)
@@ -215,7 +236,6 @@ class RequirementInputService:
                 )
             )
 
-        year = self._positive_int(self._value(row, "Year"))
         if year and group and group.year and int(group.year) != int(year):
             errors.append(
                 self._issue(
@@ -231,24 +251,17 @@ class RequirementInputService:
         venue_type = self._required_text(row, source_row_no, "Venue Type Required", errors)
         duration = self._duration_minutes(row)
         if duration is None:
-            errors.append(
-                self._issue(source_row_no, "Duration", "Duration must be numeric and greater than 0.")
-            )
+            errors.append(self._issue(source_row_no, "Duration", "Duration must be numeric and greater than 0."))
         sessions_per_week = self._required_positive_int(row, source_row_no, "Sessions Per Week", errors)
-        exact_class_size = self._required_positive_int(row, source_row_no, "Exact Class Size", errors)
         start_week = self._required_positive_int(row, source_row_no, "Start Week", errors)
         end_week = self._required_positive_int(row, source_row_no, "End Week", errors)
         if start_week and end_week and start_week > end_week:
-            errors.append(
-                self._issue(source_row_no, "Start Week", "Start Week must be less than or equal to End Week.")
-            )
+            errors.append(self._issue(source_row_no, "Start Week", "Start Week must be less than or equal to End Week."))
 
         week_pattern = self._week_pattern(row, source_row_no, errors)
         custom_weeks = clean_text(self._value(row, "Custom Weeks"))
         if week_pattern == "Custom" and not parse_custom_weeks(custom_weeks):
-            errors.append(
-                self._issue(source_row_no, "Custom Weeks", "Custom week pattern requires at least one week number.")
-            )
+            errors.append(self._issue(source_row_no, "Custom Weeks", "Custom week pattern requires at least one week number."))
 
         scheduling_type = self._scheduling_type(row, source_row_no, errors)
         fixed_day = self._fixed_day(row, source_row_no, errors, required=scheduling_type == "Fixed")
@@ -263,13 +276,11 @@ class RequirementInputService:
             delivery_token = normalize_token(delivery_mode)
             campus_token = normalize_token(campus_mode)
             if delivery_token in {"online", "asynchronous", "async"} and campus_token not in {"online", "virtual", "remote"}:
-                errors.append(
-                    self._issue(source_row_no, "Campus Mode", "Online sessions must use online or virtual campus mode.")
-                )
+                errors.append(self._issue(source_row_no, "Campus Mode", "Online sessions must use online or virtual campus mode."))
             if delivery_token in {"face to face", "f2f", "physical", "in person"} and campus_token in {"online", "virtual", "remote"}:
-                errors.append(
-                    self._issue(source_row_no, "Campus Mode", "Face-to-face sessions cannot use virtual campus mode.")
-                )
+                errors.append(self._issue(source_row_no, "Campus Mode", "Face-to-face sessions cannot use virtual campus mode."))
+            if delivery_token in {"online", "asynchronous", "async"}:
+                self._ensure_virtual_room(db)
 
         if delivery_mode and campus_mode and venue_type and exact_class_size:
             if not self._has_feasible_room(db, delivery_mode, campus_mode, venue_type, exact_class_size):
@@ -291,6 +302,14 @@ class RequirementInputService:
             "module_id": module.id if module else None,
             "student_group_id": group.id if group else None,
             "staff_id": staff.id if staff else None,
+            "staff_assignments": [
+                {
+                    "staff_id": item["staff"].id,
+                    "staff_order": item["staff_order"],
+                    "is_primary": item["is_primary"],
+                }
+                for item in staff_assignments
+            ],
             "class_type": class_type,
             "delivery_mode": delivery_mode,
             "campus_mode": campus_mode,
@@ -321,6 +340,22 @@ class RequirementInputService:
         }
         return data, errors
 
+    def _ensure_virtual_room(self, db: DbSession) -> None:
+        if db.query(Room).filter(Room.is_virtual.is_(True)).first():
+            return
+        db.add(
+            Room(
+                room_code="VIRTUAL-ONLINE",
+                room_name="Virtual Online Room",
+                room_type="virtual",
+                capacity=9999,
+                is_virtual=True,
+                campus_mode="Virtual",
+                recording_available=True,
+            )
+        )
+        db.flush()
+
     def _lookup_programme(
         self,
         db: DbSession,
@@ -336,35 +371,121 @@ class RequirementInputService:
             errors.append(self._issue(source_row_no, "Programme", f"Programme '{code}' does not exist in Database > Programmes."))
         return programme
 
-    def _lookup_module(
+    def _lookup_or_create_module(
         self,
         db: DbSession,
         module_code: str | None,
+        module_host_key: str | None,
+        module_title: str | None,
         source_row_no: int,
         errors: list[dict],
+        allow_reference_upsert: bool,
     ) -> Module | None:
         if not module_code:
             return None
         module = db.query(Module).filter(func.lower(Module.module_code) == module_code.lower()).first()
         if not module:
-            errors.append(self._issue(source_row_no, "Module Code", f"Module '{module_code}' does not exist in Database > Modules."))
+            if not allow_reference_upsert:
+                errors.append(self._issue(source_row_no, "Module Code", f"Module '{module_code}' does not exist in Database > Modules."))
+                return None
+            module = Module(
+                module_code=module_code,
+                module_host_key=module_host_key,
+                module_title=module_title or module_code,
+                term=None,
+            )
+            db.add(module)
+            db.flush()
         return module
 
-    def _lookup_group(
+    def _lookup_or_create_group(
         self,
         db: DbSession,
         group_code: str | None,
+        programme: Programme | None,
+        year: int | None,
+        class_size: int | None,
+        requirement_id: str | None,
         source_row_no: int,
         errors: list[dict],
+        allow_reference_upsert: bool,
     ) -> StudentGroup | None:
-        if not group_code:
+        if not programme or not year or not class_size:
             return None
+        group_code = group_code or self._generated_group_code(programme.code, year, class_size, requirement_id)
         group = db.query(StudentGroup).filter(func.lower(StudentGroup.group_code) == group_code.lower()).first()
         if not group:
-            errors.append(
-                self._issue(source_row_no, "Student Group Code", f"Student group '{group_code}' does not exist in Database > Student Groups.")
+            if not allow_reference_upsert:
+                errors.append(
+                    self._issue(
+                        source_row_no, "Student Group Code", f"Student group '{group_code}' does not exist in Database > Student Groups."
+                    )
+                )
+                return None
+            group = StudentGroup(
+                group_code=group_code,
+                programme_id=programme.id,
+                year=year,
+                size=class_size,
             )
+            db.add(group)
+            db.flush()
         return group
+
+    def _generated_group_code(self, programme_code: str, year: int, class_size: int, requirement_id: str | None) -> str:
+        return f"{programme_code.upper()}-Y{year}"
+
+    def _staff_assignments(
+        self,
+        db: DbSession,
+        row: Mapping[str, Any],
+        source_row_no: int,
+        errors: list[dict],
+    ) -> list[dict]:
+        assignments: list[dict] = []
+        seen_staff_ids: dict[int, int] = {}
+        for staff_order in range(1, 5):
+            id_field = f"Staff {staff_order} ID"
+            name_field = f"Staff {staff_order} Name"
+            staff_id = clean_text(self._value(row, id_field))
+            staff_name = clean_text(self._value(row, name_field))
+            if staff_order == 1 and not staff_id:
+                errors.append(self._issue(source_row_no, id_field, "Staff 1 ID is required."))
+                continue
+            if staff_order > 1 and staff_name and not staff_id:
+                errors.append(self._issue(source_row_no, id_field, f"{id_field} is required when {name_field} is filled."))
+                continue
+            if not staff_id:
+                continue
+            staff = self._lookup_staff_by_id(db, staff_id, source_row_no, id_field, errors)
+            if not staff:
+                continue
+            if staff.id in seen_staff_ids:
+                errors.append(
+                    self._issue(
+                        source_row_no,
+                        id_field,
+                        f"Duplicate staff ID '{staff_id}' also appears in Staff {seen_staff_ids[staff.id]} ID.",
+                    )
+                )
+                continue
+            seen_staff_ids[staff.id] = staff_order
+            assignments.append({"staff": staff, "staff_order": staff_order, "is_primary": staff_order == 1})
+        return assignments
+
+    def _lookup_staff_by_id(
+        self,
+        db: DbSession,
+        staff_id: str,
+        source_row_no: int,
+        field: str,
+        errors: list[dict],
+    ) -> Staff | None:
+        staff = db.query(Staff).filter(func.lower(Staff.staff_id) == staff_id.lower()).first()
+        if not staff:
+            errors.append(self._issue(source_row_no, field, f"Staff ID '{staff_id}' does not exist in Database > Staff."))
+            return None
+        return staff
 
     def _lookup_staff(
         self,
@@ -388,17 +509,13 @@ class RequirementInputService:
         if not staff and staff_name:
             staff = db.query(Staff).filter(func.lower(Staff.staff_name) == staff_name.lower()).first()
             if not staff:
-                errors.append(self._issue(source_row_no, "Staff 1 Name", f"Staff name '{staff_name}' does not exactly match Database > Staff."))
+                errors.append(
+                    self._issue(source_row_no, "Staff 1 Name", f"Staff name '{staff_name}' does not exactly match Database > Staff.")
+                )
                 return None
 
         if staff and staff_name and staff.staff_name and staff.staff_name.lower() != staff_name.lower():
-            errors.append(
-                self._issue(
-                    source_row_no,
-                    "Staff 1 Name",
-                    f"Staff ID '{staff.staff_id}' belongs to '{staff.staff_name}', not '{staff_name}'.",
-                )
-            )
+            return staff
         return staff
 
     def _check_existing_requirement_id(
@@ -462,11 +579,7 @@ class RequirementInputService:
         for room in db.query(Room).all():
             if not self._campus_room_compatible(campus_mode, room):
                 continue
-            if (
-                delivery_room_compatible(probe, room)
-                and venue_room_compatible(probe, room)
-                and room_capacity_fits(probe, room)
-            ):
+            if delivery_room_compatible(probe, room) and venue_room_compatible(probe, room) and room_capacity_fits(probe, room):
                 return True
         return False
 
@@ -503,9 +616,7 @@ class RequirementInputService:
             return "Virtual"
         if token == "external":
             return "External"
-        errors.append(
-            self._issue(source_row_no, "Campus Mode", "Campus Mode must be Physical, Virtual, Online, Remote, or External.")
-        )
+        errors.append(self._issue(source_row_no, "Campus Mode", "Campus Mode must be Physical, Virtual, Online, Remote, or External."))
         return raw
 
     def _week_pattern(self, row: Mapping[str, Any], source_row_no: int, errors: list[dict]) -> str | None:
@@ -580,9 +691,7 @@ class RequirementInputService:
         days = parse_day_list(raw)
         invalid_days = [day for day in days if day not in DAY_ORDER]
         if invalid_days:
-            errors.append(
-                self._issue(source_row_no, field, f"{field} contains invalid day values: {', '.join(invalid_days)}.")
-            )
+            errors.append(self._issue(source_row_no, field, f"{field} contains invalid day values: {', '.join(invalid_days)}."))
         return raw
 
     def _duration_minutes(self, row: Mapping[str, Any]) -> int | None:
@@ -629,21 +738,10 @@ class RequirementInputService:
         return value
 
     def _positive_int(self, value: Any) -> int | None:
-        number = self._positive_float(value)
-        if number is None or number <= 0:
-            return None
-        return int(number)
+        return positive_int(value)
 
     def _positive_float(self, value: Any) -> float | None:
-        if isinstance(value, bool):
-            return None
-        text = clean_text(value)
-        if not text:
-            return None
-        try:
-            return float(text)
-        except ValueError:
-            return None
+        return positive_float(value)
 
     def _programme_code(self, value: str | None) -> str | None:
         text = clean_text(value)
@@ -654,13 +752,7 @@ class RequirementInputService:
     def _value(self, row: Mapping[str, Any], key: str) -> Any:
         if key in row:
             return row[key]
-        snake_key = (
-            key.lower()
-            .replace("?", "")
-            .replace("/", "_")
-            .replace(" ", "_")
-            .replace("-", "_")
-        )
+        snake_key = key.lower().replace("?", "").replace("/", "_").replace(" ", "_").replace("-", "_")
         if snake_key in row:
             return row[snake_key]
         return None

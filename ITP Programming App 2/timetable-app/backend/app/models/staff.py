@@ -15,3 +15,4 @@ class Staff(Base):
     staff_host_key = Column(String, nullable=True)
 
     sessions = relationship("Session", back_populates="staff")
+    session_assignments = relationship("SessionStaff", back_populates="staff")

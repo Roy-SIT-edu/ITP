@@ -5,9 +5,9 @@ from __future__ import annotations
 from io import BytesIO, StringIO
 
 import pandas as pd
-from sqlalchemy.orm import Session as DbSession
-
 from app.models.scheduled_session import ScheduledSession
+from app.services.serializers import session_staff_ids, session_staff_names
+from sqlalchemy.orm import Session as DbSession
 
 
 class ExportService:
@@ -33,6 +33,8 @@ class ExportService:
                     "student_group_code": session.student_group.group_code if session.student_group else None,
                     "staff_name": session.staff.staff_name if session.staff else None,
                     "staff_id": session.staff.staff_id if session.staff else None,
+                    "co_teacher_names": session_staff_names(session),
+                    "co_teacher_ids": session_staff_ids(session),
                     "room": item.room.room_code,
                     "day": item.day,
                     "start_time": item.start_time,

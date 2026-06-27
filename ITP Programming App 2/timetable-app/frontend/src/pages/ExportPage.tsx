@@ -6,16 +6,22 @@
 import { Download, FileSpreadsheet, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { exportUrl, getLatestSchedule } from "../api/client";
+import InlineActivity from "../components/InlineActivity";
 import StatusBadge from "../components/StatusBadge";
 import type { ScheduleResponse } from "../types";
 
 export default function ExportPage() {
   const [schedule, setSchedule] = useState<ScheduleResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const load = () => {
     setError(null);
-    getLatestSchedule().then(setSchedule).catch((err: Error) => setError(err.message));
+    setLoading(true);
+    getLatestSchedule()
+      .then(setSchedule)
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false));
   };
 
   useEffect(load, []);
@@ -29,12 +35,19 @@ export default function ExportPage() {
         </div>
         <div className="toolbar-row">
           <button className="button secondary" onClick={load}>
-            <RefreshCw size={17} />
+            <RefreshCw className={loading ? "spin" : ""} size={17} />
             Refresh
           </button>
         </div>
       </div>
       {error && <div className="notice bad">{error}</div>}
+      {loading && (
+        <InlineActivity
+          kind="export"
+          title="Preparing export options"
+          steps={["Loading latest schedule", "Checking available formats", "Preparing download links"]}
+        />
+      )}
       {schedule && (
         <section className="status-card export-card">
           <div className="section-heading">

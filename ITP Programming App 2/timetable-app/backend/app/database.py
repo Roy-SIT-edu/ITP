@@ -7,7 +7,7 @@ file through SQLAlchemy binds so services can query related models normally.
 from collections.abc import Generator
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +34,7 @@ TABLE_DATABASE_NAMES = {
     "student_groups": "student_groups",
     "time_slots": "time_slots",
     "sessions": "requirements",
+    "session_staff": "requirements",
     "schedule_runs": "schedule_state",
     "scheduled_sessions": "schedule_state",
     "constraint_violations": "schedule_state",
@@ -53,10 +54,7 @@ def _sqlite_engine(path: Path):
 
 
 def _build_engines(data_dir: Path = DATA_DIR) -> dict[str, object]:
-    return {
-        name: _sqlite_engine(data_dir / filename)
-        for name, filename in SPLIT_DATABASE_FILES.items()
-    }
+    return {name: _sqlite_engine(data_dir / filename) for name, filename in SPLIT_DATABASE_FILES.items()}
 
 
 def _model_database_names():
@@ -67,6 +65,7 @@ def _model_database_names():
     from app.models.schedule_run import ScheduleRun
     from app.models.scheduled_session import ScheduledSession
     from app.models.session import Session as Requirement
+    from app.models.session_staff import SessionStaff
     from app.models.soft_constraint_priority import SoftConstraintPriority
     from app.models.staff import Staff
     from app.models.student_group import StudentGroup
@@ -80,6 +79,7 @@ def _model_database_names():
         StudentGroup: "student_groups",
         TimeSlot: "time_slots",
         Requirement: "requirements",
+        SessionStaff: "requirements",
         ScheduleRun: "schedule_state",
         ScheduledSession: "schedule_state",
         ConstraintViolation: "schedule_state",
@@ -127,6 +127,17 @@ def _create_split_tables(engines: dict[str, object]) -> None:
         model.__table__.create(bind=engines[database_name], checkfirst=True)
 
 
+def _ensure_programme_years_column(engine) -> None:
+    with engine.begin() as connection:
+        columns = {row[1] for row in connection.execute(text("PRAGMA table_info(programmes)")).fetchall()}
+        if columns and "years" not in columns:
+            connection.execute(text("ALTER TABLE programmes ADD COLUMN years INTEGER"))
+
+
+def _ensure_split_schema(engines: dict[str, object]) -> None:
+    _ensure_programme_years_column(engines["programmes"])
+
+
 def _copy_legacy_rows(target_db: Session, legacy_database_path: Path) -> None:
     if not legacy_database_path.exists():
         return
@@ -138,12 +149,14 @@ def _copy_legacy_rows(target_db: Session, legacy_database_path: Path) -> None:
     from app.models.schedule_run import ScheduleRun
     from app.models.scheduled_session import ScheduledSession
     from app.models.session import Session as Requirement
+    from app.models.session_staff import SessionStaff
     from app.models.soft_constraint_priority import SoftConstraintPriority
     from app.models.staff import Staff
     from app.models.student_group import StudentGroup
     from app.models.time_slot import TimeSlot
 
     legacy_engine = _sqlite_engine(legacy_database_path)
+    _ensure_programme_years_column(legacy_engine)
     LegacySession = sessionmaker(autocommit=False, autoflush=False, bind=legacy_engine)
     source_db = LegacySession()
     ordered_models = [
@@ -154,6 +167,7 @@ def _copy_legacy_rows(target_db: Session, legacy_database_path: Path) -> None:
         TimeSlot,
         StudentGroup,
         Requirement,
+        SessionStaff,
         ScheduleRun,
         ScheduledSession,
         ConstraintViolation,
@@ -169,10 +183,7 @@ def _copy_legacy_rows(target_db: Session, legacy_database_path: Path) -> None:
             except Exception:
                 continue
             for row in rows:
-                data = {
-                    column.name: getattr(row, column.name)
-                    for column in model.__table__.columns
-                }
+                data = {column.name: getattr(row, column.name) for column in model.__table__.columns}
                 target_db.add(model(**data))
         target_db.commit()
     finally:
@@ -200,21 +211,24 @@ def create_db_and_seed(
     data_dir: Path | None = None,
     legacy_database_path: Path | None = None,
 ) -> None:
-    from app.services.seed_service import seed_defaults
+    from app.services.seed_service import DEFAULT_RAW_DATA_PATH, seed_defaults
 
     if data_dir is None:
         factory = SessionLocal
         engines = _ENGINES
         legacy_path = legacy_database_path or LEGACY_DATABASE_PATH
+        raw_data_path = DEFAULT_RAW_DATA_PATH
     else:
         factory, engines = create_session_factory(data_dir)
         legacy_path = legacy_database_path or LEGACY_DATABASE_PATH
+        raw_data_path = data_dir / DEFAULT_RAW_DATA_PATH.name
 
     _create_split_tables(engines)
+    _ensure_split_schema(engines)
     db = factory()
     try:
         _copy_legacy_rows(db, legacy_path)
-        seed_defaults(db)
+        seed_defaults(db, raw_data_path=raw_data_path)
     finally:
         db.close()
         if data_dir is not None:

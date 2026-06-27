@@ -1,8 +1,18 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { FileBlob, SpreadsheetFile } from "@oai/artifact-tool";
 
-const outputDir = "C:/Users/Admin/Desktop/Code/Codes/INF1009/ITP/outputs/raw_data_cleaning";
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const defaultRoot = process.env.ITP_ROOT ?? path.resolve(scriptDir, "..", "..");
+
+function argValue(name) {
+  const index = process.argv.indexOf(name);
+  return index >= 0 ? process.argv[index + 1] : undefined;
+}
+
+const root = path.resolve(argValue("--root") ?? defaultRoot);
+const outputDir = path.resolve(argValue("--out-dir") ?? process.env.RAW_DATA_OUT_DIR ?? path.join(root, "outputs", "raw_data_cleaning"));
 const input = await FileBlob.load(path.join(outputDir, "cleaned_raw_data_combined.xlsx"));
 const workbook = await SpreadsheetFile.importXlsx(input);
 const sheetSummary = await workbook.inspect({

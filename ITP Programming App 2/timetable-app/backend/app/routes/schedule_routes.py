@@ -14,8 +14,8 @@ from app.services.compatibility import is_online_mode, parse_day_list
 from app.services.constraint_service import ConstraintService
 from app.services.export_service import ExportService
 from app.services.schedule_service import ScheduleService
-from app.services.soft_constraint_priority_service import SoftConstraintPriorityService
 from app.services.serializers import schedule_run_to_dict, violation_to_dict
+from app.services.soft_constraint_priority_service import SoftConstraintPriorityService
 
 router = APIRouter(prefix="/api/schedules", tags=["schedules"])
 

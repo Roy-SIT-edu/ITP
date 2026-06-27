@@ -6,8 +6,6 @@ for the review and validation pages after a timetable has been generated.
 
 from __future__ import annotations
 
-from sqlalchemy.orm import Session as DbSession
-
 from app.models.constraint_violation import ConstraintViolation
 from app.models.scheduled_session import ScheduledSession
 from app.services.compatibility import (
@@ -18,6 +16,13 @@ from app.services.compatibility import (
     time_to_minutes,
     weeks_conflict,
 )
+from app.services.scheduling_constants import (
+    DEFAULT_SOFT_CONSTRAINT_WEIGHTS,
+    LONG_CONSECUTIVE_DAY_MINUTES,
+    SHORT_CAMPUS_DAY_MAX_MINUTES,
+    TUTOR_IDLE_GAP_MINUTES,
+)
+from sqlalchemy.orm import Session as DbSession
 
 
 class ConstraintService:
@@ -44,7 +49,7 @@ class ConstraintService:
         soft_count = sum(1 for item in violations if item["severity"] == "SOFT")
         weights = soft_constraint_weights or {}
         weighted_soft_score = sum(
-            weights.get(item["constraint_code"], 1)
+            weights.get(item["constraint_code"], DEFAULT_SOFT_CONSTRAINT_WEIGHTS.get(item["constraint_code"], 1))
             for item in violations
             if item["severity"] == "SOFT"
         )
@@ -64,6 +69,7 @@ class ConstraintService:
         )
         violations: list[dict] = []
         self._hard_double_booking_checks(scheduled, violations)
+        self._hard_staff_double_booking_checks(scheduled, violations)
         self._hard_quality_checks(scheduled, violations)
         self._soft_checks(scheduled, violations)
         return violations
@@ -74,11 +80,6 @@ class ConstraintService:
                 "ROOM_DOUBLE_BOOKING",
                 lambda item: item.room_id,
                 lambda item: f"Room {item.room.room_code}",
-            ),
-            (
-                "STAFF_DOUBLE_BOOKING",
-                lambda item: item.staff_id,
-                lambda item: f"Staff {item.session.staff.staff_name if item.session.staff else item.staff_id}",
             ),
             (
                 "STUDENT_GROUP_DOUBLE_BOOKING",
@@ -104,6 +105,32 @@ class ConstraintService:
                                     "affected_session_ids": [left.session_id, right.session_id],
                                 }
                             )
+
+    def _hard_staff_double_booking_checks(self, scheduled: list[ScheduledSession], violations: list[dict]) -> None:
+        grouped: dict[int, list[ScheduledSession]] = {}
+        labels: dict[int, str] = {}
+        for item in scheduled:
+            for staff_id, staff_label in self._session_staff_labels(item):
+                grouped.setdefault(staff_id, []).append(item)
+                labels[staff_id] = staff_label
+        seen: set[tuple[int, int, int]] = set()
+        for staff_id, items in grouped.items():
+            for index, left in enumerate(items):
+                for right in items[index + 1 :]:
+                    if not self._scheduled_conflict(left, right):
+                        continue
+                    pair = (staff_id, min(left.session_id, right.session_id), max(left.session_id, right.session_id))
+                    if pair in seen:
+                        continue
+                    seen.add(pair)
+                    violations.append(
+                        {
+                            "constraint_code": "STAFF_DOUBLE_BOOKING",
+                            "severity": "HARD",
+                            "message": f"Staff {labels.get(staff_id, staff_id)} is assigned to {self._module_label(left)} and {self._module_label(right)} on {left.day} {left.start_time}-{left.end_time}.",
+                            "affected_session_ids": [left.session_id, right.session_id],
+                        }
+                    )
 
     def _hard_quality_checks(self, scheduled: list[ScheduledSession], violations: list[dict]) -> None:
         for item in scheduled:
@@ -158,13 +185,13 @@ class ConstraintService:
     def _tutor_gap_checks(self, scheduled: list[ScheduledSession], violations: list[dict]) -> None:
         grouped: dict[tuple[int, str], list[ScheduledSession]] = {}
         for item in scheduled:
-            if item.staff_id:
-                grouped.setdefault((item.staff_id, item.day), []).append(item)
+            for staff_id, _ in self._session_staff_labels(item):
+                grouped.setdefault((staff_id, item.day), []).append(item)
         for items in grouped.values():
             ordered = sorted(items, key=lambda item: item.start_time)
             for left, right in zip(ordered, ordered[1:]):
                 gap = (time_to_minutes(right.start_time) or 0) - (time_to_minutes(left.end_time) or 0)
-                if gap > 120:
+                if gap > TUTOR_IDLE_GAP_MINUTES:
                     violations.append(
                         {
                             "constraint_code": "TUTOR_IDLE_GAP",
@@ -187,7 +214,7 @@ class ConstraintService:
                 for item in ordered
                 if not item.room.is_virtual
             )
-            if 0 < campus_minutes <= 120:
+            if 0 < campus_minutes <= SHORT_CAMPUS_DAY_MAX_MINUTES:
                 violations.append(
                     {
                         "constraint_code": "SHORT_CAMPUS_DAY",
@@ -210,7 +237,7 @@ class ConstraintService:
                 else:
                     current_end = max(current_end, end)
                     current_ids.append(item.session_id)
-                if current_start is not None and current_end - current_start > 240:
+                if current_start is not None and current_end - current_start > LONG_CONSECUTIVE_DAY_MINUTES:
                     violations.append(
                         {
                             "constraint_code": "LONG_CONSECUTIVE_DAY",
@@ -243,13 +270,25 @@ class ConstraintService:
         by_staff: dict[tuple[int, str], list[ScheduledSession]] = {}
         by_group: dict[tuple[int, str], list[ScheduledSession]] = {}
         for item in scheduled:
-            if item.staff_id:
-                by_staff.setdefault((item.staff_id, item.day), []).append(item)
+            for staff_id, _ in self._session_staff_labels(item):
+                by_staff.setdefault((staff_id, item.day), []).append(item)
             group_id = item.session.student_group_id
             if group_id:
                 by_group.setdefault((group_id, item.day), []).append(item)
         add_checks(by_staff, "Tutor")
         add_checks(by_group, "Student group")
+
+    def _session_staff_labels(self, item: ScheduledSession) -> list[tuple[int, str]]:
+        labels = []
+        for assignment in getattr(item.session, "staff_assignments", []) or []:
+            if assignment.staff_id is None:
+                continue
+            staff_label = assignment.staff.staff_name if assignment.staff else str(assignment.staff_id)
+            labels.append((assignment.staff_id, staff_label))
+        if not labels and item.staff_id:
+            staff_label = item.session.staff.staff_name if item.session and item.session.staff else str(item.staff_id)
+            labels.append((item.staff_id, staff_label))
+        return labels
 
     def _scheduled_conflict(self, left: ScheduledSession, right: ScheduledSession) -> bool:
         return (

@@ -48,3 +48,9 @@ class Session(Base):
     student_group = relationship("StudentGroup", back_populates="sessions")
     staff = relationship("Staff", back_populates="sessions")
     scheduled_sessions = relationship("ScheduledSession", back_populates="session")
+    staff_assignments = relationship(
+        "SessionStaff",
+        back_populates="session",
+        cascade="all, delete-orphan",
+        order_by="SessionStaff.staff_order",
+    )

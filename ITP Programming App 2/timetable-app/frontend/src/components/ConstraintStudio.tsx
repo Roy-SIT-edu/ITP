@@ -37,9 +37,11 @@ export default function ConstraintStudio({
     setFixedDay(selected.fixed_day || "Monday");
     setFixedStart(selected.fixed_start_time || "09:00");
     setFixedEnd(selected.fixed_end_time || "11:00");
-    setMode(selected.scheduling_type === "Fixed" ? "hard" : selected.preferred_days || selected.avoid_days ? "soft" : "none");
+    setMode(
+      selected.scheduling_type === "Fixed" ? "hard" : selected.preferred_days || selected.avoid_days ? "soft" : "none",
+    );
     setSessionQuery(requirementLabel(selected));
-  }, [selected?.id]);
+  }, [selected]);
 
   return (
     <section className="status-card constraint-studio">

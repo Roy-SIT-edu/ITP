@@ -49,11 +49,15 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
         ? detail
         : Array.isArray(detail) && detail.length > 0 && typeof detail[0] === "object" && detail[0] && "msg" in detail[0]
           ? String(detail[0].msg)
-          : Array.isArray(detail) && detail.length > 0 && typeof detail[0] === "object" && detail[0] && "message" in detail[0]
+          : Array.isArray(detail) &&
+              detail.length > 0 &&
+              typeof detail[0] === "object" &&
+              detail[0] &&
+              "message" in detail[0]
             ? String(detail[0].message)
-          : typeof detail === "object" && detail && "message" in detail
-            ? String(detail.message)
-            : `Request failed with status ${response.status}`;
+            : typeof detail === "object" && detail && "message" in detail
+              ? String(detail.message)
+              : `Request failed with status ${response.status}`;
     throw new ApiError(response.status, message, detail);
   }
   return payload as T;
@@ -129,6 +133,10 @@ export function uploadDatabaseFile(dataType: string, file: File) {
 
 export function databaseExampleUrl(dataType: string) {
   return `${API_BASE}/api/database/${dataType}/example.xlsx`;
+}
+
+export function databaseCurrentInputUrl(dataType: string) {
+  return `${API_BASE}/api/database/${dataType}/current.xlsx`;
 }
 
 export function getValidation() {
