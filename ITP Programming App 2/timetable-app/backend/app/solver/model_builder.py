@@ -74,22 +74,33 @@ class TimetableModelBuilder:
                     assignments.append(assignment)
                     session_vars.append(variable)
             if not session_vars:
-                label = session.requirement_id or f"session {session.id}"
-                no_candidate_reasons.append(f"{label} has no compatible room/time-slot candidates")
-            else:
-                # Every requirement must be scheduled exactly once.
-                model.Add(sum(session_vars) == 1)
+                dummy_slot = time_slots[0]
+                dummy_room = rooms[0]
+                variable = model.NewBoolVar(f"x_dummy_{session.id}")
+                variables[(session.id, dummy_slot.id, dummy_room.id)] = variable
+                assignments.append({
+                    "session": session,
+                    "time_slot": dummy_slot,
+                    "room": dummy_room,
+                    "variable": variable,
+                })
+                session_vars.append(variable)
+            
+            # Every requirement must be scheduled exactly once.
+            model.Add(sum(session_vars) == 1)
 
+        soft_penalties = []
         if not no_candidate_reasons:
-            self._add_no_overlap_constraints(model, assignments, lambda item: item["room"].id)
-            self._add_staff_no_overlap_constraints(model, assignments)
+            self._add_no_overlap_constraints(model, assignments, lambda item: item["room"].id, soft_penalties, "ROOM")
+            self._add_staff_no_overlap_constraints(model, assignments, soft_penalties)
             self._add_no_overlap_constraints(
                 model,
                 assignments,
                 lambda item: item["session"].student_group_id,
+                soft_penalties,
+                "GROUP"
             )
 
-        soft_penalties = []
         for assignment in assignments:
             penalty = self._single_assignment_soft_penalty(assignment, weights)
             if penalty > 0:
@@ -100,7 +111,7 @@ class TimetableModelBuilder:
             model.Minimize(sum(soft_penalties))
         return BuiltModel(model, variables, assignments, soft_penalties, no_candidate_reasons)
 
-    def _add_no_overlap_constraints(self, model, assignments, key_func) -> None:
+    def _add_no_overlap_constraints(self, model, assignments, key_func, penalties, code) -> None:
         grouped: dict[int, list[dict]] = {}
         for item in assignments:
             key = key_func(item)
@@ -114,9 +125,9 @@ class TimetableModelBuilder:
                     if left["session"].id == right["session"].id:
                         continue
                     if slot_conflicts(left["time_slot"], right["time_slot"]):
-                        model.Add(left["variable"] + right["variable"] <= 1)
+                        penalties.append(self._both_selected(model, left, right, code) * 100000)
 
-    def _add_staff_no_overlap_constraints(self, model, assignments) -> None:
+    def _add_staff_no_overlap_constraints(self, model, assignments, penalties) -> None:
         grouped: dict[int, list[dict]] = {}
         for item in assignments:
             for staff_id in self._session_staff_ids(item["session"]):
@@ -128,7 +139,7 @@ class TimetableModelBuilder:
                     if left["session"].id == right["session"].id:
                         continue
                     if slot_conflicts(left["time_slot"], right["time_slot"]):
-                        model.Add(left["variable"] + right["variable"] <= 1)
+                        penalties.append(self._both_selected(model, left, right, "STAFF") * 100000)
 
     def _single_assignment_soft_penalty(self, assignment: dict, weights: dict[str, int]) -> int:
         session = assignment["session"]

@@ -10,7 +10,6 @@ import {
   Download,
   FileUp,
   Gauge,
-  ShieldCheck,
   SlidersHorizontal,
   TableProperties,
 } from "lucide-react";
@@ -29,11 +28,11 @@ const databaseItems = [
   { id: "database-staff", label: "Staff" },
   { id: "database-programmes", label: "Programmes" },
   { id: "database-modules", label: "Modules" },
+  { id: "database-student-groups", label: "Student Groups" },
 ];
 
 const workflowItems = [
   { id: "upload", label: "Import Data", icon: FileUp },
-  { id: "validation", label: "Validate Data", icon: ShieldCheck },
   { id: "soft-constraints", label: "Priorities & Generate", icon: SlidersHorizontal },
   { id: "review", label: "Review Timetable", icon: TableProperties },
   { id: "export", label: "Export Timetable", icon: Download },

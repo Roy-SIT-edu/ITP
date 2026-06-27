@@ -15,11 +15,18 @@ import {
   getTimeSlots,
   getViolations,
   moveScheduledSession,
+  getSession,
+  updateSession,
+  recheckSchedule,
+  generateSchedule,
+  autoResolveSchedule,
 } from "../api/client";
 import ConflictTable from "../components/ConflictTable";
 import InlineActivity from "../components/InlineActivity";
+import LiveProgress from "../components/LiveProgress";
 import StatusBadge from "../components/StatusBadge";
 import TimetableGrid from "../components/TimetableGrid";
+import { timeToMinutes } from "../components/timetable/timetableUtils";
 import { useSessionState } from "../sessionState";
 import type {
   ConstraintViolation,
@@ -29,6 +36,7 @@ import type {
   ScheduleResponse,
   ScheduleRun,
   ScheduledRow,
+  SessionRow,
   TimeSlot,
 } from "../types";
 
@@ -67,7 +75,11 @@ export default function TimetableReviewPage() {
   const [moveDrafts, setMoveDrafts] = useSessionState<Record<number, MoveDraft>>("review.moveDrafts", {});
   const [savingMove, setSavingMove] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [resolving, setResolving] = useState(false);
   const [error, setError] = useSessionState<string | null>("review.error", null);
+  const [activeSessionId, setActiveSessionId] = useSessionState<number | null>("review.activeSessionId", null);
+  const [movingConflict, setMovingConflict] = useState(false);
+  const [conflictTab, setConflictTab] = useSessionState<"modules" | "issues">("review.conflictTab", "modules");
 
   const load = useCallback(async () => {
     setError(null);
@@ -118,6 +130,56 @@ export default function TimetableReviewPage() {
     [filters, rows],
   );
 
+  const conflictSlotKeys = useMemo(() => {
+    if (!activeSessionId) return new Set<string>();
+    const keys = new Set<string>();
+    for (const row of rows) {
+      if (row.session_id === activeSessionId) {
+        const startMin = timeToMinutes(row.start_time);
+        const endMin = timeToMinutes(row.end_time);
+        for (let h = Math.floor(startMin / 60); h < Math.ceil(endMin / 60); h++) {
+          const s = `${String(h).padStart(2, "0")}:00`;
+          const e = `${String(h + 1).padStart(2, "0")}:00`;
+          keys.add(`${row.day}|${s}|${e}`);
+        }
+      }
+    }
+    return keys;
+  }, [activeSessionId, rows]);
+
+  const availableSlotKeys = useMemo(() => {
+    if (!activeSessionId) return new Set<string>();
+    const occupied = new Set<string>();
+    for (const row of rows) {
+      const startMin = timeToMinutes(row.start_time);
+      const endMin = timeToMinutes(row.end_time);
+      for (let h = Math.floor(startMin / 60); h < Math.ceil(endMin / 60); h++) {
+        const s = `${String(h).padStart(2, "0")}:00`;
+        const e = `${String(h + 1).padStart(2, "0")}:00`;
+        occupied.add(`${row.day}|${s}|${e}`);
+      }
+    }
+    const available = new Set<string>();
+    const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+    const hours = new Set<number>();
+    for (const slot of timeSlots) {
+      const h = parseInt(slot.start_time.split(":")[0], 10);
+      hours.add(h);
+    }
+    if (hours.size === 0) { for (let h = 8; h < 18; h++) hours.add(h); }
+    for (const day of days) {
+      for (const h of hours) {
+        const s = `${String(h).padStart(2, "0")}:00`;
+        const e = `${String(h + 1).padStart(2, "0")}:00`;
+        const key = `${day}|${s}|${e}`;
+        if (!occupied.has(key) && !conflictSlotKeys.has(key)) {
+          available.add(key);
+        }
+      }
+    }
+    return available;
+  }, [activeSessionId, rows, timeSlots, conflictSlotKeys]);
+
   const openRun = async (id: number) => {
     setError(null);
     try {
@@ -158,6 +220,66 @@ export default function TimetableReviewPage() {
     }
   };
 
+  const handleConflictMove = async (day: string, startTime: string, _endTime: string) => {
+    if (!schedule || !activeSessionId || movingConflict) return;
+    const targetRow = rows.find((r) => r.session_id === activeSessionId);
+    if (!targetRow) return;
+
+    const durationMin = timeToMinutes(targetRow.end_time) - timeToMinutes(targetRow.start_time);
+    const newStartMin = timeToMinutes(startTime);
+    const newEndMin = newStartMin + durationMin;
+    const newEndHour = Math.floor(newEndMin / 60);
+    const newEndMinute = newEndMin % 60;
+    const computedEndTime = `${String(newEndHour).padStart(2, "0")}:${String(newEndMinute).padStart(2, "0")}`;
+
+    setMovingConflict(true);
+    setError(null);
+    try {
+      await moveScheduledSession(schedule.schedule_run.id, activeSessionId, {
+        day,
+        start_time: startTime,
+        end_time: computedEndTime,
+        room_code: targetRow.room,
+      });
+      const refreshed = await getSchedule(schedule.schedule_run.id);
+      setSchedule(refreshed);
+      const newViolations = await getViolations(schedule.schedule_run.id);
+      setViolations(newViolations);
+      setExplanations(await getScheduleExplanations(schedule.schedule_run.id));
+      setComparisons(await compareSchedules());
+      setActiveSessionId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not move session");
+    } finally {
+      setMovingConflict(false);
+    }
+  };
+
+  const conflictSessionIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const v of violations) {
+      for (const id of v.affected_session_ids) ids.add(id);
+    }
+    return ids;
+  }, [violations]);
+
+  const conflictSessions = useMemo(() => {
+    return rows.filter(r => conflictSessionIds.has(r.session_id));
+  }, [rows, conflictSessionIds]);
+
+  const handleAutoResolve = async () => {
+    setResolving(true);
+    setError(null);
+    try {
+      await autoResolveSchedule();
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to resolve conflicts");
+    } finally {
+      setResolving(false);
+    }
+  };
+
   return (
     <div className="page">
       <div className="page-header">
@@ -166,20 +288,28 @@ export default function TimetableReviewPage() {
           <p>Inspect and adjust the generated timetable</p>
         </div>
         <div className="toolbar-row">
-          <button className="button secondary" onClick={load}>
-            <RefreshCw className={loading ? "spin" : ""} size={17} />
+          <button className="button secondary" onClick={load} disabled={loading || resolving}>
+            <RefreshCw className={loading && !resolving ? "spin" : ""} size={17} />
             Refresh
+          </button>
+          <button className="button primary" onClick={handleAutoResolve} disabled={loading || resolving}>
+            {resolving && <RefreshCw className="spin" size={17} />}
+            {resolving ? "Resolving..." : "Resolve Conflicts"}
           </button>
         </div>
       </div>
       {error && <div className="notice bad">{error}</div>}
-      {loading && (
+      
+      {resolving ? (
+        <LiveProgress />
+      ) : loading ? (
         <InlineActivity
           kind="review"
           title="Preparing timetable review"
           steps={["Loading latest run", "Reading conflicts", "Building timetable view"]}
         />
-      )}
+      ) : null}
+      
       {schedule && (
         <>
           <section className="status-card review-summary">
@@ -302,23 +432,98 @@ export default function TimetableReviewPage() {
               savingMove={savingMove}
               onChangeMove={setMoveDraft}
               onSaveMove={saveMove}
+              conflictSlotKeys={conflictSlotKeys}
+              availableSlotKeys={availableSlotKeys}
+              onClickAvailableSlot={handleConflictMove}
+              scheduleRunId={schedule.schedule_run.id}
+              onRefresh={load}
             />
           </section>
-          <details className="status-card compact-disclosure">
-            <summary className="compact-summary">
+          <section className="status-card data-section">
+            <div className="section-heading">
               <div>
                 <div className="status-card-title">Conflicts</div>
-                <p>Generated timetable hard and soft issues</p>
+                <p>
+                  {violations.length} issue{violations.length !== 1 ? "s" : ""} found —{" "}
+                  {violations.some(v => v.severity === "HARD") ? (
+                    <strong style={{ color: "#dc2626" }}>Must resolve to finalize</strong>
+                  ) : violations.length > 0 ? (
+                    <span style={{ color: "#f97316" }}>Optional to resolve</span>
+                  ) : (
+                    <span className="muted">All clear!</span>
+                  )}
+                </p>
               </div>
-              <span className="preference-toggle">
-                {violations.length} issues
-                <ChevronDown size={16} />
-              </span>
-            </summary>
-            <div className="disclosure-content">
-              <ConflictTable violations={violations} />
+              <div style={{ display: "flex", gap: "10px" }}>
+                  <button className={`button slim ${conflictTab === "modules" ? "" : "secondary"}`} onClick={() => setConflictTab("modules")}>Modules to Reassign</button>
+                  <button className={`button slim ${conflictTab === "issues" ? "" : "secondary"}`} onClick={() => setConflictTab("issues")}>Raw Issues</button>
+                  {activeSessionId && (
+                    <button className="button secondary slim" onClick={() => setActiveSessionId(null)}>
+                      Clear Selection
+                    </button>
+                  )}
+              </div>
             </div>
-          </details>
+            {movingConflict && (
+              <InlineActivity
+                kind="review"
+                title="Moving session"
+                steps={["Updating placement", "Checking conflicts", "Refreshing timetable"]}
+              />
+            )}
+            {activeSessionId && (
+              <div className="conflict-resolution-banner">
+                Showing conflicts for Session <strong>{activeSessionId}</strong> —{" "}
+                click a <span className="green-label">green slot</span> on the timetable to move it.
+              </div>
+            )}
+            {conflictTab === "modules" ? (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Module / Requirement</th>
+                      <th>Group</th>
+                      <th>Staff</th>
+                      <th>Current Time</th>
+                      <th>Room</th>
+                      <th>Issues</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {conflictSessions.map(row => {
+                      const rowViolations = violations.filter(v => v.affected_session_ids.includes(row.session_id));
+                      const isActive = activeSessionId === row.session_id;
+                      const hasHard = rowViolations.some(v => v.severity === "HARD");
+                      const borderStyle = hasHard ? "4px solid #dc2626" : "4px solid #f97316";
+                      return (
+                        <tr key={row.session_id} 
+                            className={isActive ? "conflict-active-row" : ""} 
+                            onClick={() => setActiveSessionId(row.session_id)}
+                            style={{ cursor: 'pointer' }}>
+                          <td style={{ borderLeft: borderStyle }}>{row.programme || `Req-${row.session_id}`}</td>
+                          <td>{row.student_group_code}</td>
+                          <td>{row.staff_name}</td>
+                          <td>{row.day} {row.start_time}-{row.end_time}</td>
+                          <td>{row.room}</td>
+                          <td>{rowViolations.length} issue(s)</td>
+                        </tr>
+                      );
+                    })}
+                    {conflictSessions.length === 0 && (
+                      <tr><td colSpan={6}>No modules with conflicts.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <ConflictTable
+                violations={violations}
+                activeConflictId={null}
+                onSelectConflict={(v) => setActiveSessionId(v?.affected_session_ids[0] ?? null)}
+              />
+            )}
+          </section>
           <section className="status-card review-explanation-card">
             <div className="section-heading">
               <div>

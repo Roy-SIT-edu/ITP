@@ -4123,3 +4123,85 @@ input {
     max-width: 100%;
   }
 }
+
+/* ── Conflict Resolution Highlights ── */
+.planner-cell.conflict-current {
+  background: rgba(251, 146, 60, 0.35) !important;
+  border: 2px solid #f97316 !important;
+  box-shadow: 0 0 12px rgba(249, 115, 22, 0.3);
+  animation: conflict-pulse 1.5s ease-in-out infinite;
+}
+
+.planner-cell.conflict-available {
+  background: rgba(74, 222, 128, 0.25) !important;
+  border: 2px solid #22c55e !important;
+  cursor: pointer !important;
+  transition: background 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+
+.planner-cell.conflict-available:hover {
+  background: rgba(74, 222, 128, 0.5) !important;
+  box-shadow: 0 0 16px rgba(34, 197, 94, 0.4);
+  transform: scale(1.04);
+}
+
+@keyframes conflict-pulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(249, 115, 22, 0.2); }
+  50% { box-shadow: 0 0 20px rgba(249, 115, 22, 0.5); }
+}
+
+.conflict-active-row {
+  background: rgba(251, 146, 60, 0.12) !important;
+  outline: 2px solid #f97316;
+  outline-offset: -2px;
+}
+
+.conflict-active-row td {
+  color: var(--color-text, #0f172a) !important;
+}
+
+tr.conflict-active-row:hover {
+  background: rgba(251, 146, 60, 0.18) !important;
+}
+
+.conflict-resolution-banner {
+  padding: 0.75rem 1rem;
+  background: rgba(251, 146, 60, 0.1);
+  border: 1px solid rgba(251, 146, 60, 0.3);
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary, #475569);
+}
+
+.conflict-resolution-banner strong {
+  color: var(--color-text, #0f172a);
+}
+
+.conflict-resolution-banner .green-label {
+  color: #22c55e;
+  font-weight: 600;
+}
+
+.legend-conflict {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: rgba(251, 146, 60, 0.45);
+  border: 2px solid #f97316;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.legend-available {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: rgba(74, 222, 128, 0.35);
+  border: 2px solid #22c55e;
+  margin-right: 4px;
+  vertical-align: middle;
+}

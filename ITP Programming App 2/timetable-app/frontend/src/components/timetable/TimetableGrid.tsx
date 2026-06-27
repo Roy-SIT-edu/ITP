@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Room, ScheduledRow, TimeSlot } from "../../types";
+import type { Room, ScheduledRow, TimeSlot, SessionRow } from "../../types";
 import MoveControls from "./MoveControls";
 import TimetablePlanner from "./TimetablePlanner";
-import type { MoveDraft } from "./types";
+import { days, type MoveDraft } from "./types";
 import { buildPlannerSlots, duration, getFirstOverlapKey, groupRowsBySlot } from "./timetableUtils";
+import { getSession, updateSession, recheckSchedule } from "../../api/client";
 
 type Props = {
   rows: ScheduledRow[];
@@ -14,6 +15,11 @@ type Props = {
   savingMove?: number | null;
   onChangeMove?: (sessionId: number, value: MoveDraft) => void;
   onSaveMove?: (row: ScheduledRow) => void;
+  conflictSlotKeys?: Set<string>;
+  availableSlotKeys?: Set<string>;
+  onClickAvailableSlot?: (day: string, startTime: string, endTime: string) => void;
+  scheduleRunId?: number;
+  onRefresh?: () => void;
 };
 
 export default function TimetableGrid({
@@ -25,6 +31,11 @@ export default function TimetableGrid({
   savingMove = null,
   onChangeMove,
   onSaveMove,
+  conflictSlotKeys = new Set(),
+  availableSlotKeys = new Set(),
+  onClickAvailableSlot,
+  scheduleRunId,
+  onRefresh,
 }: Props) {
   const slots = useMemo(() => buildPlannerSlots(rows, timeSlots), [rows, timeSlots]);
   const grouped = useMemo(() => groupRowsBySlot(rows, slots), [rows, slots]);
@@ -38,6 +49,18 @@ export default function TimetableGrid({
     [rows, selectedSessionId],
   );
   const selectedSlotRows = useMemo(() => grouped.get(selectedSlotKey ?? "") ?? [], [grouped, selectedSlotKey]);
+
+  const staffOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of rows) {
+      if (r.staff_id) {
+        map.set(r.staff_id, r.staff_name || r.staff_id);
+      }
+    }
+    return Array.from(map.entries())
+      .sort((a,b) => a[1].localeCompare(b[1]))
+      .map(([id, name]) => ({ id, name }));
+  }, [rows]);
 
   useEffect(() => {
     if (rows.length === 0) {
@@ -65,7 +88,15 @@ export default function TimetableGrid({
             selectedSessionDraft={
               selectedSessionId && moveDrafts[selectedSessionId] ? moveDrafts[selectedSessionId] : undefined
             }
+            conflictSlotKeys={conflictSlotKeys}
+            availableSlotKeys={availableSlotKeys}
             onSelectSlot={(key, slotRows) => {
+              // Conflict resolution: clicking an available slot triggers move
+              if (onClickAvailableSlot && availableSlotKeys?.has(key)) {
+                const [day, startTime, endTime] = key.split("|");
+                onClickAvailableSlot(day, startTime, endTime);
+                return;
+              }
               if (isPlacing && selectedRow) {
                 const [day, startTime, endTime] = key.split("|");
                 const draft = moveDrafts[selectedRow.session_id] ?? {
@@ -110,6 +141,9 @@ export default function TimetableGrid({
           onSaveMove={onSaveMove}
           isPlacing={isPlacing}
           setIsPlacing={setIsPlacing}
+          scheduleRunId={scheduleRunId}
+          onRefresh={onRefresh}
+          staffOptions={staffOptions}
         />
       </div>
     );
@@ -233,6 +267,9 @@ function SelectedSessionEditor({
   onSaveMove,
   isPlacing,
   setIsPlacing,
+  scheduleRunId,
+  onRefresh,
+  staffOptions,
 }: {
   row: ScheduledRow | null;
   rooms: Room[];
@@ -243,8 +280,66 @@ function SelectedSessionEditor({
   onSaveMove?: (row: ScheduledRow) => void;
   isPlacing: boolean;
   setIsPlacing: (value: boolean) => void;
+  scheduleRunId?: number;
+  onRefresh?: () => void;
+  staffOptions: { id: string; name: string }[];
 }) {
-  if (!row) {
+  const [sessionData, setSessionData] = useState<SessionRow | null>(null);
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
+  const [isSessionDirty, setIsSessionDirty] = useState(false);
+
+  useEffect(() => {
+    if (row && scheduleRunId) {
+      getSession(row.session_id).then(setSessionData).catch((err) => setErrorDetails(err.message));
+    } else {
+      setSessionData(null);
+    }
+  }, [row?.session_id, scheduleRunId]);
+
+  const draft = row ? (moveDrafts[row.session_id] ?? { day: row.day, start_time: row.start_time, end_time: row.end_time, room_code: row.room }) : null;
+  const rowDuration = row ? duration(row) : 0;
+  const matchingSlots = (draft ? timeSlots.filter((slot) => slot.day === draft.day && slot.duration_minutes === rowDuration) : [])
+    .filter((slot, index, self) => self.findIndex(s => s.start_time === slot.start_time) === index)
+    .sort((a, b) => a.start_time.localeCompare(b.start_time));
+
+  const updateMove = (patch: Partial<MoveDraft>) => {
+    if (!draft || !row || !onChangeMove) return;
+    const next = { ...draft, ...patch };
+    const slot = timeSlots.find(
+      (item) => item.day === next.day && item.start_time === next.start_time && item.duration_minutes === rowDuration,
+    );
+    if (slot) {
+      next.end_time = slot.end_time;
+    }
+    onChangeMove(row.session_id, next);
+  };
+
+  const handleSaveAll = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sessionData || !row || !scheduleRunId) return;
+    setSavingDetails(true);
+    setErrorDetails(null);
+    try {
+      if (isSessionDirty) {
+        await updateSession(row.session_id, sessionData);
+      }
+      
+      const hasDraft = !!moveDrafts[row.session_id];
+      if (hasDraft && onSaveMove) {
+        setIsPlacing?.(false);
+        onSaveMove(row);
+      } else {
+        await recheckSchedule(scheduleRunId);
+        onRefresh?.();
+      }
+    } catch (err) {
+      setErrorDetails(err instanceof Error ? err.message : "Failed to save session");
+      setSavingDetails(false);
+    }
+  };
+
+  if (!row || !draft) {
     return (
       <section className="schedule-edit-panel selected-session-panel">
         <div className="empty-state">No sessions match the current filters.</div>
@@ -252,12 +347,14 @@ function SelectedSessionEditor({
     );
   }
 
+  const isSaving = savingDetails || savingMove === row.session_id;
+
   return (
     <section className="schedule-edit-panel selected-session-panel">
       <div className="schedule-edit-heading">
         <div>
           <strong>Selected Session</strong>
-          <span>Click a timetable card to inspect or move that session.</span>
+          <span>Inspect or modify session details.</span>
         </div>
         <small>{row.requirement_id}</small>
       </div>
@@ -268,10 +365,10 @@ function SelectedSessionEditor({
             {row.programme ?? "No programme"} | {row.class_type ?? "Class"} | {row.student_group_code ?? "No group"}
           </span>
           <small>
-            {row.co_teacher_names || row.staff_name || "No staff"} | {row.delivery_mode ?? "Mode not set"} |{" "}
             {row.week_pattern ?? "Weeks not set"}
           </small>
         </div>
+
         <div className="selected-session-facts">
           <span>
             <strong>Current slot</strong>
@@ -286,17 +383,141 @@ function SelectedSessionEditor({
             {row.session_id}
           </span>
         </div>
-        <MoveControls
-          row={row}
-          rooms={rooms}
-          timeSlots={timeSlots}
-          value={moveDrafts[row.session_id]}
-          saving={savingMove === row.session_id}
-          onChange={(value) => onChangeMove?.(row.session_id, value)}
-          onSave={() => onSaveMove?.(row)}
-          isPlacing={isPlacing}
-          setIsPlacing={setIsPlacing}
-        />
+
+        {scheduleRunId && sessionData && (
+          <div className="move-controls">
+            <div className="move-controls-header">
+              <div>
+                <strong>Edit & Move</strong>
+                <span>Update requirements and placement</span>
+              </div>
+              <button
+                className={`button slim ${isPlacing ? "primary" : "secondary"}`}
+                onClick={() => setIsPlacing(!isPlacing)}
+                type="button"
+              >
+                {isPlacing ? "Cancel Selection" : "Pick Time"}
+              </button>
+            </div>
+            
+            {errorDetails && (
+              <div className="notice bad" style={{ margin: "0 16px 16px" }}>
+                {errorDetails}
+              </div>
+            )}
+
+            <div className="move-control-fields" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", borderBottom: "1px solid var(--color-border)", paddingBottom: "16px", marginBottom: "16px" }}>
+              <label className="move-field" style={{ gridColumn: "1 / -1" }}>
+                <span style={{ fontWeight: 600, color: "var(--color-primary)", textTransform: "uppercase", fontSize: "11px", letterSpacing: "0.5px" }}>Module Details</span>
+              </label>
+
+              <label className="move-field">
+                <span>Staff</span>
+                <select
+                  value={sessionData.staff_id ?? ""}
+                  onChange={(e) => { setSessionData({ ...sessionData, staff_id: e.target.value || null }); setIsSessionDirty(true); }}
+                >
+                  <option value="">-- No Staff --</option>
+                  {staffOptions?.map(staff => (
+                    <option key={staff.id} value={staff.id}>{staff.name} ({staff.id})</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="move-field">
+                <span>Type</span>
+                <select
+                  value={sessionData.scheduling_type ?? ""}
+                  onChange={(e) => { setSessionData({ ...sessionData, scheduling_type: e.target.value }); setIsSessionDirty(true); }}
+                >
+                  <option value="">-- Select --</option>
+                  <option value="Standard">Standard</option>
+                  <option value="Fixed">Fixed</option>
+                </select>
+              </label>
+
+              <label className="move-field">
+                <span>Mode</span>
+                <select
+                  value={sessionData.delivery_mode ?? ""}
+                  onChange={(e) => { setSessionData({ ...sessionData, delivery_mode: e.target.value }); setIsSessionDirty(true); }}
+                >
+                  <option value="">-- Select --</option>
+                  <option value="F2F">F2F</option>
+                  <option value="Online">Online</option>
+                  <option value="Blended">Blended</option>
+                </select>
+              </label>
+
+              <label className="move-field">
+                <span>Venue</span>
+                <select
+                  value={sessionData.venue_type_required ?? ""}
+                  onChange={(e) => { setSessionData({ ...sessionData, venue_type_required: e.target.value }); setIsSessionDirty(true); }}
+                >
+                  <option value="">-- Any --</option>
+                  <option value="Classroom">Classroom</option>
+                  <option value="Lecture Theatre">Lecture Theatre</option>
+                  <option value="Computer Lab">Computer Lab</option>
+                  <option value="Science Lab">Science Lab</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="move-control-fields" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <label className="move-field" style={{ gridColumn: "1 / -1" }}>
+                <span style={{ fontWeight: 600, color: "var(--color-primary)", textTransform: "uppercase", fontSize: "11px", letterSpacing: "0.5px" }}>Placement</span>
+              </label>
+
+              <label className="move-field">
+                <span>Day</span>
+                <select value={draft.day} onChange={(e) => updateMove({ day: e.target.value })}>
+                  {days.map(day => (
+                    <option key={day} value={day}>{day}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="move-field">
+                <span>Time</span>
+                <select value={draft.start_time} onChange={(e) => updateMove({ start_time: e.target.value })}>
+                  {matchingSlots.map(slot => (
+                    <option key={`${slot.day}-${slot.start_time}-${slot.end_time}`} value={slot.start_time}>
+                      {slot.start_time}-{slot.end_time}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="move-field" style={{ gridColumn: "1 / -1" }}>
+                <span>Room</span>
+                <input
+                  list={`room-options-${row.session_id}`}
+                  value={draft.room_code}
+                  onChange={(e) => updateMove({ room_code: e.target.value })}
+                  placeholder="Leave empty to auto-assign"
+                />
+              </label>
+            </div>
+            
+            <datalist id={`room-options-${row.session_id}`}>
+              {rooms.map((room) => (
+                <option key={room.id} value={room.room_code}>
+                  {room.room_code}
+                </option>
+              ))}
+            </datalist>
+
+            <button
+              className="button primary"
+              disabled={isSaving}
+              onClick={handleSaveAll}
+              style={{ marginTop: "16px", width: "100%", justifyContent: "center" }}
+            >
+              {isSaving ? "Saving Changes..." : "Save All Changes"}
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );

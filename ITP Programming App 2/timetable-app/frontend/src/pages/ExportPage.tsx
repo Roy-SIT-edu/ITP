@@ -61,11 +61,31 @@ export default function ExportPage() {
             </div>
           </div>
           <div className="download-row">
-            <a className="button" href={exportUrl(schedule.schedule_run.id, "csv")}>
+            <a
+              className="button"
+              href={exportUrl(schedule.schedule_run.id, "csv")}
+              onClick={(e) => {
+                if (schedule.schedule_run.hard_violation_count > 0) {
+                  if (!window.confirm(`Warning: Your schedule still has ${schedule.schedule_run.hard_violation_count} hard conflicts. Are you sure you want to export it?`)) {
+                    e.preventDefault();
+                  }
+                }
+              }}
+            >
               <Download size={18} />
               CSV
             </a>
-            <a className="button secondary" href={exportUrl(schedule.schedule_run.id, "xlsx")}>
+            <a
+              className="button secondary"
+              href={exportUrl(schedule.schedule_run.id, "xlsx")}
+              onClick={(e) => {
+                if (schedule.schedule_run.hard_violation_count > 0) {
+                  if (!window.confirm(`Warning: Your schedule still has ${schedule.schedule_run.hard_violation_count} hard conflicts. Are you sure you want to export it?`)) {
+                    e.preventDefault();
+                  }
+                }
+              }}
+            >
               <FileSpreadsheet size={18} />
               XLSX
             </a>

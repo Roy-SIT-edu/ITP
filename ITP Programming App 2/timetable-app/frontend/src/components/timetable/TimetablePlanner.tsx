@@ -9,6 +9,8 @@ type Props = {
   isPlacing?: boolean;
   selectedSessionDraft?: MoveDraft;
   onSelectSlot?: (key: string, rows: ScheduledRow[]) => void;
+  conflictSlotKeys?: Set<string>;
+  availableSlotKeys?: Set<string>;
 };
 
 export default function TimetablePlanner({
@@ -18,6 +20,8 @@ export default function TimetablePlanner({
   isPlacing,
   selectedSessionDraft,
   onSelectSlot,
+  conflictSlotKeys = new Set(),
+  availableSlotKeys = new Set(),
 }: Props) {
   return (
     <div className="planner-shell">
@@ -36,6 +40,8 @@ export default function TimetablePlanner({
               const slotRows = grouped.get(key) ?? [];
               const selected = key === selectedSlotKey;
               const count = slotRows.length;
+              const isConflictCell = conflictSlotKeys.has(key);
+              const isAvailableCell = availableSlotKeys.has(key);
               const draftSelected =
                 selectedSessionDraft?.day === day &&
                 Boolean(selectedSessionDraft.start_time) &&
@@ -50,7 +56,7 @@ export default function TimetablePlanner({
                 <button
                   className={`planner-cell ${count ? heatClass(count) : "empty"} ${selected ? "selected" : ""} ${
                     isPlacing ? "placing-mode" : ""
-                  } ${draftSelected ? "highlight-draft" : ""}`}
+                  } ${draftSelected ? "highlight-draft" : ""} ${isConflictCell ? "conflict-current" : ""} ${isAvailableCell ? "conflict-available" : ""}`}
                   disabled={!count && !onSelectSlot && !isPlacing}
                   key={key}
                   onClick={() => onSelectSlot?.(key, slotRows)}
@@ -96,6 +102,13 @@ export default function TimetablePlanner({
               <i className="legend-draft" />
               Draft Move
             </span>
+          </div>
+        )}
+        {(conflictSlotKeys.size > 0 || availableSlotKeys.size > 0) && (
+          <div className="legend-group">
+            <span className="legend-title">Conflict Resolution:</span>
+            <span><i className="legend-conflict" />Current</span>
+            <span><i className="legend-available" />Available</span>
           </div>
         )}
       </div>

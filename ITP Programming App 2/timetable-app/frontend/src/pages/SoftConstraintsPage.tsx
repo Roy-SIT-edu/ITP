@@ -9,14 +9,13 @@ import {
   generateSchedule,
   getSessions,
   getSoftConstraintPriorities,
-  getValidation,
   updateSoftConstraintPriorities,
 } from "../api/client";
 import { GenerationReadinessPanel, PriorityRanking, SoftPreferenceTable } from "../components/SoftConstraintWorkflow";
 import InlineActivity from "../components/InlineActivity";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
 import { useSessionState } from "../sessionState";
-import type { ScheduleGenerateResult, SessionRow, SoftConstraintPriority, ValidationResult } from "../types";
+import type { ScheduleGenerateResult, SessionRow, SoftConstraintPriority } from "../types";
 import type { SoftPreferenceHint } from "../components/SoftConstraintWorkflow";
 
 function previewWeight(index: number, total: number) {
@@ -36,7 +35,6 @@ function softConstraintHints(session: SessionRow): SoftPreferenceHint[] {
 
 export default function SoftConstraintsPage() {
   const [priorities, setPriorities] = useSessionState<SoftConstraintPriority[]>("soft.priorities", []);
-  const [validation, setValidation] = useSessionState<ValidationResult | null>("soft.validation", null);
   const [sessions, setSessions] = useSessionState<SessionRow[]>("soft.sessions", []);
   const [generationResult, setGenerationResult] = useSessionState<ScheduleGenerateResult | null>(
     "soft.generationResult",
@@ -53,13 +51,11 @@ export default function SoftConstraintsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [nextPriorities, nextValidation, nextSessions] = await Promise.all([
+      const [nextPriorities, nextSessions] = await Promise.all([
         getSoftConstraintPriorities(),
-        getValidation(),
         getSessions(),
       ]);
       setPriorities(nextPriorities);
-      setValidation(nextValidation);
       setSessions(nextSessions);
       setDirty(false);
     } catch (err) {
@@ -67,14 +63,14 @@ export default function SoftConstraintsPage() {
     } finally {
       setLoading(false);
     }
-  }, [setDirty, setError, setPriorities, setSessions, setValidation]);
+  }, [setDirty, setError, setPriorities, setSessions]);
 
   useEffect(() => {
-    const shouldLoadInitial = priorities.length === 0 && sessions.length === 0 && !validation && !generationResult;
+    const shouldLoadInitial = priorities.length === 0 && sessions.length === 0 && !generationResult;
     if (shouldLoadInitial) {
       void load();
     }
-  }, [generationResult, load, priorities.length, sessions.length, validation]);
+  }, [generationResult, load, priorities.length, sessions.length]);
 
   const rankedPriorities = useMemo(
     () =>
@@ -94,16 +90,10 @@ export default function SoftConstraintsPage() {
     [sessions],
   );
 
-  const warnings = validation?.warnings ?? [];
-  const hardErrorCount = validation?.error_count ?? 0;
-  const hasHardErrors = hardErrorCount > 0;
+  const warnings: { field: string; message: string }[] = [];
   const isBusy = loading || saving || generating;
-  const canGenerate = !!validation && !hasHardErrors && priorities.length > 0 && !loading;
-  const readinessText = !validation
-    ? "Run validation before generating."
-    : hasHardErrors
-      ? `${hardErrorCount} hard validation error${hardErrorCount === 1 ? "" : "s"} must be fixed first.`
-      : "Hard constraints are clear.";
+  const canGenerate = !loading;
+  const readinessText = "Ready to generate.";
 
   const movePriority = (index: number, direction: -1 | 1) => {
     const target = index + direction;
@@ -149,7 +139,6 @@ export default function SoftConstraintsPage() {
       }
       const result = await generateSchedule();
       setGenerationResult(result);
-      setValidation(await getValidation());
       setSuccess(result.message);
       notifyWorkflowProgressChange();
     } catch (err) {
@@ -203,12 +192,10 @@ export default function SoftConstraintsPage() {
         dirty={dirty}
         generating={generating}
         generationResult={generationResult}
-        hasHardErrors={hasHardErrors}
         priorityCount={rankedPriorities.length}
         readinessText={readinessText}
         saving={saving}
         softRowCount={softRows.length}
-        validationLoaded={!!validation}
         warningCount={warnings.length}
         onGenerate={handleGenerate}
       />

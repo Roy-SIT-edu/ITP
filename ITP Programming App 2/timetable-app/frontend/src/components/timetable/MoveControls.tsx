@@ -12,6 +12,7 @@ type Props = {
   onSave: () => void;
   isPlacing?: boolean;
   setIsPlacing?: (value: boolean) => void;
+  hideSaveButton?: boolean;
 };
 
 export default function MoveControls({
@@ -24,6 +25,7 @@ export default function MoveControls({
   onSave,
   isPlacing,
   setIsPlacing,
+  hideSaveButton,
 }: Props) {
   const draft = value ?? { day: row.day, start_time: row.start_time, end_time: row.end_time, room_code: row.room };
   const rowDuration = duration(row);
@@ -97,17 +99,19 @@ export default function MoveControls({
           </option>
         ))}
       </datalist>
-      <button
-        className="button primary slim"
-        disabled={saving}
-        type="button"
-        onClick={() => {
-          setIsPlacing?.(false);
-          onSave();
-        }}
-      >
-        {saving ? "Saving" : "Save Move"}
-      </button>
+      {!hideSaveButton && (
+        <button
+          className="button primary slim"
+          disabled={saving}
+          type="button"
+          onClick={() => {
+            setIsPlacing?.(false);
+            onSave();
+          }}
+        >
+          {saving ? "Saving" : "Save Move"}
+        </button>
+      )}
     </div>
   );
 }

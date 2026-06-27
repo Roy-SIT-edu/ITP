@@ -149,6 +149,12 @@ export function generateSchedule() {
   });
 }
 
+export function autoResolveSchedule() {
+  return request<ScheduleGenerateResult>("/api/schedules/auto-resolve", {
+    method: "POST",
+  });
+}
+
 export function getSoftConstraintPriorities() {
   return request<SoftConstraintPriority[]>("/api/soft-constraints");
 }
@@ -193,6 +199,15 @@ export function moveScheduledSession(
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
+    },
+  );
+}
+
+export function recheckSchedule(scheduleRunId: number) {
+  return request<{ message: string; schedule_run: ScheduleRun | null; violations: ConstraintViolation[] }>(
+    `/api/schedules/${scheduleRunId}/recheck`,
+    {
+      method: "POST",
     },
   );
 }

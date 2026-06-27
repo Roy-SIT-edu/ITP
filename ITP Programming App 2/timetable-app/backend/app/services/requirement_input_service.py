@@ -208,7 +208,7 @@ class RequirementInputService:
             errors,
             allow_reference_upsert,
         )
-        year = self._required_positive_int(row, source_row_no, "Year", errors)
+        year = self._positive_int(self._value(row, "Year"))
         exact_class_size = self._required_positive_int(row, source_row_no, "Exact Class Size", errors)
         group = self._lookup_or_create_group(
             db,

@@ -27,6 +27,7 @@ class CpSatTimetableSolver:
         rooms: list[Room],
         soft_constraint_weights: dict[str, int] | None = None,
         max_seconds: float = 20.0,
+        fast_mode: bool = False,
     ) -> dict:
         if not sessions:
             return {
@@ -47,6 +48,8 @@ class CpSatTimetableSolver:
 
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = max_seconds
+        if fast_mode:
+            solver.parameters.stop_after_first_solution = True
         # Multiple workers usually improves feasibility search on timetable grids.
         solver.parameters.num_search_workers = 8
         status = solver.Solve(built.model)

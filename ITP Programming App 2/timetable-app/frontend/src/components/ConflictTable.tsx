@@ -7,9 +7,11 @@ import StatusBadge from "./StatusBadge";
 
 type Props = {
   violations: ConstraintViolation[];
+  activeConflictId?: number | null;
+  onSelectConflict?: (violation: ConstraintViolation) => void;
 };
 
-export default function ConflictTable({ violations }: Props) {
+export default function ConflictTable({ violations, activeConflictId, onSelectConflict }: Props) {
   if (violations.length === 0) {
     return <div className="empty-state">No generated timetable conflicts found.</div>;
   }
@@ -27,7 +29,12 @@ export default function ConflictTable({ violations }: Props) {
         </thead>
         <tbody>
           {violations.map((item) => (
-            <tr key={item.id}>
+            <tr
+              key={item.id}
+              className={item.id === activeConflictId ? "conflict-active-row" : ""}
+              style={{ cursor: onSelectConflict ? "pointer" : "default" }}
+              onClick={() => onSelectConflict?.(item)}
+            >
               <td>
                 <StatusBadge label={item.severity} tone={item.severity === "HARD" ? "bad" : "warn"} />
               </td>

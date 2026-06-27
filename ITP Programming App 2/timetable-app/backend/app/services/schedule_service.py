@@ -25,15 +25,7 @@ class ScheduleService:
         self.constraint_service = ConstraintService()
         self.priority_service = SoftConstraintPriorityService()
 
-    def generate(self, db: DbSession) -> dict:
-        validation = self.validation_service.validate_latest(db)
-        if validation["error_count"] > 0:
-            return {
-                "error": "VALIDATION_FAILED",
-                "message": f"Cannot generate timetable because {validation['error_count']} validation errors exist.",
-                "details": validation["errors"],
-            }
-
+    def generate(self, db: DbSession, timeout: float = 20.0, fast_mode: bool = False) -> dict:
         sessions = db.query(Session).order_by(Session.id).all()
         time_slots = db.query(TimeSlot).order_by(TimeSlot.day, TimeSlot.start_time).all()
         rooms = db.query(Room).order_by(Room.room_code).all()
@@ -43,7 +35,7 @@ class ScheduleService:
         db.add(run)
         db.flush()
 
-        result = self.solver.solve(sessions, time_slots, rooms, soft_constraint_weights=soft_weights)
+        result = self.solver.solve(sessions, time_slots, rooms, soft_constraint_weights=soft_weights, max_seconds=timeout, fast_mode=fast_mode)
         run.solver_status = result["solver_status"]
         run.soft_score = result["soft_score"]
         run.message = result["message"]

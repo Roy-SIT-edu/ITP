@@ -9,6 +9,7 @@ from app.models.constraint_violation import ConstraintViolation
 from app.models.room import Room
 from app.models.schedule_run import ScheduleRun
 from app.models.scheduled_session import ScheduledSession
+from app.models.session import Session
 from app.models.time_slot import TimeSlot
 from app.services.compatibility import is_online_mode, parse_day_list
 from app.services.constraint_service import ConstraintService
@@ -30,10 +31,54 @@ class ManualMoveInput(BaseModel):
 @router.post("/generate")
 def generate_schedule(db: DbSession = Depends(get_db)):
     result = ScheduleService().generate(db)
-    if result.get("error") == "VALIDATION_FAILED":
-        raise HTTPException(status_code=400, detail=result)
     return result
 
+
+@router.post("/auto-resolve")
+def auto_resolve_schedule(db: DbSession = Depends(get_db)):
+    latest_run = db.query(ScheduleRun).order_by(ScheduleRun.id.desc()).first()
+    if not latest_run:
+        return ScheduleService().generate(db, timeout=5.0, fast_mode=True)
+        
+    violations = db.query(ConstraintViolation).filter_by(schedule_run_id=latest_run.id).all()
+    conflict_session_ids = set()
+    for v in violations:
+        if v.affected_session_ids:
+            for sid in v.affected_session_ids.split(","):
+                if sid.strip().isdigit():
+                    conflict_session_ids.add(int(sid.strip()))
+                    
+    if not conflict_session_ids:
+        return ScheduleService().generate(db, timeout=5.0, fast_mode=True)
+        
+    sessions = db.query(Session).filter(Session.id.in_(conflict_session_ids)).all()
+    
+    # Step 1: Unfix the conflicting modules so they can be rescheduled
+    for session in sessions:
+        session.scheduling_type = "Standard"
+        session.fixed_day = None
+        session.fixed_start_time = None
+        session.fixed_end_time = None
+    db.commit()
+    
+    result = ScheduleService().generate(db, timeout=5.0, fast_mode=True)
+    
+    # If it's still infeasible or has hard violations, try Step 2: Make them Online (skip lab sessions)
+    if result.get("solver_status") in ["UNKNOWN", "INFEASIBLE"] or result.get("hard_violation_count", 0) > 0:
+        for session in sessions:
+            is_lab = False
+            if session.venue_type_required and "lab" in session.venue_type_required.lower():
+                is_lab = True
+            if session.class_type and "lab" in session.class_type.lower():
+                is_lab = True
+                
+            if not is_lab:
+                session.delivery_mode = "Online"
+                session.campus_mode = "Online"
+        db.commit()
+        result = ScheduleService().generate(db, timeout=5.0, fast_mode=True)
+        
+    return result
 
 @router.get("")
 def schedule_runs(db: DbSession = Depends(get_db)):
@@ -108,6 +153,12 @@ def move_scheduled_session(schedule_run_id: int, session_id: int, data: ManualMo
     item.end_time = slot.end_time
     item.week_pattern = slot.week_pattern
 
+    if item.session and item.session.scheduling_type and item.session.scheduling_type.strip().lower() == "fixed":
+        item.session.scheduling_type = "Standard"
+        item.session.fixed_day = None
+        item.session.fixed_start_time = None
+        item.session.fixed_end_time = None
+
     soft_weights = SoftConstraintPriorityService().weights(db)
     check = ConstraintService().check_and_store(db, schedule_run_id, soft_weights)
     run = db.query(ScheduleRun).filter_by(id=schedule_run_id).first()
@@ -119,6 +170,24 @@ def move_scheduled_session(schedule_run_id: int, session_id: int, data: ManualMo
     return {
         "message": "Scheduled session moved.",
         "schedule_run": schedule_run_to_dict(run) if run else None,
+        "violations": check["violations"],
+    }
+
+
+@router.post("/{schedule_run_id}/recheck")
+def recheck_schedule(schedule_run_id: int, db: DbSession = Depends(get_db)):
+    run = db.query(ScheduleRun).filter_by(id=schedule_run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Schedule run not found.")
+    soft_weights = SoftConstraintPriorityService().weights(db)
+    check = ConstraintService().check_and_store(db, schedule_run_id, soft_weights)
+    run.hard_violation_count = check["hard_violation_count"]
+    run.soft_score = check["weighted_soft_score"]
+    run.status = "COMPLETED" if run.hard_violation_count == 0 else "COMPLETED_WITH_CONFLICTS"
+    db.commit()
+    return {
+        "message": "Schedule rechecked.",
+        "schedule_run": schedule_run_to_dict(run),
         "violations": check["violations"],
     }
 

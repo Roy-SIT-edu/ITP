@@ -34,12 +34,10 @@ export function GenerationReadinessPanel({
   dirty,
   generating,
   generationResult,
-  hasHardErrors,
   priorityCount,
   readinessText,
   saving,
   softRowCount,
-  validationLoaded,
   warningCount,
   onGenerate,
 }: {
@@ -47,16 +45,14 @@ export function GenerationReadinessPanel({
   dirty: boolean;
   generating: boolean;
   generationResult: ScheduleGenerateResult | null;
-  hasHardErrors: boolean;
   priorityCount: number;
   readinessText: string;
   saving: boolean;
   softRowCount: number;
-  validationLoaded: boolean;
   warningCount: number;
   onGenerate: () => void;
 }) {
-  const blocked = hasHardErrors || !validationLoaded;
+  const blocked = false;
 
   return (
     <section className="status-card generation-panel">
