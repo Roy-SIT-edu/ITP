@@ -50,6 +50,7 @@ class TimetableModelBuilder:
         time_slots: list[TimeSlot],
         rooms: list[Room],
         soft_constraint_weights: dict[str, int] | None = None,
+        relax_hard_conflicts: bool = False,
     ) -> BuiltModel:
         model = cp_model.CpModel()
         variables: dict[tuple[int, int, int], cp_model.IntVar] = {}
@@ -87,14 +88,22 @@ class TimetableModelBuilder:
 
         soft_penalties = []
         if not no_candidate_reasons:
-            self._add_no_overlap_constraints(model, assignments, lambda item: item["room"].id, soft_penalties, "ROOM")
-            self._add_staff_no_overlap_constraints(model, assignments, soft_penalties)
+            self._add_no_overlap_constraints(
+                model,
+                assignments,
+                lambda item: item["room"].id,
+                soft_penalties,
+                "ROOM",
+                relax_hard_conflicts,
+            )
+            self._add_staff_no_overlap_constraints(model, assignments, soft_penalties, relax_hard_conflicts)
             self._add_no_overlap_constraints(
                 model,
                 assignments,
                 lambda item: item["session"].student_group_id,
                 soft_penalties,
                 "GROUP",
+                relax_hard_conflicts,
             )
 
         for assignment in assignments:
@@ -108,7 +117,7 @@ class TimetableModelBuilder:
             model.Minimize(sum(soft_penalties))
         return BuiltModel(model, variables, assignments, soft_penalties, no_candidate_reasons)
 
-    def _add_no_overlap_constraints(self, model, assignments, key_func, penalties, code) -> None:
+    def _add_no_overlap_constraints(self, model, assignments, key_func, penalties, code, relax_hard_conflicts) -> None:
         grouped: dict[int, dict[int, dict]] = {}
         for item in assignments:
             key = key_func(item)
@@ -121,13 +130,25 @@ class TimetableModelBuilder:
         for resource_slots in grouped.values():
             buckets = list(resource_slots.values())
             for bucket in buckets:
-                self._add_bucket_excess_penalty(model, bucket["variables"], penalties, f"{code}_SAME_SLOT")
+                self._add_resource_bucket_rule(
+                    model,
+                    bucket["variables"],
+                    penalties,
+                    f"{code}_SAME_SLOT",
+                    relax_hard_conflicts,
+                )
             for index, left in enumerate(buckets):
                 for right in buckets[index + 1 :]:
                     if slot_conflicts(left["slot"], right["slot"]):
-                        self._add_bucket_excess_penalty(model, left["variables"] + right["variables"], penalties, f"{code}_OVERLAP")
+                        self._add_resource_bucket_rule(
+                            model,
+                            left["variables"] + right["variables"],
+                            penalties,
+                            f"{code}_OVERLAP",
+                            relax_hard_conflicts,
+                        )
 
-    def _add_staff_no_overlap_constraints(self, model, assignments, penalties) -> None:
+    def _add_staff_no_overlap_constraints(self, model, assignments, penalties, relax_hard_conflicts) -> None:
         grouped: dict[int, dict[int, dict]] = {}
         for item in assignments:
             for staff_id in self._session_staff_ids(item["session"]):
@@ -138,11 +159,31 @@ class TimetableModelBuilder:
         for staff_slots in grouped.values():
             buckets = list(staff_slots.values())
             for bucket in buckets:
-                self._add_bucket_excess_penalty(model, bucket["variables"], penalties, "STAFF_SAME_SLOT")
+                self._add_resource_bucket_rule(
+                    model,
+                    bucket["variables"],
+                    penalties,
+                    "STAFF_SAME_SLOT",
+                    relax_hard_conflicts,
+                )
             for index, left in enumerate(buckets):
                 for right in buckets[index + 1 :]:
                     if slot_conflicts(left["slot"], right["slot"]):
-                        self._add_bucket_excess_penalty(model, left["variables"] + right["variables"], penalties, "STAFF_OVERLAP")
+                        self._add_resource_bucket_rule(
+                            model,
+                            left["variables"] + right["variables"],
+                            penalties,
+                            "STAFF_OVERLAP",
+                            relax_hard_conflicts,
+                        )
+
+    def _add_resource_bucket_rule(self, model, variables, penalties, label, relax_hard_conflicts) -> None:
+        if len(variables) <= 1:
+            return
+        if relax_hard_conflicts:
+            self._add_bucket_excess_penalty(model, variables, penalties, label)
+        else:
+            model.Add(sum(variables) <= 1)
 
     def _add_bucket_excess_penalty(self, model, variables, penalties, label) -> None:
         if len(variables) <= 1:

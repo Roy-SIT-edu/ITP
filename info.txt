@@ -1,495 +1,592 @@
-Timetable Scheduler - Student-Friendly Code Rundown
-===================================================
+Timetable Scheduler - Current Thread Build Notes
+================================================
 
-This file explains the current timetable scheduler code after the latest
-navigation, review-page, and student-group updates.
+Last updated from this Codex thread: 2026-06-30, Asia/Singapore.
+Workspace:
+  C:\Users\Admin\Desktop\Code\Codes\INF1009\ITP
 
-Current app shape:
-  The main workflow is Import Data -> Generate Timetable -> Review Timetable
-  -> Export Timetable. Settings is a separate sidebar tab for configuration.
-  Soft constraint priority ranking now lives in Settings, while Generate
-  Timetable focuses on running the solver and showing soft preference context.
-  The Review page now uses a week-calendar timetable view with Previous Week,
-  Next Week, date, time-range, refresh, and display controls.
+App root:
+  C:\Users\Admin\Desktop\Code\Codes\INF1009\ITP\ITP Programming App 2\timetable-app
 
-Latest UI update:
-  - Added a Settings sidebar tab.
-  - Moved soft constraint Priority Ranking into Settings.
-  - Renamed the workflow step from "Priorities & Generate" to
-    "Generate Timetable".
-  - Made Workflow and Reference Data sidebar groups collapsible.
-  - Replaced the Review timetable density grid with a weekly calendar-style
-    view that can shift between weeks.
-  - Made Student Groups editable in Reference Data and added default
-    programme/year groups such as DSC Y1 P1 and DSC Y1 P2. The generated
-    group code is internal; admins work with Programme, Year, Group No.,
-    and Size.
-  - Added a Settings night mode toggle that persists on the device.
+Important user-provided files and screenshots:
+  - Old requirements input:
+    C:\Users\Admin\Desktop\Uni Y1T3\ITP MAIN\ITP Programming test 2\Data\Data\Requirements Template.xlsx
+  - Expected result workbook:
+    C:\Users\Admin\Downloads\Book1.xlsx
+  - Export format screenshot:
+    C:\Users\Admin\AppData\Local\Temp\codex-clipboard-b0d442c3-9000-456d-8a09-2f86e801ba45.png
+  - Hard-conflict behavior screenshots:
+    C:\Users\Admin\AppData\Local\Temp\codex-clipboard-6dfa526b-ced1-4e78-b7d6-470e4365dad0.png
+    C:\Users\Admin\AppData\Local\Temp\codex-clipboard-3ba4eac4-10c5-44ce-95af-d3586988101b.png
+  - UNKNOWN solver screenshot:
+    C:\Users\Admin\AppData\Local\Temp\codex-clipboard-0e5ff6a0-9457-40b5-abff-3ad54ea22e18.png
 
 
-1. Backend Files
-----------------
+1. User Requirements Captured In This Thread
+-------------------------------------------
 
-File: ITP Programming App 2/timetable-app/backend/app/services/export_service.py
-Purpose:
-  Converts generated scheduled sessions into plain rows for the frontend
-  Review page and export files.
+The user first asked to compare the old input requirement template with
+Book1.xlsx, which represents the expected final output shape.
 
-Key snippet:
-  "scheduled_session_id": item.id,
-  "session_id": session.id,
-  "start_week": session.start_week,
-  "end_week": session.end_week,
-  "week_pattern": item.week_pattern,
-  "custom_weeks": session.custom_weeks,
+Important clarification from the user:
+  - "Formatting" did not mean Excel column widths, styling, or visual layout.
+  - It meant the data fields and exported template shape.
+  - The user did not want a new separate export.
+  - The user wanted the current export template replaced.
 
-Student explanation:
-  The frontend needs both the scheduled-session ID and original requirement
-  session ID so users can inspect and move classes. The week fields let the
-  calendar decide whether a class appears in the currently selected academic
-  week.
+Later workflow/UI requests:
+  - Generate Timetable should be cleaner.
+  - Generation readiness and soft preference review should move to Import Data.
+  - Import Summary should include a dataframe-like editable preview.
+  - Validation errors should be highlighted in that editable preview.
+  - Admins should be able to edit bad imported data inside the app.
+  - Bad rows should not be saved into the real requirements table until the
+    edited batch validates cleanly.
 
-
-File: ITP Programming App 2/timetable-app/backend/app/solver/model_builder.py
-Purpose:
-  Builds the OR-Tools CP-SAT model. It creates a possible assignment variable
-  for each valid session, time slot, and room combination.
-
-Key snippet:
-  if not session_vars:
-      label = session.requirement_id or ...
-      no_candidate_reasons.append(...)
-      continue
-
-Student explanation:
-  If a requirement has no possible room/time combination, the solver now
-  reports the timetable as infeasible instead of creating a fake dummy
-  placement. This keeps impossible room-capacity or compatibility problems
-  visible to the user.
+Solver behavior requirements captured:
+  - Previously, even when hard conflicts existed, the system still generated a
+    timetable so the Review page could show the hard conflicts.
+  - That behavior must remain.
+  - At the same time, normal valid inputs should not be slowed down or turned
+    into UNKNOWN by the relaxed conflict model.
+  - Current desired solver behavior:
+      1. Try strict normal scheduling first.
+      2. If strict scheduling succeeds, use that result.
+      3. If strict scheduling is truly infeasible, fall back to relaxed hard
+         conflict penalties so a reviewable timetable can still be produced.
+      4. UNKNOWN should be treated as timeout/search failure, not as proof that
+         the input is impossible.
 
 
-File: ITP Programming App 2/timetable-app/backend/app/services/schedule_service.py
-Purpose:
-  Runs the solver and saves the generated timetable.
+2. Expected Export Template Shape From Book1.xlsx
+------------------------------------------------
 
-Key snippet:
-  result = self.solver.solve(sessions, time_slots, rooms, soft_constraint_weights=soft_weights)
+Book1.xlsx used a system upload-like shape with these columns:
 
-Student explanation:
-  Generation uses the saved soft constraint weights from Settings. Those
-  weights affect the CP-SAT objective when the solver chooses between otherwise
-  valid timetable placements.
+  Module
+  Class Type
+  Template
+  Group
+  Day
+  Start
+  End
+  Class Size
+  Sector
+  RoomGrouping
+  Room1
+  Room2
+  StaffGrouping
+  Staff1
+  Staff2
+  Tri Week
+  Recording Mode
+  Remark
 
-
-File: ITP Programming App 2/timetable-app/backend/app/routes/soft_constraint_routes.py
-Purpose:
-  Provides the API for reading and saving soft constraint ranking.
-
-Key snippet:
-  @router.put("")
-  def update_soft_constraint_priorities(...):
-      return SoftConstraintPriorityService().update_priorities(db, data.ordered_codes)
-
-Student explanation:
-  The frontend sends the ordered soft constraint codes. The backend converts
-  that order into ranks and numeric weights used by timetable generation.
-
-
-File: ITP Programming App 2/timetable-app/backend/app/services/soft_constraint_priority_service.py
-Purpose:
-  Defines default soft constraints, calculates rank-based weights, and saves
-  the configured ranking.
-
-Key snippet:
-  def weight_for_rank(rank: int, total: int) -> int:
-      return max(1, total - rank + 1) * 5
-
-Student explanation:
-  Higher-ranked soft constraints get larger weights. Lower-ranked constraints
-  still matter, but the solver is allowed to break them first if tradeoffs are
-  required.
+Important mapping decisions:
+  - Day should be short labels such as "Mon", "Tue", "Wed".
+  - Start and End should be compact time strings such as "0900" and "1100".
+  - Group should use the student group / template group style expected by the
+    system template.
+  - Tri Week should represent custom weeks or the active teaching weeks.
+  - Staff names should be uppercase.
+  - Recording Mode should be "A0" when the selected room supports recording.
+  - Sector defaults to "PUNGGOL" unless richer data exists.
+  - Common/shared module remarks should be represented in the Remark column,
+    for example "w ESE1109" when combined_with_programmes is present.
 
 
-File: ITP Programming App 2/timetable-app/backend/app/services/student_group_service.py
-Purpose:
-  Maintains default student-group partitions by programme and year.
-
-Key snippets:
-  DEFAULT_STUDENT_GROUPS_PER_YEAR = 2
-  DEFAULT_STUDENT_GROUP_SIZE = 40
-  return f"{programme_code.strip().upper()} Y{year} P{partition}"
-
-Student explanation:
-  Each programme year now gets default groups like DSC Y1 P1 and DSC Y1 P2.
-  Each generated group starts at 40 pax. The code is generated internally, so
-  admins do not need to type or remember codes. Existing groups are preserved,
-  and admins can add more groups by programme/year when needed.
-
-
-File: ITP Programming App 2/timetable-app/backend/app/services/database_service.py
-Purpose:
-  Powers the Reference Data CRUD pages and Excel sync.
-
-Key snippets:
-  ColumnSpec(..., options=ROOM_TYPE_OPTIONS, min_value=1, max_length=80)
-  ADMIN_DATABASE_TYPE_IDS = ("rooms", "staff", "programmes", "modules", "student-groups")
-  if config.id == "programmes":
-      ensure_programme_year_groups(db, item)
-
-Student explanation:
-  Student Groups is now returned by the database metadata API, so the admin
-  page has proper columns for adding or editing groups. Group Code is no
-  longer an admin-facing column. When a group is added, the backend generates
-  the internal code from Programme, Year, and Group No.; if Group No. is left
-  blank, the backend picks the next available partition for that programme
-  year. When a programme is added or its year count changes, the app creates
-  the missing default P1/P2 student groups for each year.
-
-  Database columns also carry validation metadata. Fixed-value fields such as
-  Room Type, Day, and Week Pattern can be rendered as dropdowns.
-  Numeric fields such as Capacity, Years, Group No., and Size have min/max
-  bounds. Text fields such as room codes, staff names, programme names, and
-  module titles have length caps. The backend enforces the same checks for
-  manual edits and Excel uploads, so invalid data cannot bypass the UI.
-  Campus Mode is not admin-facing; rooms derive it from the Virtual checkbox,
-  and requirements derive it from Delivery Mode.
-
-
-2. Frontend Routing And Navigation
-----------------------------------
-
-File: ITP Programming App 2/timetable-app/frontend/src/App.tsx
-Purpose:
-  Hash-based frontend router.
-
-Key snippet:
-  settings: SettingsPage,
-
-Student explanation:
-  The app now has a Settings route at #settings. The page is loaded by the same
-  route map as Dashboard, Import, Generate, Review, Export, and Database pages.
-
-
-File: ITP Programming App 2/timetable-app/frontend/src/components/Layout.tsx
-Purpose:
-  Main sidebar and page shell.
-
-Key snippets:
-  const [workflowOpen, setWorkflowOpen] = useSessionState("sidebar.workflowOpen", true);
-  const [referenceOpen, setReferenceOpen] = useSessionState("sidebar.referenceOpen", false);
-
-  <a href="#settings"> ... Settings ... </a>
-
-  <button
-      aria-controls="sidebar-reference-links"
-      aria-expanded={referenceOpen}
-      className="sidebar-group-toggle"
-  >
-
-Student explanation:
-  Settings is a top-level sidebar item. Workflow and Reference Data are
-  collapsible groups. Reference Data starts collapsed to simplify the sidebar,
-  but it automatically opens if the user navigates to Rooms, Staff,
-  Programmes, Modules, or Student Groups.
-
-
-File: ITP Programming App 2/timetable-app/frontend/src/components/WorkflowProgress.tsx
-Purpose:
-  Shows the workflow progress cards across the top of the app.
-
-Key snippet:
-  label: "Generate Timetable",
-
-Student explanation:
-  The workflow step is now named Generate Timetable because ranking is no
-  longer configured on that workflow page. The stepper still tracks import,
-  generation, review, and export readiness.
-
-
-File: ITP Programming App 2/timetable-app/frontend/src/styles/app.css
-Purpose:
-  Shared app styling, including the new calendar timetable and collapsible
-  sidebar groups.
-
-Key snippets:
-  .sidebar-group-toggle { ... }
-  .sidebar-group-content[hidden] { display: none; }
-  .calendar-week-toolbar { ... }
-  .calendar-board { ... }
-  .calendar-event { ... }
-
-Student explanation:
-  The sidebar toggle styles make section headers clickable and compact. The
-  calendar styles create the week grid, time column, weekday headers, and green
-  event blocks shown on the Review page.
-
-
-3. Settings And Generation
+3. Export Replacement Work
 --------------------------
 
-File: ITP Programming App 2/timetable-app/frontend/src/pages/SettingsPage.tsx
-Purpose:
-  Settings page for appearance and soft constraint priority ranking.
+Main backend file:
+  ITP Programming App 2\timetable-app\backend\app\services\export_service.py
 
-Key snippets:
-  const { themeMode, setThemeMode } = useThemeMode();
+Implemented earlier in this thread:
+  - Added the system template export columns.
+  - Replaced XLSX export output with the Book1-like system template shape.
+  - Replaced CSV export output with the same system template shape after the
+    user showed that CSV was still exporting the raw backend schedule columns.
+  - Kept schedule_rows() as the raw internal schedule shape because the Review
+    page and schedule APIs still need internal IDs and detailed fields.
 
-  const [priorities, setPriorities] =
-      useSessionState<SoftConstraintPriority[]>("soft.priorities", []);
+Expected export behavior:
+  - Export CSV/XLSX should no longer start with raw columns like:
+      schedule_id, session_id, requirement_id, programme, ...
+  - Export CSV/XLSX should instead start with:
+      Module, Class Type, Template, Group, Day, Start, End, ...
 
-  <input
-      checked={nightMode}
-      type="checkbox"
-      onChange={(event) => setThemeMode(event.target.checked ? "night" : "light")}
-  />
+Tests added earlier:
+  ITP Programming App 2\timetable-app\backend\app\tests\test_export_service.py
 
-  <PriorityRanking
-      dirty={dirty}
-      priorities={rankedPriorities}
-      onMove={movePriority}
-      onSave={() => void savePriorities()}
-  />
-
-Student explanation:
-  Settings owns the app appearance control and the soft constraint ranking UI.
-  Users can switch between day mode and night mode; the preference is stored in
-  local storage for that device. Users can also move priorities up or down,
-  preview the resulting weights, and save the ranking. Ranking data is stored
-  in session memory while the app is open and saved to the backend when the
-  user clicks Save Ranking.
+Relevant test coverage:
+  - XLSX export uses system template columns and values.
+  - CSV export uses system template columns and values.
 
 
-File: ITP Programming App 2/timetable-app/frontend/src/pages/SoftConstraintsPage.tsx
-Purpose:
-  Generate Timetable page.
+4. Robust Sample Input Workbook
+-------------------------------
 
-Key snippets:
-  <h1>Generate Timetable</h1>
+The user requested a sample input workbook that:
+  - Works with the current input importer.
+  - Spans at least 20 programmes.
+  - Has at least 5 modules each minimum.
+  - Mixes requirements such as location, type, and common modules.
+  - Is a robust full-system test.
 
-  if (dirty) {
-      const saved = await savePriorities();
-      if (!saved) return;
-  }
-  const result = await generateSchedule();
+Created output folder:
+  C:\Users\Admin\Desktop\Code\Codes\INF1009\ITP\outputs\robust_input_sample
 
-  <SoftPreferenceTable rows={softRows} warningCount={warnings.length} />
+Main generated workbook:
+  C:\Users\Admin\Desktop\Code\Codes\INF1009\ITP\outputs\robust_input_sample\robust_20_programme_input_template.xlsx
 
-Student explanation:
-  This page no longer displays the ranking panel. It loads the configured
-  priorities, shows generation readiness, shows soft preferences found in the
-  current input, and runs the solver. If Settings has unsaved priority changes,
-  generation saves those changes first so the solver uses what the user chose.
+Builder script:
+  C:\Users\Admin\Desktop\Code\Codes\INF1009\ITP\outputs\robust_input_sample\build_robust_input_template.mjs
 
+Preview images:
+  C:\Users\Admin\Desktop\Code\Codes\INF1009\ITP\outputs\robust_input_sample\preview_input_template.png
+  C:\Users\Admin\Desktop\Code\Codes\INF1009\ITP\outputs\robust_input_sample\preview_optional.png
+  C:\Users\Admin\Desktop\Code\Codes\INF1009\ITP\outputs\robust_input_sample\preview_readme.png
 
-File: ITP Programming App 2/timetable-app/frontend/src/components/SoftConstraintWorkflow.tsx
-Purpose:
-  Shared UI components for generation and settings.
+Summary and inspection artifacts:
+  C:\Users\Admin\Desktop\Code\Codes\INF1009\ITP\outputs\robust_input_sample\robust_20_programme_input_template.summary.json
+  C:\Users\Admin\Desktop\Code\Codes\INF1009\ITP\outputs\robust_input_sample\robust_20_programme_input_template.xlsx.inspect.ndjson
 
-Key snippets:
-  export function GenerationReadinessPanel(...)
-  export function PriorityRanking(...)
-  export function SoftPreferenceTable(...)
+Robust sample summary:
+  - required_rows: 116
+  - optional_rows: 116
+  - programme_count: 20
+  - module_count: 104
+  - common_rows: 16
+  - class types: Laboratory, Lecture, Online, Tutorial, Workshop
+  - delivery modes: Face-to-face, Hybrid, Online
+  - venue types: Computer Lab, Lectorial, Seminar Room, Virtual
 
-Student explanation:
-  PriorityRanking is reused by Settings. GenerationReadinessPanel and
-  SoftPreferenceTable stay on Generate Timetable. Keeping these as separate
-  components prevents the settings page and generation page from duplicating
-  the same ranking and preference display code.
+Programmes included:
+  AAI, ACC, ASE, ATM, BAC, CEG, CVE, DSC, EDE, EEE, EPE, ESE, FDT,
+  ICT, MEC, NUR, RSE, SBE, SLT, TCE
 
+Validation result at creation time:
+  - rows_read: 116
+  - rows_importable: 116
+  - rows_failed: 0
+  - errors: []
 
-File: ITP Programming App 2/timetable-app/frontend/src/components/validation/ValidationStatusBoard.tsx
-Purpose:
-  Displays validation status and next-step guidance.
-
-Key snippet:
-  After hard validation passes, generate the timetable.
-  Soft priority ranking is available in Settings.
-
-Student explanation:
-  The next-step text now points users to Generate Timetable, while explaining
-  that soft ranking is configured separately in Settings.
-
-
-4. Review Timetable Calendar
-----------------------------
-
-File: ITP Programming App 2/timetable-app/frontend/src/components/timetable/TimetablePlanner.tsx
-Purpose:
-  Calendar-style weekly timetable display.
-
-Key snippets:
-  <button ...>Previous Week</button>
-  <strong>Week of {formatDateRange(safeWeekStart)}</strong>
-  <button ...>Next Week</button>
-
-  <div className="calendar-board" role="grid" ...>
-  <button className="calendar-event" ...>
-
-Student explanation:
-  The Review page timetable now looks like a weekly calendar. Days appear
-  across the top, times appear down the side, and scheduled classes are shown
-  as event blocks. Users can move to previous/next weeks, select a date, limit
-  the visible start/end time, refresh the calendar, and change display options.
+Important note:
+  This workbook is a stress test. It is good for validating realistic import
+  behavior, but it is much heavier than a quick smoke-test schedule input.
 
 
-File: ITP Programming App 2/timetable-app/frontend/src/components/timetable/TimetableGrid.tsx
-Purpose:
-  Connects Review page data and editing behavior to the calendar planner.
+5. Why Large Inputs Took So Long
+--------------------------------
 
-Key snippets:
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
-  const visibleRows = rows.filter((row) => rowOccursInWeek(row, selectedWeekNumber));
+Current robust sample size after import:
+  - sessions: 116
+  - time slots: 255
+  - rooms: 109
 
-  <TimetablePlanner
-      rows={visibleRows}
-      onPreviousWeek={() => setWeekStart(...)}
-      onNextWeek={() => setWeekStart(...)}
-      onRefresh={onRefresh}
-  />
+Naive candidate check upper bound:
+  116 requirements x 255 slots x 109 rooms = about 3.2 million combinations
 
-Student explanation:
-  TimetableGrid keeps the Review page functionality intact while changing the
-  visual timetable. It filters rows for the selected academic week and passes
-  the same move, select, conflict, and refresh callbacks into the calendar.
+Actual filtered candidate assignment count measured:
+  98,940 candidate assignments
 
+The original expensive part was not just candidate generation. The old model
+builder compared assignments pairwise inside room, staff, and student-group
+buckets. On the robust sample, this produced very large pairwise loops:
 
-File: ITP Programming App 2/timetable-app/frontend/src/components/timetable/types.ts
-Purpose:
-  Shared timetable component types and day list.
+  room_pair_comparisons_upper: 89,772,330
+  staff_pair_comparisons_upper: 111,366,420
+  group_pair_comparisons_upper: 123,620,450
 
-Key snippet:
-  export const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+Total rough pairwise loop pressure:
+  about 324 million comparisons
 
-Student explanation:
-  The calendar supports the full Monday-to-Sunday week. If the database has
-  weekend slots, they can appear in the Review timetable.
+Example high-candidate rows:
+  Workshop / Hybrid / Seminar Room rows often had:
+    45 matching slots x 51 matching rooms = 2,295 candidates each
 
-
-File: ITP Programming App 2/timetable-app/frontend/src/components/timetable/timetableUtils.ts
-Purpose:
-  Time, duration, overlap, grouping, and planner-slot helper functions.
-
-Key snippet:
-  export function buildPlannerSlots(rows, timeSlots, startTime?, endTime?)
-
-Student explanation:
-  The planner can now build hourly rows inside a selected visible time range,
-  such as 8:00AM to 10:00PM.
+This is why the first large generation attempt ran for much longer than
+expected and returned UNKNOWN.
 
 
-File: ITP Programming App 2/timetable-app/frontend/src/pages/TimetableReviewPage.tsx
-Purpose:
-  Review generated timetables, compare schedule versions, move sessions,
-  inspect conflicts, and read placement explanations.
+6. Solver Performance And Conflict-Review History
+-------------------------------------------------
 
-Key snippet:
-  <TimetableGrid
-      rows={filteredRows}
-      allRows={rows}
-      editable
-      ...
-  />
+Main solver files:
+  ITP Programming App 2\timetable-app\backend\app\solver\model_builder.py
+  ITP Programming App 2\timetable-app\backend\app\solver\cp_sat_solver.py
+  ITP Programming App 2\timetable-app\backend\app\services\schedule_service.py
 
-Student explanation:
-  The Review page still owns the important behavior: loading schedule data,
-  filtering rows, saving manual moves, resolving conflicts, and refreshing
-  violations. TimetableGrid receives the filtered rows for display, while
-  allRows keeps academic week numbering stable even when filters are applied.
+Original route timeouts:
+  - Normal generation default: timeout=20 seconds
+  - Some auto-resolve paths use timeout=5 seconds and fast_mode=True
+  - CP-SAT timeout starts after model building, so slow model building can make
+    the user wait far longer than the configured solver timeout.
+
+First speed fix:
+  - Replaced expensive pairwise clash variables with bucketed constraints.
+  - This made the 116-row robust sample generate successfully in about 25.46s.
+  - Result then:
+      solver_status: OPTIMAL
+      scheduled rows: 116
+      hard violations: 0
+
+Regression noticed by user:
+  - The user showed that hard-conflict inputs used to still generate a
+    timetable for review, but after the first speed fix the page showed:
+      solver_status: INFEASIBLE
+      0 sessions shown
+      0 issues
+  - This happened because hard clashes had become strictly blocking, instead
+    of reviewable hard violations.
+
+Second solver fix:
+  - Restored reviewable hard-conflict behavior using heavy hard-conflict
+    penalties.
+  - Added regression test:
+      test_unavoidable_resource_clash_still_returns_reviewable_schedule
+  - Pushed commit:
+      0b283f4 Optimize timetable conflict generation
+  - Pushed to:
+      origin/main
+
+Regression after second solver fix:
+  - The robust input started returning UNKNOWN again.
+  - Reason: the relaxed hard-conflict penalty model was being used for every
+    input, even inputs that could be scheduled cleanly.
+  - The penalty model made the search harder and could time out before finding
+    or confirming a timetable.
+
+Current solver fix in the working tree:
+  - The model builder now accepts:
+      relax_hard_conflicts: bool = False
+  - Strict mode:
+      room/staff/group conflicts are hard linear constraints.
+  - Relaxed mode:
+      room/staff/group conflicts become heavy penalties.
+  - CpSatTimetableSolver now:
+      1. Builds and solves the strict model first.
+      2. Returns strict result if OPTIMAL or FEASIBLE.
+      3. Falls back to relaxed hard-conflict model only when strict result is
+         INFEASIBLE.
+      4. Leaves UNKNOWN as a timeout/search failure instead of automatically
+         falling back.
+  - UNKNOWN message changed to:
+      "Solver timed out before finding a timetable. Try again or reduce flexible room/time choices."
+
+Current measured result on the 116-row robust input after this fix:
+  - Direct solver:
+      elapsed: about 24.15s
+      status: OPTIMAL
+      assignments: 116
+      soft_score: 3900 in direct solve context
+  - ScheduleService generation:
+      elapsed: about 23.47s
+      schedule_run_id: 4
+      solver_status: OPTIMAL
+      hard_violation_count: 0
+      soft_score: 6470
+  - Latest app database later showed:
+      run 5
+      status: COMPLETED
+      solver_status: FEASIBLE
+      scheduled sessions: 116
+      hard violations: 0
+      soft_score: 6780
+
+Important note on different solver results:
+  The user asked why each run can give a different result.
+  Explanation:
+    - Many valid timetables may have similar or equal score.
+    - The solver uses multiple workers:
+        num_search_workers = 8
+    - Multi-worker CP-SAT search is not fully deterministic.
+    - If timeouts are involved, it may return the best timetable found so far.
+  To make generation more repeatable:
+    - use num_search_workers = 1
+    - set a fixed random_seed
+    - disable randomized search if enabled
+    - add more tie-break penalties such as earlier days/times or stable room
+      ordering
+  Tradeoff:
+    deterministic generation can be slower or may produce slightly worse soft
+    scores.
 
 
-5. Shared Frontend Types
-------------------------
+7. Import Data Workflow Cleanup
+-------------------------------
 
-File: ITP Programming App 2/timetable-app/frontend/src/types/index.ts
-Purpose:
-  Shared TypeScript API response shapes.
+User asked whether it was okay to move elements from Generate Timetable to
+Import Data to clean up the workflow. Recommendation and implementation:
 
-Key snippet:
-  export type ScheduledRow = {
-      scheduled_session_id: number;
-      session_id: number;
-      start_week: number | null;
-      end_week: number | null;
-      week_pattern: string;
-      custom_weeks: string | null;
-      ...
-  };
+Moved to Import Data:
+  - Generation Readiness
+  - imported row count
+  - priority count
+  - soft preference row count
+  - soft preferences dropdown/table
 
-Student explanation:
-  ScheduledRow now includes enough week metadata for the calendar to decide
-  whether each class appears in the selected week.
+Kept on Generate Timetable:
+  - Run Timetable Generation card
+  - Generate Timetable button
+  - latest generation result/status strip
 
+Frontend files involved:
+  ITP Programming App 2\timetable-app\frontend\src\components\SoftConstraintWorkflow.tsx
+  ITP Programming App 2\timetable-app\frontend\src\components\softPreferenceHints.ts
+  ITP Programming App 2\timetable-app\frontend\src\pages\UploadPage.tsx
+  ITP Programming App 2\timetable-app\frontend\src\pages\SoftConstraintsPage.tsx
+  ITP Programming App 2\timetable-app\frontend\src\styles\app.css
 
-6. Existing Import, Database, And Export Flow
----------------------------------------------
+Components after change:
+  - GenerationReadinessPanel:
+      data/readiness display only, now suitable for Import Data.
+  - GenerationActionPanel:
+      button/result card, now suitable for Generate Timetable.
+  - SoftPreferenceTable:
+      row-level preference review, now shown under Import Data.
+  - softConstraintHints:
+      moved to a plain utility file to avoid React Fast Refresh lint issues.
 
-File: ITP Programming App 2/timetable-app/frontend/src/pages/UploadPage.tsx
-Purpose:
-  Imports Excel requirement workbooks.
-
-Student explanation:
-  Users select one or more Excel files, import them, and get an import summary.
-  Successful imports clear old session memory so stale validation or review
-  data does not remain attached to the wrong dataset.
-
-
-File: ITP Programming App 2/timetable-app/frontend/src/components/UploadBox.tsx
-Purpose:
-  Reusable Excel file picker.
-
-Student explanation:
-  The file picker accepts Excel files, supports multiple selected files, shows
-  the selected list, and lets users remove files before importing.
+Verification:
+  - npm run build passed.
+  - touched frontend files passed eslint.
+  - Full npm run lint still fails due unrelated pre-existing lint issues listed
+    later in this file.
 
 
-File: ITP Programming App 2/timetable-app/frontend/src/pages/DatabasePage.tsx
-Purpose:
-  Lets users view and manage reference data such as rooms, staff, programmes,
-  modules, and student groups.
+8. Editable Import Summary Dataframe
+------------------------------------
 
-Student explanation:
-  The Database page still handles table editing and Excel upload/download for
-  reference data. These pages are found under the collapsible Reference Data
-  sidebar group.
+User asked for Import Summary to include a dataframe view where admins can edit
+uploaded input data, and validation errors can be highlighted.
+
+Design goal:
+  - Powerful enough for in-app fixes.
+  - Not cluttered.
+  - Collapsed/compact by default unless there are issues.
+  - Shows key columns first.
+  - Search and "Issues only" controls keep the view focused.
+  - "All columns" toggle exists for advanced inspection.
+
+Backend changes:
+  File: ITP Programming App 2\timetable-app\backend\app\services\import_service.py
+    - Upload and preview responses now include:
+        preview_rows
+    - Each preview row includes:
+        row_id
+        source_file
+        source_row_no
+        values
+    - Added EDITABLE_PREVIEW_COLUMNS so important fields show first.
+    - Added import_preview_rows() to validate edited row payloads and apply
+      them only if clean.
+    - Invalid edited rows do not replace the real requirements table.
+    - Valid edited rows replace the requirement table and clear schedules.
+
+  File: ITP Programming App 2\timetable-app\backend\app\routes\upload_routes.py
+    - Added Pydantic models:
+        EditableImportRow
+        EditableImportInput
+    - Added endpoint:
+        POST /api/upload/input-template/edited
+
+Backend tests added:
+  File: ITP Programming App 2\timetable-app\backend\app\tests\test_upload_routes.py
+    - test_upload_route_returns_editable_preview_rows_on_validation_error
+    - test_edited_input_template_imports_corrected_preview_rows
+
+Frontend changes:
+  File: ITP Programming App 2\timetable-app\frontend\src\types\index.ts
+    - Added ImportPreviewRow type.
+    - UploadSummary now has optional preview_rows.
+
+  File: ITP Programming App 2\timetable-app\frontend\src\api\client.ts
+    - Added importEditedTemplateRows().
+
+  File: ITP Programming App 2\timetable-app\frontend\src\components\ImportPreviewGrid.tsx
+    - New compact editable grid.
+    - Features:
+        editable cells
+        highlighted issue cells
+        error tooltip/title
+        first error message shown under affected cell
+        search
+        Issues only toggle
+        All columns toggle
+        Validate & Apply Edits button
+        row metadata column with source row and file
+        sticky header
+        horizontal scrolling instead of page clutter
+
+  File: ITP Programming App 2\timetable-app\frontend\src\pages\UploadPage.tsx
+    - Shows ImportPreviewGrid under ImportSummary when preview_rows exist.
+    - Calls importEditedTemplateRows() on Validate & Apply Edits.
+    - Refreshes generation readiness after edited rows are applied.
+
+  File: ITP Programming App 2\timetable-app\frontend\src\styles\app.css
+    - Added compact preview grid styles.
+    - Added issue-cell highlighting.
+    - Added toolbar/toggle/table styles.
+
+Live API smoke test:
+  - Uploaded an invalid workbook with Staff 1 ID = UNKNOWN-STAFF.
+  - Response returned:
+      rows_read: 1
+      rows_imported: 0
+      rows_failed: 1
+      preview_rows: 1
+      first_issue: Staff 1 ID
+      first_value: UNKNOWN-STAFF
 
 
-File: ITP Programming App 2/timetable-app/frontend/src/pages/ExportPage.tsx
-Purpose:
-  Exports generated timetables.
+9. Current Verification Results
+-------------------------------
 
-Student explanation:
-  Users can download the latest generated timetable as CSV or XLSX after
-  generation/review.
+Backend full test suite:
+  Command:
+    cd "ITP Programming App 2\timetable-app\backend"
+    .\venv\Scripts\python.exe -m pytest app/tests
+
+  Latest result:
+    56 passed
+
+Backend targeted tests:
+  Command:
+    .\venv\Scripts\python.exe -m pytest app/tests/test_solver.py app/tests/test_upload_routes.py app/tests/test_import_validation.py
+
+  Latest result:
+    27 passed
+
+Frontend production build:
+  Command:
+    cd "ITP Programming App 2\timetable-app\frontend"
+    npm run build
+
+  Latest result:
+    passed
+
+Touched frontend files lint:
+  Command:
+    npx eslint "src/api/client.ts" "src/components/ImportPreviewGrid.tsx" "src/components/SoftConstraintWorkflow.tsx" "src/components/softPreferenceHints.ts" "src/pages/SoftConstraintsPage.tsx" "src/pages/UploadPage.tsx"
+
+  Latest result:
+    passed
+
+Full frontend lint:
+  Command:
+    npm run lint
+
+  Current result:
+    fails due pre-existing unrelated lint issues:
+      src/components/LiveProgress.tsx
+        - no-explicit-any at line 8
+        - missing useEffect dependency "steps" at line 48
+      src/components/timetable/TimetableGrid.tsx
+        - missing useEffect dependency "row" at line 426
+      src/pages/TimetableReviewPage.tsx
+        - unused getSession
+        - unused updateSession
+        - unused recheckSchedule
+        - unused generateSchedule
+        - unused SessionRow
+        - unused _endTime
 
 
-7. Verification Commands
-------------------------
-
-Frontend:
-  cd "ITP Programming App 2/timetable-app/frontend"
-  npm run build
+10. Current Running Local Services
+----------------------------------
 
 Backend:
-  cd "ITP Programming App 2/timetable-app/backend"
-  python -m pytest
+  URL:
+    http://127.0.0.1:8001
+  Command shape:
+    python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
 
-Latest verified state:
-  - npm run build passed.
-  - python -m pytest passed with 47 tests.
-  - Live UI checks confirmed Settings priority ranking, collapsible sidebar
-    groups, and the Review calendar.
+Frontend dev servers observed:
+  http://127.0.0.1:5174
+  http://127.0.0.1:5173
+
+Most useful UI URL:
+  http://127.0.0.1:5174/#upload
+
+Dashboard API after latest solver fix showed:
+  total_sessions: 116
+  imported_rows: 116
+  validation.is_valid: true
+  latest_schedule.id: 4 at one check, later run 5 in database
+  latest_schedule.status: COMPLETED
+  latest_schedule.solver_status: OPTIMAL or FEASIBLE depending latest run
+  hard_violation_count: 0
+
+No SQLite journal/wal/shm files were left after the final checks.
 
 
-8. Current Git State
---------------------
+11. Git History And Current Working Tree
+----------------------------------------
 
 Latest pushed commit:
-  67f2e54 Update timetable review and settings navigation
+  0b283f4 Optimize timetable conflict generation
 
-What it includes:
-  - Weekly calendar Review timetable.
-  - Settings page for soft constraint ranking.
-  - Generate Timetable page cleanup.
-  - Collapsible sidebar groups.
-  - Week metadata added to scheduled rows.
-  - Solver infeasibility fix for sessions with no valid candidate assignment.
+Commit 0b283f4 summary:
+  - Optimized timetable conflict generation.
+  - Replaced expensive pairwise resource clash checks with bucketed penalty
+    constraints.
+  - Preserved reviewable schedule behavior for unavoidable hard conflicts.
+  - Added regression test covering unavoidable room/time clashes.
+
+Earlier commits visible in log:
+  5ace29f Hopefully i broke nothing
+  3f4cc64 Refine timetable admin data controls
+  67f2e54 Update timetable review and settings navigation
+  26438a0 combined vaidation to review timetable. added auto assign (to be optimised)
+
+Current branch:
+  main...origin/main
+
+Current important working-tree changes are not pushed yet.
+
+Modified backend files:
+  ITP Programming App 2\timetable-app\backend\app\routes\upload_routes.py
+  ITP Programming App 2\timetable-app\backend\app\services\import_service.py
+  ITP Programming App 2\timetable-app\backend\app\solver\cp_sat_solver.py
+  ITP Programming App 2\timetable-app\backend\app\solver\model_builder.py
+  ITP Programming App 2\timetable-app\backend\app\tests\test_upload_routes.py
+
+Modified frontend files:
+  ITP Programming App 2\timetable-app\frontend\src\api\client.ts
+  ITP Programming App 2\timetable-app\frontend\src\components\SoftConstraintWorkflow.tsx
+  ITP Programming App 2\timetable-app\frontend\src\pages\SoftConstraintsPage.tsx
+  ITP Programming App 2\timetable-app\frontend\src\pages\UploadPage.tsx
+  ITP Programming App 2\timetable-app\frontend\src\styles\app.css
+  ITP Programming App 2\timetable-app\frontend\src\types\index.ts
+
+New untracked frontend files:
+  ITP Programming App 2\timetable-app\frontend\src\components\ImportPreviewGrid.tsx
+  ITP Programming App 2\timetable-app\frontend\src\components\softPreferenceHints.ts
+
+This info.txt update is also a working-tree change.
+
+
+12. Current Important Caveats
+-----------------------------
+
+1. The editable import preview and the strict-first solver fallback are local
+   working-tree changes at the time this file was updated. They have not been
+   pushed unless a later commit/push is made.
+
+2. Full frontend lint still fails because of unrelated existing lint issues.
+   The new/touched frontend files pass eslint when linted directly.
+
+3. Timetable generation may still produce different valid placements across
+   runs because CP-SAT uses multiple workers and there are many equivalent
+   choices. This is expected unless deterministic solver settings and
+   stronger tie-breaks are added.
+
+4. The robust 20-programme sample is intentionally heavy. It is useful for
+   stress testing imports and solver behavior, but a smaller input should be
+   used for quick smoke tests.
+
+5. The CSV/XLSX export template replacement was completed earlier in the
+   thread and should remain part of the current codebase, but it was not part
+   of the final uncommitted diff when this info file was updated.
+

@@ -4,38 +4,20 @@
  */
 
 import { RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   generateSchedule,
-  getSessions,
   getSoftConstraintPriorities,
   updateSoftConstraintPriorities,
 } from "../api/client";
-import { GenerationReadinessPanel, SoftPreferenceTable } from "../components/SoftConstraintWorkflow";
+import { GenerationActionPanel } from "../components/SoftConstraintWorkflow";
 import InlineActivity from "../components/InlineActivity";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
 import { useSessionState } from "../sessionState";
-import type { ScheduleGenerateResult, SessionRow, SoftConstraintPriority } from "../types";
-import type { SoftPreferenceHint } from "../components/SoftConstraintWorkflow";
-
-function previewWeight(index: number, total: number) {
-  return Math.max(1, total - index) * 5;
-}
-
-function softConstraintHints(session: SessionRow): SoftPreferenceHint[] {
-  const hints: SoftPreferenceHint[] = [];
-  if (session.preferred_days) hints.push({ label: "Preferred", value: session.preferred_days, tone: "preferred" });
-  if (session.avoid_days) hints.push({ label: "Avoid", value: session.avoid_days, tone: "avoid" });
-  if ((session.delivery_mode || "").toLowerCase().includes("online")) {
-    hints.push({ label: "Delivery", value: "Online placement preference", tone: "online" });
-  }
-  if (session.remarks) hints.push({ label: "Remarks", value: session.remarks, tone: "remarks" });
-  return hints;
-}
+import type { ScheduleGenerateResult, SoftConstraintPriority } from "../types";
 
 export default function SoftConstraintsPage() {
   const [priorities, setPriorities] = useSessionState<SoftConstraintPriority[]>("soft.priorities", []);
-  const [sessions, setSessions] = useSessionState<SessionRow[]>("soft.sessions", []);
   const [generationResult, setGenerationResult] = useSessionState<ScheduleGenerateResult | null>(
     "soft.generationResult",
     null,
@@ -51,12 +33,9 @@ export default function SoftConstraintsPage() {
     setLoading(true);
     setError(null);
     try {
-      if (dirty) {
-        setSessions(await getSessions());
-      } else {
-        const [nextPriorities, nextSessions] = await Promise.all([getSoftConstraintPriorities(), getSessions()]);
+      if (!dirty) {
+        const nextPriorities = await getSoftConstraintPriorities();
         setPriorities(nextPriorities);
-        setSessions(nextSessions);
         setDirty(false);
       }
     } catch (err) {
@@ -64,37 +43,16 @@ export default function SoftConstraintsPage() {
     } finally {
       setLoading(false);
     }
-  }, [dirty, setDirty, setError, setPriorities, setSessions]);
+  }, [dirty, setDirty, setError, setPriorities]);
 
   useEffect(() => {
-    const shouldLoadInitial = sessions.length === 0 || (!dirty && priorities.length === 0);
-    if (shouldLoadInitial) {
+    if (!dirty && priorities.length === 0) {
       void load();
     }
-  }, [dirty, load, priorities.length, sessions.length]);
+  }, [dirty, load, priorities.length]);
 
-  const rankedPriorities = useMemo(
-    () =>
-      priorities.map((item, index) => ({
-        ...item,
-        rank: index + 1,
-        weight: dirty ? previewWeight(index, priorities.length) : item.weight,
-      })),
-    [dirty, priorities],
-  );
-
-  const softRows = useMemo(
-    () =>
-      sessions
-        .map((session) => ({ session, hints: softConstraintHints(session) }))
-        .filter((item) => item.hints.length > 0),
-    [sessions],
-  );
-
-  const warnings: { field: string; message: string }[] = [];
   const isBusy = loading || saving || generating;
   const canGenerate = !loading;
-  const readinessText = "Ready to generate.";
 
   const savePriorities = async () => {
     setSaving(true);
@@ -176,22 +134,14 @@ export default function SoftConstraintsPage() {
         />
       )}
 
-      <GenerationReadinessPanel
+      <GenerationActionPanel
         canGenerate={canGenerate}
         dirty={dirty}
         generating={generating}
         generationResult={generationResult}
-        priorityCount={rankedPriorities.length}
-        readinessText={readinessText}
         saving={saving}
-        softRowCount={softRows.length}
-        warningCount={warnings.length}
         onGenerate={handleGenerate}
       />
-
-      <div className="soft-workspace">
-        <SoftPreferenceTable rows={softRows} warningCount={warnings.length} />
-      </div>
     </div>
   );
 }

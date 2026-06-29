@@ -935,6 +935,10 @@ h2 {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
+.generation-panel-readiness {
+  grid-template-columns: 1fr;
+}
+
 .generation-copy,
 .generation-actions {
   display: grid;
@@ -1814,6 +1818,130 @@ th {
 
 .table-sort-button[aria-pressed="true"] svg {
   color: #0f766e;
+}
+
+.import-preview-card {
+  overflow: visible;
+}
+
+.import-preview-content {
+  display: grid;
+  gap: 14px;
+  padding-top: 14px;
+}
+
+.import-preview-toolbar,
+.import-preview-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.import-preview-toolbar {
+  justify-content: space-between;
+}
+
+.import-preview-actions {
+  justify-content: flex-end;
+}
+
+.toggle-control {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  color: #334155;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 8px;
+  min-height: 36px;
+  padding: 7px 10px;
+}
+
+.toggle-control input {
+  height: 14px;
+  width: 14px;
+}
+
+.import-preview-shell {
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  max-height: 520px;
+  overflow: auto;
+}
+
+.import-preview-table {
+  min-width: 1120px;
+}
+
+.import-preview-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.import-preview-table th,
+.import-preview-table td {
+  padding: 8px;
+}
+
+.import-preview-table tr.has-issue .row-meta-cell {
+  border-left: 3px solid #ef4444;
+}
+
+.row-meta-cell {
+  background: #f8fafc;
+  min-width: 150px;
+}
+
+.row-meta-cell strong,
+.row-meta-cell span {
+  display: block;
+}
+
+.row-meta-cell span {
+  color: #64748b;
+  font-size: 12px;
+  margin-top: 2px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-preview-table td input {
+  background: #ffffff;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  min-height: 32px;
+  min-width: 140px;
+  padding: 6px 8px;
+  width: 100%;
+}
+
+.import-preview-table td input:focus {
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.14);
+  outline: none;
+}
+
+.import-preview-table .issue-cell {
+  background: #fef2f2;
+}
+
+.import-preview-table .issue-cell input {
+  border-color: #fca5a5;
+}
+
+.import-preview-table .issue-cell small {
+  color: #b91c1c;
+  display: block;
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 5px;
+  max-width: 220px;
 }
 
 td {

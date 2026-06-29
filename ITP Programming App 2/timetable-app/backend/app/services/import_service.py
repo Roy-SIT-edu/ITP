@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO
+from typing import Any, BinaryIO
 
 import pandas as pd
 from app.models.session import Session
@@ -95,6 +95,39 @@ REQUIRED_TEMPLATE_COLUMNS = [
     "Staff 1 ID",
 ]
 
+EDITABLE_PREVIEW_COLUMNS = [
+    "Requirement ID",
+    "Programme",
+    "Year",
+    "Student Group Code",
+    "Module Code",
+    "Class Type",
+    "Session Count",
+    "Duration Hours",
+    "Duration Minutes",
+    "Sessions Per Week",
+    "Delivery Mode",
+    "Venue Type Required",
+    "Campus Mode",
+    "Exact Class Size",
+    "Staff 1 Name",
+    "Staff 1 ID",
+    "Staff 2 Name",
+    "Staff 2 ID",
+    "Start Week",
+    "End Week",
+    "Week Pattern",
+    "Custom Weeks",
+    "Scheduling Type",
+    "Fixed Day",
+    "Fixed Start Time",
+    "Fixed End Time",
+    "Preferred Days",
+    "Avoid Days",
+    "Priority",
+    "Remarks",
+]
+
 
 @dataclass(frozen=True)
 class PreparedWorkbook:
@@ -144,6 +177,58 @@ class ImportService:
         prepared = self._read_workbook(workbook_path)
         return self._import_prepared(db, [(prepared, source_filename)])
 
+    def import_preview_rows(self, db: DbSession, rows: list[dict]) -> dict:
+        upload_rows: list[RequirementUploadRow] = []
+        for index, row in enumerate(rows):
+            values = row.get("values") or {}
+            source_filename = clean_text(row.get("source_file")) or "Edited import"
+            source_row_no = self._source_row_no(row.get("source_row_no"), index)
+            upload_rows.append(RequirementUploadRow(row=values, source_filename=source_filename, source_row_no=source_row_no))
+
+        preview_rows = self._preview_rows_from_payload(rows)
+        if not upload_rows:
+            return {
+                "rows_read": 0,
+                "rows_imported": 0,
+                "rows_failed": 1,
+                "file_summaries": [],
+                "errors": [
+                    {
+                        "row": 0,
+                        "field": "Rows",
+                        "message": "No edited rows were provided.",
+                    }
+                ],
+                "preview_rows": preview_rows,
+            }
+
+        service = RequirementInputService()
+        session_data, validation_errors = service.validate_upload_rows(db, upload_rows)
+        if validation_errors:
+            db.rollback()
+            file_summaries = self._summaries_with_errors(self._file_summaries_from_preview_rows(preview_rows), validation_errors)
+            return {
+                "rows_read": len(upload_rows),
+                "rows_imported": 0,
+                "rows_failed": len(validation_errors),
+                "file_summaries": file_summaries,
+                "errors": validation_errors,
+                "preview_rows": preview_rows,
+            }
+
+        self._clear_sessions_and_schedules(db)
+        for data in session_data:
+            db.add(service.session_from_data(data))
+        db.commit()
+        return {
+            "rows_read": len(upload_rows),
+            "rows_imported": len(session_data),
+            "rows_failed": 0,
+            "file_summaries": self._file_summaries_from_preview_rows(preview_rows),
+            "errors": [],
+            "preview_rows": preview_rows,
+        }
+
     def _read_workbook(self, workbook_source) -> PreparedWorkbook:
         with pd.ExcelFile(workbook_source) as xls:
             if "Input_Template" in xls.sheet_names:
@@ -169,6 +254,7 @@ class ImportService:
         errors: list[dict] = []
         rows_read = sum(item.rows_read for item, _ in prepared_workbooks)
         file_summaries = self._file_summaries(prepared_workbooks)
+        preview_rows = self._preview_rows(prepared_workbooks)
         for prepared, source_filename in prepared_workbooks:
             for error in prepared.errors:
                 errors.append({**error, "source_file": source_filename})
@@ -187,6 +273,7 @@ class ImportService:
                         "message": "No usable timetable rows found. Add rows to Input_Template with Requirement ID, Module Code, Class Type, Staff 1 ID, class size, and duration.",
                     }
                 ],
+                "preview_rows": preview_rows,
             }
 
         upload_rows: list[RequirementUploadRow] = []
@@ -217,6 +304,7 @@ class ImportService:
                 "rows_failed": len(errors),
                 "file_summaries": self._summaries_with_errors(file_summaries, errors),
                 "errors": errors,
+                "preview_rows": preview_rows,
             }
 
         self._clear_sessions_and_schedules(db)
@@ -230,11 +318,13 @@ class ImportService:
             "rows_failed": len(errors),
             "file_summaries": file_summaries,
             "errors": errors,
+            "preview_rows": preview_rows,
         }
 
     def _preview_prepared(self, db: DbSession, prepared_workbooks: list[tuple[PreparedWorkbook, str]]) -> dict:
         rows_read = sum(item.rows_read for item, _ in prepared_workbooks)
         file_summaries = self._file_summaries(prepared_workbooks)
+        preview_rows = self._preview_rows(prepared_workbooks)
         errors = []
         for prepared, source_filename in prepared_workbooks:
             for error in prepared.errors:
@@ -254,6 +344,7 @@ class ImportService:
                         "message": "No usable timetable rows found. Add rows to Input_Template with Requirement ID, Module Code, Class Type, Staff 1 ID, class size, and duration.",
                     }
                 ],
+                "preview_rows": preview_rows,
             }
 
         upload_rows: list[RequirementUploadRow] = []
@@ -275,6 +366,7 @@ class ImportService:
             "rows_failed": len(errors),
             "file_summaries": self._summaries_with_errors(file_summaries, errors),
             "errors": errors,
+            "preview_rows": preview_rows,
         }
 
     def _file_summaries(self, prepared_workbooks: list[tuple[PreparedWorkbook, str]]) -> list[dict]:
@@ -300,6 +392,66 @@ class ImportService:
             }
             for summary in file_summaries
         ]
+
+    def _preview_rows(self, prepared_workbooks: list[tuple[PreparedWorkbook, str]]) -> list[dict]:
+        preview_rows: list[dict] = []
+        for prepared, source_filename in prepared_workbooks:
+            columns = self._preview_columns(prepared.frame)
+            for index, row in prepared.frame.iterrows():
+                source_row_no = self._source_row_no(row.get("Source Row No"), int(index))
+                values = {column: self._json_safe_value(row.get(column)) for column in columns}
+                preview_rows.append(
+                    {
+                        "row_id": f"{source_filename}:{source_row_no}:{len(preview_rows) + 1}",
+                        "source_file": source_filename,
+                        "source_row_no": source_row_no,
+                        "values": values,
+                    }
+                )
+        return preview_rows
+
+    def _preview_rows_from_payload(self, rows: list[dict]) -> list[dict]:
+        preview_rows = []
+        for index, row in enumerate(rows):
+            values = row.get("values") or {}
+            source_filename = clean_text(row.get("source_file")) or "Edited import"
+            source_row_no = self._source_row_no(row.get("source_row_no"), index)
+            preview_rows.append(
+                {
+                    "row_id": clean_text(row.get("row_id")) or f"{source_filename}:{source_row_no}:{index + 1}",
+                    "source_file": source_filename,
+                    "source_row_no": source_row_no,
+                    "values": {str(key): self._json_safe_value(value) for key, value in values.items()},
+                }
+            )
+        return preview_rows
+
+    def _file_summaries_from_preview_rows(self, preview_rows: list[dict]) -> list[dict]:
+        summaries: dict[str, dict] = {}
+        for row in preview_rows:
+            filename = row.get("source_file") or "Edited import"
+            summary = summaries.setdefault(filename, {"filename": filename, "rows_read": 0, "columns": []})
+            summary["rows_read"] += 1
+            for column in (row.get("values") or {}).keys():
+                if column not in summary["columns"]:
+                    summary["columns"].append(column)
+        return list(summaries.values())
+
+    def _preview_columns(self, frame: pd.DataFrame) -> list[str]:
+        available = [column for column in EDITABLE_PREVIEW_COLUMNS if column in frame.columns]
+        extra = [str(column) for column in frame.columns if str(column) not in available and str(column) != "Source Row No"]
+        return [*available, *extra]
+
+    def _json_safe_value(self, value: Any) -> Any:
+        if value is None:
+            return None
+        if pd.isna(value):
+            return None
+        if isinstance(value, pd.Timestamp):
+            return value.isoformat()
+        if hasattr(value, "item"):
+            value = value.item()
+        return value
 
     def _choose_sheet(self, sheet_names: list[str]) -> str:
         for preferred in ["Input_Template", "Timetable", "Template"]:

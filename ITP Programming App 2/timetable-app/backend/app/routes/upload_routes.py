@@ -5,10 +5,12 @@ ImportService so failed batches leave existing requirements untouched.
 """
 
 from pathlib import Path
+from typing import Any
 from zipfile import BadZipFile
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from openpyxl.utils.exceptions import InvalidFileException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session as DbSession
 
 from app.database import get_db
@@ -34,6 +36,17 @@ DEMO_SAMPLES = {
         "description": "Twenty fixed rows using valid day and time slots.",
     },
 }
+
+
+class EditableImportRow(BaseModel):
+    row_id: str | None = None
+    source_file: str | None = None
+    source_row_no: int | None = None
+    values: dict[str, Any]
+
+
+class EditableImportInput(BaseModel):
+    rows: list[EditableImportRow]
 
 
 def _sample_dir() -> Path:
@@ -83,6 +96,11 @@ async def preview_input_template(
             status_code=400,
             detail=f"Could not read timetable workbook(s): {exc}",
         ) from exc
+
+
+@router.post("/input-template/edited")
+def import_edited_input_template(data: EditableImportInput, db: DbSession = Depends(get_db)):
+    return ImportService().import_preview_rows(db, [row.model_dump() for row in data.rows])
 
 
 @router.get("/demo-samples")

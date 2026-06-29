@@ -10,6 +10,7 @@ import type {
   Dashboard,
   DatabaseRow,
   DatabaseTypeInfo,
+  ImportPreviewRow,
   Room,
   ScheduleComparison,
   ScheduleExplanation,
@@ -89,6 +90,14 @@ export function uploadTemplate(files: File[]) {
   return request<UploadSummary>("/api/upload/input-template", {
     method: "POST",
     body: formData,
+  });
+}
+
+export function importEditedTemplateRows(rows: ImportPreviewRow[]) {
+  return request<UploadSummary>("/api/upload/input-template/edited", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rows }),
   });
 }
 

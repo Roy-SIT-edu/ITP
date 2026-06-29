@@ -134,6 +134,62 @@ def test_upload_route_rejects_duplicate_requirement_ids_across_workbooks(tmp_pat
     assert after_count == before_count
 
 
+def test_upload_route_returns_editable_preview_rows_on_validation_error(tmp_path):
+    db = _route_db(tmp_path)
+    path = write_template(tmp_path / "input.xlsx", [valid_row(**{"Staff 1 ID": "UNKNOWN-STAFF"})])
+    client = _client_for(db)
+    try:
+        response = client.post(
+            "/api/upload/input-template",
+            files={
+                "file": (
+                    "input.xlsx",
+                    path.read_bytes(),
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
+        )
+        payload = response.json()
+    finally:
+        app.dependency_overrides.clear()
+        db.close()
+
+    assert response.status_code == 200
+    assert payload["rows_imported"] == 0
+    assert payload["rows_failed"] >= 1
+    assert payload["preview_rows"][0]["source_row_no"] == 2
+    assert payload["preview_rows"][0]["values"]["Staff 1 ID"] == "UNKNOWN-STAFF"
+
+
+def test_edited_input_template_imports_corrected_preview_rows(tmp_path):
+    db = _route_db(tmp_path)
+    path = write_template(tmp_path / "input.xlsx", [valid_row(**{"Staff 1 ID": "UNKNOWN-STAFF"})])
+    client = _client_for(db)
+    try:
+        response = client.post(
+            "/api/upload/input-template",
+            files={
+                "file": (
+                    "input.xlsx",
+                    path.read_bytes(),
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
+        )
+        row = response.json()["preview_rows"][0]
+        row["values"]["Staff 1 ID"] = "S001"
+        edited = client.post("/api/upload/input-template/edited", json={"rows": [row]})
+        count = db.query(Session).count()
+    finally:
+        app.dependency_overrides.clear()
+        db.close()
+
+    assert edited.status_code == 200
+    assert edited.json()["rows_imported"] == 1
+    assert edited.json()["rows_failed"] == 0
+    assert count == 1
+
+
 def test_upload_route_returns_400_for_unreadable_workbook(tmp_path):
     db = _route_db(tmp_path)
     client = _client_for(db)

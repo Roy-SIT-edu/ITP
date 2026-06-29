@@ -33,6 +33,7 @@ export type UploadSummary = {
   rows_failed: number;
   errors: ValidationIssue[];
   file_summaries?: UploadFileSummary[];
+  preview_rows?: ImportPreviewRow[];
 };
 
 export type UploadFileSummary = {
@@ -40,6 +41,13 @@ export type UploadFileSummary = {
   rows_read: number;
   error_count?: number;
   columns?: string[];
+};
+
+export type ImportPreviewRow = {
+  row_id: string;
+  source_file: string | null;
+  source_row_no: number;
+  values: Record<string, string | number | boolean | null>;
 };
 
 export type DatabaseColumn = {

@@ -30,32 +30,22 @@ const preferenceFilters: { tone: PreferenceFilter; label: string }[] = [
 ];
 
 export function GenerationReadinessPanel({
-  canGenerate,
-  dirty,
-  generating,
-  generationResult,
+  importedRowCount,
   priorityCount,
   readinessText,
-  saving,
   softRowCount,
   warningCount,
-  onGenerate,
 }: {
-  canGenerate: boolean;
-  dirty: boolean;
-  generating: boolean;
-  generationResult: ScheduleGenerateResult | null;
+  importedRowCount?: number;
   priorityCount: number;
   readinessText: string;
-  saving: boolean;
   softRowCount: number;
   warningCount: number;
-  onGenerate: () => void;
 }) {
-  const blocked = false;
+  const blocked = importedRowCount === 0;
 
   return (
-    <section className="status-card generation-panel">
+    <section className="status-card generation-panel generation-panel-readiness">
       <div className="generation-copy">
         <div className="status-card-title">Generation Readiness</div>
         <div className="status-row">
@@ -63,6 +53,11 @@ export function GenerationReadinessPanel({
           <span>{readinessText}</span>
         </div>
         <div className="soft-summary-row">
+          {typeof importedRowCount === "number" && (
+            <span>
+              <strong>{importedRowCount}</strong> imported rows
+            </span>
+          )}
           <span>
             <strong>{priorityCount}</strong> priorities
           </span>
@@ -72,6 +67,34 @@ export function GenerationReadinessPanel({
           <span>
             <strong>{warningCount}</strong> warnings
           </span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function GenerationActionPanel({
+  canGenerate,
+  dirty,
+  generating,
+  generationResult,
+  saving,
+  onGenerate,
+}: {
+  canGenerate: boolean;
+  dirty: boolean;
+  generating: boolean;
+  generationResult: ScheduleGenerateResult | null;
+  saving: boolean;
+  onGenerate: () => void;
+}) {
+  return (
+    <section className="status-card generation-panel">
+      <div className="generation-copy">
+        <div className="status-card-title">Run Timetable Generation</div>
+        <div className="status-row">
+          <StatusBadge label="Ready" tone="good" />
+          <span>Ready to generate.</span>
         </div>
       </div>
       <div className="generation-actions">

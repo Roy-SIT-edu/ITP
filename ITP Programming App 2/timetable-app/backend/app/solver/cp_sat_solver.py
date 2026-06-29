@@ -14,6 +14,8 @@ from app.models.time_slot import TimeSlot
 from app.solver.model_builder import TimetableModelBuilder
 from app.solver.result_parser import ResultParser
 
+SUCCESS_STATUSES = {cp_model.OPTIMAL, cp_model.FEASIBLE}
+
 
 class CpSatTimetableSolver:
     def __init__(self) -> None:
@@ -46,6 +48,26 @@ class CpSatTimetableSolver:
                 "message": " ".join(built.no_candidate_reasons),
             }
 
+        result = self._solve_built_model(built, max_seconds, fast_mode)
+        if result["solver_status"] in {"OPTIMAL", "FEASIBLE"}:
+            return result
+
+        # Keep the review workflow usable for genuinely over-constrained input:
+        # if strict room/staff/group clash prevention is impossible, rebuild with
+        # heavy clash penalties so the timetable can still be inspected.
+        if result["solver_status"] == "INFEASIBLE":
+            relaxed = self.model_builder.build(
+                sessions,
+                time_slots,
+                rooms,
+                soft_constraint_weights,
+                relax_hard_conflicts=True,
+            )
+            return self._solve_built_model(relaxed, max_seconds, fast_mode)
+
+        return result
+
+    def _solve_built_model(self, built, max_seconds: float, fast_mode: bool) -> dict:
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = max_seconds
         if fast_mode:
@@ -55,12 +77,17 @@ class CpSatTimetableSolver:
         status = solver.Solve(built.model)
         status_name = solver.StatusName(status)
 
-        if status not in {cp_model.OPTIMAL, cp_model.FEASIBLE}:
+        if status not in SUCCESS_STATUSES:
+            message = (
+                "Solver timed out before finding a timetable. Try again or reduce flexible room/time choices."
+                if status_name == "UNKNOWN"
+                else "No feasible timetable found. Check room capacity, staff clashes, fixed sessions, and unavailable slots."
+            )
             return {
                 "solver_status": status_name,
                 "assignments": [],
                 "soft_score": 0,
-                "message": "No feasible timetable found. Check room capacity, staff clashes, fixed sessions, and unavailable slots.",
+                "message": message,
             }
 
         return {
