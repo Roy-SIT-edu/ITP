@@ -48,6 +48,10 @@ export type DatabaseColumn = {
   kind: "text" | "number" | "boolean" | "time";
   required: boolean;
   read_only: boolean;
+  options?: string[];
+  min_value?: number;
+  max_value?: number;
+  max_length?: number;
 };
 
 export type DatabaseTypeInfo = {

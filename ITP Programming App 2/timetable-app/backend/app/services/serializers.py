@@ -11,6 +11,7 @@ from app.models.session import Session
 from app.models.staff import Staff
 from app.models.student_group import StudentGroup
 from app.models.time_slot import TimeSlot
+from app.services.student_group_service import student_group_partition
 
 
 def programme_to_dict(item: Programme) -> dict:
@@ -21,7 +22,6 @@ def module_to_dict(item: Module) -> dict:
     return {
         "id": item.id,
         "module_code": item.module_code,
-        "module_host_key": item.module_host_key,
         "module_title": item.module_title,
         "term": item.term,
     }
@@ -34,6 +34,7 @@ def group_to_dict(item: StudentGroup) -> dict:
         "programme_id": item.programme_id,
         "programme": item.programme.code if item.programme else None,
         "year": item.year,
+        "partition": student_group_partition(item.group_code),
         "size": item.size,
     }
 

@@ -134,8 +134,17 @@ def _ensure_programme_years_column(engine) -> None:
             connection.execute(text("ALTER TABLE programmes ADD COLUMN years INTEGER"))
 
 
+def _drop_column_if_exists(engine, table_name: str, column_name: str) -> None:
+    with engine.begin() as connection:
+        columns = {row[1] for row in connection.execute(text(f"PRAGMA table_info({table_name})")).fetchall()}
+        if column_name in columns:
+            connection.execute(text(f"ALTER TABLE {table_name} DROP COLUMN {column_name}"))
+
+
 def _ensure_split_schema(engines: dict[str, object]) -> None:
     _ensure_programme_years_column(engines["programmes"])
+    _drop_column_if_exists(engines["modules"], "modules", "module_host_key")
+    _drop_column_if_exists(engines["staff"], "staff", "staff_host_key")
 
 
 def _copy_legacy_rows(target_db: Session, legacy_database_path: Path) -> None:

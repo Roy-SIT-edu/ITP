@@ -62,10 +62,14 @@ function displayValue(value: DatabaseRow[string]) {
   return String(value);
 }
 
-function buildBlankDraft(columns: DatabaseColumn[]) {
-  return Object.fromEntries(
+function buildBlankDraft(columns: DatabaseColumn[], dataType?: string) {
+  const draft: Record<string, unknown> = Object.fromEntries(
     columns.filter((column) => !column.read_only).map((column) => [column.key, initialValue(column)]),
   );
+  if (dataType === "student-groups" && "size" in draft) {
+    draft.size = 40;
+  }
+  return draft;
 }
 
 function compareRows(left: DatabaseRow, right: DatabaseRow, column: DatabaseColumn, direction: "asc" | "desc") {
@@ -138,9 +142,9 @@ export default function DatabasePage({ dataType }: Props) {
 
   useEffect(() => {
     if (config && adding && Object.keys(newDraft).length === 0) {
-      setNewDraft(buildBlankDraft(config.columns));
+      setNewDraft(buildBlankDraft(config.columns, dataType));
     }
-  }, [adding, config, newDraft]);
+  }, [adding, config, dataType, newDraft]);
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -174,7 +178,7 @@ export default function DatabasePage({ dataType }: Props) {
   const beginAdd = () => {
     setAdding(true);
     setEditingId(null);
-    setNewDraft(buildBlankDraft(columns));
+    setNewDraft(buildBlankDraft(columns, dataType));
     setError(null);
     setSuccess(null);
   };
@@ -284,8 +288,34 @@ export default function DatabasePage({ dataType }: Props) {
         />
       );
     }
+    if (column.options?.length) {
+      const currentValue = value === null || value === undefined ? "" : String(value);
+      const options = column.options.some((option) => option.toLowerCase() === currentValue.toLowerCase())
+        ? column.options
+        : currentValue
+          ? [currentValue, ...column.options]
+          : column.options;
+      return (
+        <select
+          required={column.required}
+          value={currentValue}
+          onChange={(event) => updateDraft(target, column.key, event.target.value)}
+        >
+          {!column.required && <option value="">Not set</option>}
+          {column.required && <option value="">Select {column.label}</option>}
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      );
+    }
     return (
       <input
+        max={column.kind === "number" ? column.max_value : undefined}
+        maxLength={column.kind === "text" ? column.max_length : undefined}
+        min={column.kind === "number" ? column.min_value : undefined}
         required={column.required}
         type={column.kind === "number" ? "number" : column.kind === "time" ? "time" : "text"}
         value={value === null || value === undefined ? "" : String(value)}

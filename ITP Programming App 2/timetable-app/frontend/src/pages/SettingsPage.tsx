@@ -3,12 +3,13 @@
  * Keeps solver preference configuration outside the generation workflow page.
  */
 
-import { RefreshCw } from "lucide-react";
+import { Moon, RefreshCw, Sun } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getSoftConstraintPriorities, updateSoftConstraintPriorities } from "../api/client";
 import InlineActivity from "../components/InlineActivity";
 import { PriorityRanking } from "../components/SoftConstraintWorkflow";
 import { useSessionState } from "../sessionState";
+import { useThemeMode } from "../theme";
 import type { SoftConstraintPriority } from "../types";
 
 function previewWeight(index: number, total: number) {
@@ -22,6 +23,8 @@ export default function SettingsPage() {
   const [success, setSuccess] = useSessionState<string | null>("settings.success", null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const { themeMode, setThemeMode } = useThemeMode();
+  const nightMode = themeMode === "night";
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -112,6 +115,26 @@ export default function SettingsPage() {
           steps={["Ordering preferences", "Updating weights", "Preparing solver"]}
         />
       )}
+
+      <section className="status-card settings-card appearance-card">
+        <div className="section-heading">
+          <div>
+            <div className="status-card-title">Appearance</div>
+            <p>Choose the interface brightness for this device</p>
+          </div>
+          <label className="theme-toggle">
+            <input
+              checked={nightMode}
+              type="checkbox"
+              onChange={(event) => setThemeMode(event.target.checked ? "night" : "light")}
+            />
+            <span className="theme-toggle-track" aria-hidden="true">
+              <span className="theme-toggle-thumb">{nightMode ? <Moon size={15} /> : <Sun size={15} />}</span>
+            </span>
+            <span className="theme-toggle-label">{nightMode ? "Night mode" : "Day mode"}</span>
+          </label>
+        </div>
+      </section>
 
       <PriorityRanking
         dirty={dirty}

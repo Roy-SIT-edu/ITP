@@ -11,7 +11,6 @@ class Module(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     module_code = Column(String, nullable=False, index=True)
-    module_host_key = Column(String, nullable=True)
     module_title = Column(String, nullable=True)
     term = Column(String, nullable=True)
 

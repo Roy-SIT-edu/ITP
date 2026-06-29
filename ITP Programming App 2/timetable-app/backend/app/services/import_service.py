@@ -26,7 +26,6 @@ CANONICAL_COLUMNS = {
     "Year": ["year", "student year"],
     "Student Group Code": ["student group code", "group code", "student group", "group"],
     "Module Code": ["module code", "module", "sis module code"],
-    "Module Host Key": ["module host key", "module host", "host key", "activity hostkey", "hostkey"],
     "Module Title": ["module title", "title"],
     "Class Type": ["class type", "session type", "activity type"],
     "Session Count": ["session count", "number of sessions", "no of sessions"],
@@ -520,13 +519,8 @@ class ImportService:
         return frame.loc[keep_mask].copy()
 
     def _derive_programme(self, row) -> str:
-        for value in [row.get("Module Host Key"), row.get("Module Code")]:
-            text = clean_text(value)
-            if not text:
-                continue
-            parts = text.split("-")
-            if len(parts) >= 3:
-                return parts[2].upper()
+        text = clean_text(row.get("Module Code"))
+        if text:
             match = re.match(r"([A-Za-z]+)", text)
             if match:
                 return match.group(1).upper()

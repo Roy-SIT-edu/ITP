@@ -39,6 +39,12 @@ from app.services.serializers import (
     staff_to_dict,
     time_slot_to_dict,
 )
+from app.services.student_group_service import (
+    DEFAULT_STUDENT_GROUP_SIZE,
+    ensure_programme_year_groups,
+    next_student_group_partition,
+    student_group_code,
+)
 from sqlalchemy import func
 from sqlalchemy.orm import Session as DbSession
 
@@ -58,6 +64,10 @@ class ColumnSpec:
     required: bool = False
     read_only: bool = False
     aliases: tuple[str, ...] = ()
+    options: tuple[str, ...] = ()
+    min_value: int | None = None
+    max_value: int | None = None
+    max_length: int | None = None
 
 
 @dataclass(frozen=True)
@@ -71,6 +81,20 @@ class DatabaseTypeConfig:
     sort_fields: tuple[str, ...]
 
 
+ROOM_TYPE_OPTIONS = (
+    "Auditorium",
+    "Classroom",
+    "Computer Room",
+    "Lab",
+    "Lectorial",
+    "Project Room",
+    "Seminar Room",
+    "Virtual",
+)
+DAY_OPTIONS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
+WEEK_PATTERN_OPTIONS = ("Weekly", "Odd", "Even", "Custom")
+
+
 DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
     "rooms": DatabaseTypeConfig(
         id="rooms",
@@ -78,12 +102,18 @@ DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
         model=Room,
         columns=(
             ColumnSpec("id", "ID", "number", read_only=True),
-            ColumnSpec("room_code", "Address", required=True, aliases=("Location Name",)),
-            ColumnSpec("room_name", "Room Code", required=True, aliases=("Location Description",)),
-            ColumnSpec("room_type", "Room Type", required=True, aliases=("Resource Type",)),
-            ColumnSpec("capacity", "Capacity", "number", required=True),
+            ColumnSpec("room_code", "Address", required=True, aliases=("Location Name",), max_length=80),
+            ColumnSpec("room_name", "Room Code", required=True, aliases=("Location Description",), max_length=120),
+            ColumnSpec(
+                "room_type",
+                "Room Type",
+                required=True,
+                aliases=("Resource Type",),
+                options=ROOM_TYPE_OPTIONS,
+                max_length=40,
+            ),
+            ColumnSpec("capacity", "Capacity", "number", required=True, min_value=1, max_value=9999),
             ColumnSpec("is_virtual", "Virtual", "boolean"),
-            ColumnSpec("campus_mode", "Campus Mode"),
             ColumnSpec("recording_available", "Recording", "boolean", required=True, aliases=("Recording Available",)),
         ),
         key_fields=("room_code",),
@@ -96,8 +126,8 @@ DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
         model=Staff,
         columns=(
             ColumnSpec("id", "ID", "number", read_only=True),
-            ColumnSpec("staff_id", "Staff ID", required=True, aliases=("Host Key",)),
-            ColumnSpec("staff_name", "Staff Name", required=True, aliases=("Name",)),
+            ColumnSpec("staff_id", "Staff ID", required=True, max_length=80),
+            ColumnSpec("staff_name", "Staff Name", required=True, aliases=("Name",), max_length=120),
         ),
         key_fields=("staff_id",),
         serializer=staff_to_dict,
@@ -109,9 +139,9 @@ DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
         model=Programme,
         columns=(
             ColumnSpec("id", "ID", "number", read_only=True),
-            ColumnSpec("code", "Code", required=True),
-            ColumnSpec("name", "Name", required=True),
-            ColumnSpec("years", "Years", "number", aliases=("Duration", "Duration Years")),
+            ColumnSpec("code", "Code", required=True, max_length=10),
+            ColumnSpec("name", "Name", required=True, max_length=160),
+            ColumnSpec("years", "Years", "number", aliases=("Duration", "Duration Years"), min_value=1, max_value=6),
         ),
         key_fields=("code",),
         serializer=programme_to_dict,
@@ -123,10 +153,9 @@ DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
         model=Module,
         columns=(
             ColumnSpec("id", "ID", "number", read_only=True),
-            ColumnSpec("module_code", "Module Code", required=True),
-            ColumnSpec("module_host_key", "Host Key"),
-            ColumnSpec("module_title", "Module Title"),
-            ColumnSpec("term", "Term"),
+            ColumnSpec("module_code", "Module Code", required=True, max_length=30),
+            ColumnSpec("module_title", "Module Title", max_length=200),
+            ColumnSpec("term", "Term", max_length=20),
         ),
         key_fields=("module_code",),
         serializer=module_to_dict,
@@ -138,10 +167,10 @@ DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
         model=StudentGroup,
         columns=(
             ColumnSpec("id", "ID", "number", read_only=True),
-            ColumnSpec("group_code", "Group Code", required=True),
-            ColumnSpec("programme", "Programme"),
-            ColumnSpec("year", "Year", "number"),
-            ColumnSpec("size", "Size", "number"),
+            ColumnSpec("programme", "Programme", required=True, max_length=10),
+            ColumnSpec("year", "Year", "number", required=True, min_value=1, max_value=6),
+            ColumnSpec("partition", "Group No.", "number", min_value=1, max_value=20),
+            ColumnSpec("size", "Size", "number", min_value=1, max_value=1000),
         ),
         key_fields=("group_code",),
         serializer=group_to_dict,
@@ -153,11 +182,11 @@ DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
         model=TimeSlot,
         columns=(
             ColumnSpec("id", "ID", "number", read_only=True),
-            ColumnSpec("day", "Day", required=True),
+            ColumnSpec("day", "Day", required=True, options=DAY_OPTIONS),
             ColumnSpec("start_time", "Start Time", "time", required=True),
             ColumnSpec("end_time", "End Time", "time", required=True),
-            ColumnSpec("duration_minutes", "Duration", "number", required=True),
-            ColumnSpec("week_pattern", "Week Pattern", required=True),
+            ColumnSpec("duration_minutes", "Duration", "number", required=True, min_value=1, max_value=480),
+            ColumnSpec("week_pattern", "Week Pattern", required=True, options=WEEK_PATTERN_OPTIONS),
         ),
         key_fields=("day", "start_time", "end_time", "week_pattern"),
         serializer=time_slot_to_dict,
@@ -177,7 +206,6 @@ DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
             ColumnSpec("staff_name", "Staff Name"),
             ColumnSpec("class_type", "Class Type", required=True),
             ColumnSpec("delivery_mode", "Delivery Mode", required=True),
-            ColumnSpec("campus_mode", "Campus Mode", required=True),
             ColumnSpec("venue_type_required", "Venue Type", required=True),
             ColumnSpec("duration_minutes", "Duration", "number", required=True),
             ColumnSpec("sessions_per_week", "Sessions/Week", "number", required=True),
@@ -203,28 +231,40 @@ DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
     ),
 }
 
-ADMIN_DATABASE_TYPE_IDS = ("rooms", "staff", "programmes", "modules")
+ADMIN_DATABASE_TYPE_IDS = ("rooms", "staff", "programmes", "modules", "student-groups")
 
 
 class DatabaseService:
-    def types(self) -> list[dict]:
+    def types(self, db: DbSession | None = None) -> list[dict]:
         return [
             {
                 "id": config.id,
                 "label": config.label,
-                "columns": [
-                    {
-                        "key": column.key,
-                        "label": column.label,
-                        "kind": column.kind,
-                        "required": column.required,
-                        "read_only": column.read_only,
-                    }
-                    for column in config.columns
-                ],
+                "columns": [self._column_metadata(db, config, column) for column in config.columns],
             }
             for config in (DATABASE_TYPES[data_type] for data_type in ADMIN_DATABASE_TYPE_IDS)
         ]
+
+    def _column_metadata(self, db: DbSession | None, config: DatabaseTypeConfig, column: ColumnSpec) -> dict:
+        metadata = {
+            "key": column.key,
+            "label": column.label,
+            "kind": column.kind,
+            "required": column.required,
+            "read_only": column.read_only,
+        }
+        options = list(column.options)
+        if db is not None and config.id == "student-groups" and column.key == "programme":
+            options = [item.code for item in db.query(Programme).order_by(Programme.code).all()]
+        if options:
+            metadata["options"] = options
+        if column.min_value is not None:
+            metadata["min_value"] = column.min_value
+        if column.max_value is not None:
+            metadata["max_value"] = column.max_value
+        if column.max_length is not None:
+            metadata["max_length"] = column.max_length
+        return metadata
 
     def list_rows(self, db: DbSession, data_type: str) -> list[dict]:
         config = self._config(data_type)
@@ -239,6 +279,8 @@ class DatabaseService:
         item = self._build_model(db, config, payload)
         self._ensure_unique_key(db, config, item)
         db.add(item)
+        db.flush()
+        self._after_row_saved(db, config, item)
         db.commit()
         db.refresh(item)
         return config.serializer(item)
@@ -250,11 +292,17 @@ class DatabaseService:
             raise KeyError(f"{config.label} row not found")
 
         data = config.serializer(item)
+        if config.id == "student-groups":
+            data["_existing_group_code"] = item.group_code
+            data["_existing_programme_id"] = item.programme_id
+            data["_existing_year"] = item.year
         data.update(payload)
         updated = self._coerce_payload(db, config, data)
         self._apply_model_data(item, updated)
         self._ensure_unique_key(db, config, item, row_id=row_id)
         self._clear_schedule_state(db)
+        db.flush()
+        self._after_row_saved(db, config, item)
         db.commit()
         db.refresh(item)
         return config.serializer(item)
@@ -368,12 +416,38 @@ class DatabaseService:
             value = self._coerce_value(column, raw)
             if column.required and value is None:
                 raise ValueError(f"{column.label} is required.")
+            value = self._validated_column_value(column, value)
             data[column.key] = value
 
         if config.id == "student-groups":
             programme_code = clean_text(data.pop("programme", None))
             programme = self._lookup_programme(db, programme_code) if programme_code else None
+            year = data.get("year")
+            partition = data.pop("partition", None)
+            if programme is None:
+                raise ValueError("Programme is required.")
+            if year is None or year <= 0:
+                raise ValueError("Year must be greater than 0.")
+            if partition is not None and partition <= 0:
+                raise ValueError("Group No. must be greater than 0.")
+            if data.get("size") is None:
+                data["size"] = DEFAULT_STUDENT_GROUP_SIZE
+            if data["size"] <= 0:
+                raise ValueError("Size must be greater than 0.")
+            if (
+                partition is None
+                and payload.get("_existing_group_code")
+                and payload.get("_existing_programme_id") == programme.id
+                and payload.get("_existing_year") == year
+            ):
+                data["group_code"] = payload["_existing_group_code"]
+            else:
+                partition = partition or next_student_group_partition(db, programme.id, year)
+                data["group_code"] = student_group_code(programme.code, year, partition)
             data["programme_id"] = programme.id if programme else None
+        elif config.id == "programmes":
+            if data.get("code"):
+                data["code"] = data["code"].upper()
         elif config.id == "requirements":
             data = self._coerce_requirement(db, data)
         elif config.id == "time-slots":
@@ -395,7 +469,6 @@ class DatabaseService:
         elif config.id == "staff":
             if data.get("staff_name"):
                 data["staff_name"] = re.sub(r"\s+\.$", "", data["staff_name"]).strip()
-            data["staff_host_key"] = data.get("staff_host_key") or data.get("staff_id")
         elif config.id == "modules":
             data["module_title"] = data.get("module_title") or data.get("module_code")
         return data
@@ -421,10 +494,14 @@ class DatabaseService:
         data["student_group_id"] = group.id
         data["staff_id"] = staff.id
         data["delivery_mode"] = canonical_delivery_mode(data.get("delivery_mode"))
+        data["campus_mode"] = self._derived_campus_mode(data.get("delivery_mode"))
         data["week_pattern"] = canonical_week_pattern(data.get("week_pattern")) or "Weekly"
         data["fixed_day"] = canonical_day(data.get("fixed_day"))
         data["source_file"] = clean_text(data.get("source_file")) or "Database Entry"
         return data
+
+    def _derived_campus_mode(self, delivery_mode: str | None) -> str:
+        return "Virtual" if delivery_mode in {"Online", "Asynchronous"} else "Physical"
 
     def _coerce_value(self, column: ColumnSpec, value: object) -> Any:
         if column.kind == "boolean":
@@ -435,6 +512,25 @@ class DatabaseService:
             minutes = time_to_minutes(value)
             return minutes_to_time(minutes) if minutes is not None else None
         return clean_text(value)
+
+    def _validated_column_value(self, column: ColumnSpec, value: Any) -> Any:
+        if value is None:
+            return None
+        if column.kind == "number":
+            if column.min_value is not None and value < column.min_value:
+                raise ValueError(f"{column.label} must be at least {column.min_value}.")
+            if column.max_value is not None and value > column.max_value:
+                raise ValueError(f"{column.label} must be at most {column.max_value}.")
+        if isinstance(value, str):
+            if column.max_length is not None and len(value) > column.max_length:
+                raise ValueError(f"{column.label} must be {column.max_length} characters or fewer.")
+            if column.options:
+                match = next((option for option in column.options if option.lower() == value.lower()), None)
+                if match is None:
+                    choices = ", ".join(column.options)
+                    raise ValueError(f"{column.label} must be one of: {choices}.")
+                return match
+        return value
 
     def _bool_value(self, value: object) -> bool | None:
         text = clean_text(value)
@@ -468,6 +564,10 @@ class DatabaseService:
     def _apply_model_data(self, item, data: dict) -> None:
         for key, value in data.items():
             setattr(item, key, value)
+
+    def _after_row_saved(self, db: DbSession, config: DatabaseTypeConfig, item) -> None:
+        if config.id == "programmes":
+            ensure_programme_year_groups(db, item)
 
     def _replace_rows(self, db: DbSession, config: DatabaseTypeConfig, payloads: list[dict]) -> None:
         existing = db.query(config.model).all()

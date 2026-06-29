@@ -27,14 +27,13 @@ def _valid_payload(**overrides):
         "requirement_id": "REQ-CRUD-001",
         "programme": "DSC",
         "module_code": "DSC2204",
-        "student_group_code": "DSC-Y1-G1",
+        "student_group_code": "DSC Y1 P1",
         "year": 1,
         "exact_class_size": 30,
         "staff_name": "Dr Tan",
         "staff_id": "S001",
         "class_type": "Tutorial",
         "delivery_mode": "Face-to-face",
-        "campus_mode": "Physical",
         "venue_type_required": "classroom",
         "duration_minutes": 120,
         "sessions_per_week": 1,
@@ -75,7 +74,7 @@ def test_create_session(tmp_path):
     assert data["requirement_id"] == "REQ-CRUD-001"
     assert data["programme"] == "DSC"
     assert data["module_code"] == "DSC2204"
-    assert data["student_group_code"] == "DSC-Y1-G1"
+    assert data["student_group_code"] == "DSC Y1 P1"
     assert data["staff_name"] == "Dr Tan"
     assert data["class_type"] == "Tutorial"
     assert data["duration_minutes"] == 120
@@ -190,7 +189,7 @@ def test_create_session_blocks_duplicate_requirement_id(tmp_path):
         response = client.post(
             "/api/sessions",
             json=_valid_payload(
-                requirement_id="REQ-DEMO-001", student_group_code="DSC-Y2-G1", year=2, exact_class_size=80, venue_type_required="lectorial"
+                requirement_id="REQ-DEMO-001", student_group_code="DSC Y2 P1", year=2, exact_class_size=80, venue_type_required="lectorial"
             ),
         )
     finally:

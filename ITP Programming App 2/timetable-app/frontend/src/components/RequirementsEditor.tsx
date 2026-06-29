@@ -47,6 +47,10 @@ const emptySession: RequirementFormData = {
   source_row_no: null,
 };
 
+function campusModeForDelivery(deliveryMode: string | null | undefined) {
+  return deliveryMode === "Online" || deliveryMode === "Asynchronous" ? "Virtual" : "Physical";
+}
+
 export default function RequirementsEditor({ refreshSignal = 0, onChanged }: Props) {
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [search, setSearch] = useState("");
@@ -168,12 +172,16 @@ export default function RequirementsEditor({ refreshSignal = 0, onChanged }: Pro
 
     setSaving(true);
     setError(null);
+    const payload = {
+      ...formData,
+      campus_mode: campusModeForDelivery(formData.delivery_mode),
+    };
     try {
       if (editingSession) {
-        await updateSession(editingSession.id, formData);
+        await updateSession(editingSession.id, payload);
         await afterMutation("Requirement updated.");
       } else {
-        await createSession(formData);
+        await createSession(payload);
         await afterMutation("Requirement added.");
       }
       setIsModalOpen(false);

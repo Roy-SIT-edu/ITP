@@ -40,6 +40,7 @@ from app.services.compatibility import (
     venue_room_compatible,
     weeks_conflict,
 )
+from app.services.student_group_service import student_group_code
 from sqlalchemy import func
 from sqlalchemy.orm import Session as DbSession
 
@@ -113,7 +114,6 @@ class RequirementInputService:
             "Year": data.year,
             "Student Group Code": data.student_group_code,
             "Module Code": data.module_code,
-            "Module Host Key": data.module_host_key,
             "Module Title": data.module_title,
             "Class Type": data.class_type,
             "Duration Minutes": data.duration_minutes,
@@ -202,7 +202,6 @@ class RequirementInputService:
         module = self._lookup_or_create_module(
             db,
             self._required_text(row, source_row_no, "Module Code", errors),
-            clean_text(self._value(row, "Module Host Key")),
             clean_text(self._value(row, "Module Title")),
             source_row_no,
             errors,
@@ -247,7 +246,7 @@ class RequirementInputService:
 
         class_type = self._required_text(row, source_row_no, "Class Type", errors)
         delivery_mode = self._delivery_mode(row, source_row_no, errors)
-        campus_mode = self._campus_mode(row, source_row_no, errors)
+        campus_mode = self._campus_mode(row, source_row_no, errors, delivery_mode)
         venue_type = self._required_text(row, source_row_no, "Venue Type Required", errors)
         duration = self._duration_minutes(row)
         if duration is None:
@@ -375,7 +374,6 @@ class RequirementInputService:
         self,
         db: DbSession,
         module_code: str | None,
-        module_host_key: str | None,
         module_title: str | None,
         source_row_no: int,
         errors: list[dict],
@@ -390,7 +388,6 @@ class RequirementInputService:
                 return None
             module = Module(
                 module_code=module_code,
-                module_host_key=module_host_key,
                 module_title=module_title or module_code,
                 term=None,
             )
@@ -433,7 +430,7 @@ class RequirementInputService:
         return group
 
     def _generated_group_code(self, programme_code: str, year: int, class_size: int, requirement_id: str | None) -> str:
-        return f"{programme_code.upper()}-Y{year}"
+        return student_group_code(programme_code, year, 1)
 
     def _staff_assignments(
         self,
@@ -605,10 +602,16 @@ class RequirementInputService:
             return canonical_delivery_mode(raw)
         return canonical_delivery_mode(raw)
 
-    def _campus_mode(self, row: Mapping[str, Any], source_row_no: int, errors: list[dict]) -> str | None:
-        raw = self._required_text(row, source_row_no, "Campus Mode", errors)
+    def _campus_mode(
+        self,
+        row: Mapping[str, Any],
+        source_row_no: int,
+        errors: list[dict],
+        delivery_mode: str | None,
+    ) -> str | None:
+        raw = clean_text(self._value(row, "Campus Mode"))
         if not raw:
-            return None
+            return self._derived_campus_mode(delivery_mode)
         token = normalize_token(raw)
         if token in {"physical", "campus", "on campus", "in campus", "face to face", "in person"}:
             return "Physical"
@@ -618,6 +621,14 @@ class RequirementInputService:
             return "External"
         errors.append(self._issue(source_row_no, "Campus Mode", "Campus Mode must be Physical, Virtual, Online, Remote, or External."))
         return raw
+
+    def _derived_campus_mode(self, delivery_mode: str | None) -> str | None:
+        token = normalize_token(delivery_mode)
+        if token in {"online", "asynchronous", "async"}:
+            return "Virtual"
+        if token:
+            return "Physical"
+        return None
 
     def _week_pattern(self, row: Mapping[str, Any], source_row_no: int, errors: list[dict]) -> str | None:
         raw = self._required_text(row, source_row_no, "Week Pattern", errors)

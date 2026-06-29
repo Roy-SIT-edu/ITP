@@ -43,6 +43,29 @@
   text-rendering: optimizeLegibility;
 }
 
+:root[data-theme="night"] {
+  --color-page: #0b1120;
+  --color-sidebar: #111827;
+  --color-card: #172033;
+  --color-muted-panel: #1f2937;
+  --color-text: #f8fafc;
+  --color-text-secondary: #cbd5e1;
+  --color-text-muted: #94a3b8;
+  --color-border: #334155;
+  --color-border-strong: #475569;
+  --color-primary: #8b5cf6;
+  --color-secondary: #2dd4bf;
+  --color-accent-soft: #312e81;
+  --color-teal-soft: #134e4a;
+  --color-blue-soft: #1e3a8a;
+  --color-success-soft: #14532d;
+  --color-warning-soft: #713f12;
+  --color-error-soft: #7f1d1d;
+  --color-purple-soft: #3b0764;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-elevated: 0 18px 36px rgba(0, 0, 0, 0.36);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -4562,4 +4585,264 @@ tr.conflict-active-row:hover {
   border: 2px solid #22c55e;
   margin-right: 4px;
   vertical-align: middle;
+}
+
+.appearance-card {
+  align-items: center;
+}
+
+.theme-toggle {
+  align-items: center;
+  color: var(--color-text);
+  cursor: pointer;
+  display: inline-flex;
+  gap: 10px;
+  min-height: 40px;
+  user-select: none;
+}
+
+.theme-toggle input {
+  height: 1px;
+  opacity: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.theme-toggle-track {
+  align-items: center;
+  background: var(--color-muted-panel);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  display: flex;
+  height: 32px;
+  padding: 3px;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
+  width: 58px;
+}
+
+.theme-toggle-thumb {
+  align-items: center;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  box-shadow: var(--shadow-card);
+  color: var(--color-secondary);
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  transform: translateX(0);
+  transition: transform 160ms ease;
+  width: 24px;
+}
+
+.theme-toggle input:checked + .theme-toggle-track {
+  background: var(--color-accent-soft);
+  border-color: var(--color-primary);
+}
+
+.theme-toggle input:checked + .theme-toggle-track .theme-toggle-thumb {
+  color: var(--color-primary);
+  transform: translateX(26px);
+}
+
+.theme-toggle input:focus-visible + .theme-toggle-track {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.theme-toggle-label {
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+:root[data-theme="night"] body,
+:root[data-theme="night"] .app-shell,
+:root[data-theme="night"] .main-shell,
+:root[data-theme="night"] .content {
+  background: var(--color-page);
+  color: var(--color-text);
+}
+
+:root[data-theme="night"] .sidebar,
+:root[data-theme="night"] .topbar,
+:root[data-theme="night"] .dashboard-hero,
+:root[data-theme="night"] .status-card,
+:root[data-theme="night"] .metric-card,
+:root[data-theme="night"] .table-wrap,
+:root[data-theme="night"] .filter-bar,
+:root[data-theme="night"] .modal-content,
+:root[data-theme="night"] .calendar-control-bar,
+:root[data-theme="night"] .calendar-board,
+:root[data-theme="night"] .calendar-options-panel,
+:root[data-theme="night"] .calendar-time-rail,
+:root[data-theme="night"] .calendar-day-column,
+:root[data-theme="night"] .planner-shell,
+:root[data-theme="night"] .slot-detail-panel,
+:root[data-theme="night"] .selected-session-panel .move-controls,
+:root[data-theme="night"] .upload-panel,
+:root[data-theme="night"] .import-report,
+:root[data-theme="night"] .constraint-studio,
+:root[data-theme="night"] .compact-disclosure,
+:root[data-theme="night"] .preference-dropdown {
+  background: var(--color-card);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+:root[data-theme="night"] h1,
+:root[data-theme="night"] h2,
+:root[data-theme="night"] h3,
+:root[data-theme="night"] th,
+:root[data-theme="night"] td,
+:root[data-theme="night"] .status-card-title,
+:root[data-theme="night"] .brand strong,
+:root[data-theme="night"] .detail-row strong,
+:root[data-theme="night"] .selected-session-main strong,
+:root[data-theme="night"] .selected-session-facts strong,
+:root[data-theme="night"] .calendar-week-title strong,
+:root[data-theme="night"] .calendar-day-heading strong {
+  color: var(--color-text);
+}
+
+:root[data-theme="night"] p,
+:root[data-theme="night"] small,
+:root[data-theme="night"] .muted,
+:root[data-theme="night"] .page-header p,
+:root[data-theme="night"] .section-heading p,
+:root[data-theme="night"] .status-card p,
+:root[data-theme="night"] .brand span,
+:root[data-theme="night"] .sidebar-nav-label,
+:root[data-theme="night"] .sidebar-group-toggle,
+:root[data-theme="night"] .sidebar-link,
+:root[data-theme="night"] .workflow-step-link span,
+:root[data-theme="night"] .status-row span:not(.status-badge),
+:root[data-theme="night"] .filter-bar label span,
+:root[data-theme="night"] .calendar-week-title span,
+:root[data-theme="night"] .calendar-control-bar label span,
+:root[data-theme="night"] .calendar-day-heading span,
+:root[data-theme="night"] .calendar-time-label,
+:root[data-theme="night"] .calendar-option-grid label,
+:root[data-theme="night"] .modal-body label {
+  color: var(--color-text-secondary);
+}
+
+:root[data-theme="night"] .sidebar-link:hover,
+:root[data-theme="night"] .sidebar-group-toggle:hover,
+:root[data-theme="night"] .button.secondary:hover {
+  background: var(--color-muted-panel);
+  color: var(--color-text);
+}
+
+:root[data-theme="night"] .sidebar-link.active,
+:root[data-theme="night"] .workflow-stage.active .workflow-step-link {
+  background: var(--color-accent-soft);
+  color: #ddd6fe;
+}
+
+:root[data-theme="night"] .workflow-step-link,
+:root[data-theme="night"] .process-flow,
+:root[data-theme="night"] .calendar-week-title,
+:root[data-theme="night"] .calendar-corner,
+:root[data-theme="night"] .calendar-day-heading,
+:root[data-theme="night"] th {
+  background: var(--color-muted-panel);
+  border-color: var(--color-border);
+}
+
+:root[data-theme="night"] th,
+:root[data-theme="night"] td,
+:root[data-theme="night"] .modal-header,
+:root[data-theme="night"] .modal-footer,
+:root[data-theme="night"] .calendar-corner,
+:root[data-theme="night"] .calendar-day-heading,
+:root[data-theme="night"] .calendar-time-label,
+:root[data-theme="night"] .calendar-slot {
+  border-color: var(--color-border);
+}
+
+:root[data-theme="night"] input,
+:root[data-theme="night"] select,
+:root[data-theme="night"] textarea,
+:root[data-theme="night"] .modal-body input,
+:root[data-theme="night"] .modal-body select,
+:root[data-theme="night"] .database-table input,
+:root[data-theme="night"] .filter-bar input {
+  background: #0f172a;
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+:root[data-theme="night"] input::placeholder,
+:root[data-theme="night"] textarea::placeholder {
+  color: #64748b;
+}
+
+:root[data-theme="night"] .button.secondary {
+  background: var(--color-card);
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+:root[data-theme="night"] .button.danger {
+  background: #7f1d1d;
+  border-color: #b91c1c;
+  color: #fee2e2;
+}
+
+:root[data-theme="night"] .empty-state {
+  background: var(--color-card);
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+:root[data-theme="night"] .notice.good {
+  background: #052e1a;
+  border-color: #15803d;
+  color: #bbf7d0;
+}
+
+:root[data-theme="night"] .notice.bad {
+  background: #450a0a;
+  border-color: #b91c1c;
+  color: #fecaca;
+}
+
+:root[data-theme="night"] .calendar-day-column {
+  background:
+    linear-gradient(to bottom, transparent calc(100% - 1px), var(--color-border) calc(100% - 1px)),
+    var(--color-card);
+}
+
+:root[data-theme="night"] .calendar-day-column + .calendar-day-column,
+:root[data-theme="night"] .calendar-time-rail {
+  border-color: var(--color-border);
+}
+
+:root[data-theme="night"] .calendar-event {
+  background: #0f766e;
+  border-color: #2dd4bf;
+  color: #ecfeff;
+}
+
+:root[data-theme="night"] .calendar-event small {
+  color: #ccfbf1;
+}
+
+:root[data-theme="night"] .calendar-options-title {
+  background: var(--color-muted-panel);
+  border-color: var(--color-border);
+  color: #fbbf24;
+}
+
+:root[data-theme="night"] .upload-warning-copy {
+  background: #422006;
+  border-color: #92400e;
+}
+
+:root[data-theme="night"] .upload-warning-copy strong,
+:root[data-theme="night"] .upload-warning-copy span {
+  color: #fde68a;
 }

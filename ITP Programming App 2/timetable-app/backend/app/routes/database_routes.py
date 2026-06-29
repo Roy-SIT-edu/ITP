@@ -25,8 +25,8 @@ class DatabaseRowPayload(RootModel[dict[str, Any]]):
 
 
 @router.get("/types")
-def database_types():
-    return service.types()
+def database_types(db: DbSession = Depends(get_db)):
+    return service.types(db)
 
 
 @router.get("/{data_type}")

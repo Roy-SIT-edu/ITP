@@ -105,16 +105,6 @@ export default function RequirementFormModal({
             </select>
           </label>
           <label>
-            Campus Mode
-            <select
-              value={formData.campus_mode || ""}
-              onChange={(event) => onUpdate("campus_mode", event.target.value)}
-            >
-              <option value="Physical">Physical</option>
-              <option value="Virtual">Virtual</option>
-            </select>
-          </label>
-          <label>
             Duration (mins)
             <input
               required

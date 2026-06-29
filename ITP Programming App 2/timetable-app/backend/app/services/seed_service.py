@@ -1,8 +1,9 @@
 """Startup seed data for empty split databases.
 
 Reference data can be populated from the real multi-sheet raw-data workbook.
-The scheduler still needs a generated time-slot grid, but demo rooms, staff,
-modules, programmes, student groups, and sessions are intentionally not seeded.
+The scheduler still needs a generated time-slot grid and default programme-year
+student groups, but demo rooms, staff, modules, programmes, and sessions are
+intentionally not seeded.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from app.models.staff import Staff
 from app.models.student_group import StudentGroup
 from app.models.time_slot import TimeSlot
 from app.services.compatibility import clean_text, minutes_to_time
+from app.services.student_group_service import ensure_programme_year_groups, normalize_student_group_ids, student_group_code
 from sqlalchemy.orm import Session as DbSession
 
 DEFAULT_RAW_DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "Raw Data.xlsx"
@@ -104,6 +106,8 @@ def seed_reference_data(db: DbSession, raw_data_path: Path | None = None) -> Non
     if raw_data_path and raw_data_path.exists():
         seed_raw_data_workbook(db, raw_data_path)
     _apply_programme_years(db)
+    ensure_programme_year_groups(db)
+    normalize_student_group_ids(db)
     seed_time_slots(db)
 
 
@@ -188,7 +192,6 @@ def _seed_modules(db: DbSession, frame: pd.DataFrame) -> None:
             Module,
             module_code=module_code,
             defaults={
-                "module_host_key": clean_text(row.get("Host Key")),
                 "module_title": module_code,
                 "term": clean_text(row.get("Term")),
             },
@@ -205,7 +208,7 @@ def _seed_staff(db: DbSession, frame: pd.DataFrame) -> None:
             db,
             Staff,
             staff_id=staff_id,
-            defaults={"staff_name": staff_name, "staff_host_key": staff_id},
+            defaults={"staff_name": staff_name},
         )
 
 
@@ -269,66 +272,58 @@ def _int_or_default(value: object, default: int) -> int:
 
 def seed_sample_sessions(db: DbSession) -> None:
     _seed_demo_reference_data(db)
+    ensure_programme_year_groups(db)
+    normalize_student_group_ids(db)
     dsc = db.query(Programme).filter_by(code="DSC").one()
     modules = {
         "DSC2204": _get_or_create(
             db,
             Module,
             module_code="DSC2204",
-            defaults={"module_host_key": "DSC", "module_title": "Data Engineering", "term": "2510"},
+            defaults={"module_title": "Data Engineering", "term": "2510"},
         ),
         "INF1003": _get_or_create(
             db,
             Module,
             module_code="INF1003",
-            defaults={"module_host_key": "INF", "module_title": "Programming Fundamentals", "term": "2510"},
+            defaults={"module_title": "Programming Fundamentals", "term": "2510"},
         ),
         "UCS1001": _get_or_create(
             db,
             Module,
             module_code="UCS1001",
-            defaults={"module_host_key": "UCS", "module_title": "Critical Thinking", "term": "2510"},
+            defaults={"module_title": "Critical Thinking", "term": "2510"},
         ),
     }
     groups = {
-        "DSC-Y2-G1": _get_or_create(
-            db,
-            StudentGroup,
-            group_code="DSC-Y2-G1",
-            defaults={"programme_id": dsc.id, "year": 2, "size": 80},
-        ),
-        "DSC-Y1-G1": _get_or_create(
-            db,
-            StudentGroup,
-            group_code="DSC-Y1-G1",
-            defaults={"programme_id": dsc.id, "year": 1, "size": 30},
-        ),
+        "DSC Y2 P1": db.query(StudentGroup).filter_by(group_code=student_group_code("DSC", 2, 1)).one(),
+        "DSC Y1 P1": db.query(StudentGroup).filter_by(group_code=student_group_code("DSC", 1, 1)).one(),
     }
     staff = {
         "S001": _get_or_create(
             db,
             Staff,
             staff_id="S001",
-            defaults={"staff_name": "Dr Tan", "staff_host_key": "DSC"},
+            defaults={"staff_name": "Dr Tan"},
         ),
         "S002": _get_or_create(
             db,
             Staff,
             staff_id="S002",
-            defaults={"staff_name": "Prof Lim", "staff_host_key": "INF"},
+            defaults={"staff_name": "Prof Lim"},
         ),
         "S003": _get_or_create(
             db,
             Staff,
             staff_id="S003",
-            defaults={"staff_name": "Ms Wong", "staff_host_key": "UCS"},
+            defaults={"staff_name": "Ms Wong"},
         ),
     }
     samples = [
         {
             "requirement_id": "REQ-DEMO-001",
             "module": modules["DSC2204"],
-            "group": groups["DSC-Y2-G1"],
+            "group": groups["DSC Y2 P1"],
             "staff": staff["S001"],
             "class_type": "Lecture",
             "delivery_mode": "Face-to-face",
@@ -339,7 +334,7 @@ def seed_sample_sessions(db: DbSession) -> None:
         {
             "requirement_id": "REQ-DEMO-002",
             "module": modules["DSC2204"],
-            "group": groups["DSC-Y2-G1"],
+            "group": groups["DSC Y2 P1"],
             "staff": staff["S001"],
             "class_type": "Tutorial",
             "delivery_mode": "Face-to-face",
@@ -350,7 +345,7 @@ def seed_sample_sessions(db: DbSession) -> None:
         {
             "requirement_id": "REQ-DEMO-003",
             "module": modules["INF1003"],
-            "group": groups["DSC-Y1-G1"],
+            "group": groups["DSC Y1 P1"],
             "staff": staff["S002"],
             "class_type": "Lab",
             "delivery_mode": "Face-to-face",
@@ -361,7 +356,7 @@ def seed_sample_sessions(db: DbSession) -> None:
         {
             "requirement_id": "REQ-DEMO-004",
             "module": modules["UCS1001"],
-            "group": groups["DSC-Y1-G1"],
+            "group": groups["DSC Y1 P1"],
             "staff": staff["S003"],
             "class_type": "Online",
             "delivery_mode": "Online",
