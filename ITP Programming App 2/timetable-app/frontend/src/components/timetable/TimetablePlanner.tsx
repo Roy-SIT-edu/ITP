@@ -1,5 +1,5 @@
 import { CalendarDays, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { ScheduledRow } from "../../types";
 import { days, type MoveDraft, type PlannerSlot } from "./types";
 import { getFirstOverlapKey, intervalsOverlap, timeToMinutes } from "./timetableUtils";
@@ -26,8 +26,29 @@ type Props = {
   availableSlotKeys?: Set<string>;
 };
 
-const HOUR_HEIGHT = 54;
+const HOUR_HEIGHT = 64;
+const MAX_DETAILED_LANES = 4;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+type CalendarLayoutItem =
+  | {
+      kind: "event";
+      day: string;
+      row: ScheduledRow;
+      slotKeys: string[];
+      style: CSSProperties;
+      density: "normal" | "compact";
+    }
+  | {
+      kind: "cluster";
+      day: string;
+      id: string;
+      rows: ScheduledRow[];
+      start: number;
+      end: number;
+      slotKeys: string[];
+      style: CSSProperties;
+    };
 
 export default function TimetablePlanner({
   rows = [],
@@ -54,7 +75,13 @@ export default function TimetablePlanner({
   const [showAmPm, setShowAmPm] = useState(true);
   const [showClassTitle, setShowClassTitle] = useState(true);
   const [showInstructors, setShowInstructors] = useState(false);
-  const [visibleDays, setVisibleDays] = useState(days);
+  const populatedDays = useMemo(() => days.filter((day) => rows.some((row) => row.day === day)), [rows]);
+  const defaultVisibleDays = useMemo(
+    () => (populatedDays.length > 0 ? populatedDays : days.slice(0, 5)),
+    [populatedDays],
+  );
+  const [visibleDays, setVisibleDays] = useState(defaultVisibleDays);
+  const [daySelectionTouched, setDaySelectionTouched] = useState(false);
   const displayDays = days.filter((day) => visibleDays.includes(day));
   const rangeStart = slots[0] ? timeToMinutes(slots[0].start_time) : timeToMinutes(displayStartTime);
   const rangeEnd = slots[slots.length - 1]
@@ -69,6 +96,12 @@ export default function TimetablePlanner({
     () => layoutEvents(rows, displayDays, rangeStart, rangeEnd, slots),
     [displayDays, rangeEnd, rangeStart, rows, slots],
   );
+
+  useEffect(() => {
+    if (!daySelectionTouched) {
+      setVisibleDays(defaultVisibleDays);
+    }
+  }, [daySelectionTouched, defaultVisibleDays]);
 
   const updateStartTime = (value: string) => {
     onDisplayStartTimeChange?.(value);
@@ -85,6 +118,7 @@ export default function TimetablePlanner({
   };
 
   const toggleDay = (day: string) => {
+    setDaySelectionTouched(true);
     setVisibleDays((current) => {
       if (current.includes(day)) {
         return current.length > 1 ? current.filter((item) => item !== day) : current;
@@ -152,7 +186,7 @@ export default function TimetablePlanner({
         className="calendar-board"
         role="grid"
         aria-label="Weekly timetable calendar"
-        style={{ gridTemplateColumns: `74px repeat(${dayHeadings.length}, minmax(112px, 1fr))` }}
+        style={{ gridTemplateColumns: `70px repeat(${dayHeadings.length}, minmax(178px, 1fr))` }}
       >
         <div className="calendar-corner">Time</div>
         {dayHeadings.map(({ day, date }) => (
@@ -208,21 +242,52 @@ export default function TimetablePlanner({
             })}
 
             {events
-              .filter((event) => event.row.day === day)
+              .filter((event) => event.day === day)
               .map((event) => {
-                const firstKey = getFirstOverlapKey(event.row, slots);
-                const slotRows = grouped.get(firstKey) ?? [event.row];
                 const hasConflict = event.slotKeys.some((key) => conflictSlotKeys.has(key));
                 const isSelected = event.slotKeys.some((key) => key === selectedSlotKey);
+                if (event.kind === "cluster") {
+                  const firstKey = event.slotKeys[0] ?? getFirstOverlapKey(event.rows[0], slots);
+                  return (
+                    <button
+                      className={`calendar-event calendar-event-group ${hasConflict ? "conflict-current" : ""} ${
+                        isSelected ? "selected" : ""
+                      }`}
+                      disabled={!onSelectSlot}
+                      key={event.id}
+                      onClick={() => onSelectSlot?.(firstKey, event.rows)}
+                      style={event.style}
+                      title={event.rows.map((row) => eventTitle(row, showAmPm)).join("\n")}
+                      type="button"
+                    >
+                      <strong>{event.rows.length} sessions</strong>
+                      <span>
+                        {formatTime(minutesToTime(event.start), showAmPm)} -{" "}
+                        {formatTime(minutesToTime(event.end), showAmPm)}
+                      </span>
+                      <small>
+                        {event.rows
+                          .slice(0, 3)
+                          .map((row) => row.module_code ?? row.requirement_id ?? `Session ${row.session_id}`)
+                          .join(", ")}
+                        {event.rows.length > 3 ? ` +${event.rows.length - 3}` : ""}
+                      </small>
+                    </button>
+                  );
+                }
+
+                const firstKey = getFirstOverlapKey(event.row, slots);
+                const slotRows = grouped.get(firstKey) ?? [event.row];
                 return (
                   <button
-                    className={`calendar-event ${hasConflict ? "conflict-current" : ""} ${
+                    className={`calendar-event ${event.density} ${hasConflict ? "conflict-current" : ""} ${
                       isSelected ? "selected" : ""
                     }`}
                     disabled={!onSelectSlot}
                     key={event.row.scheduled_session_id}
                     onClick={() => onSelectSlot?.(firstKey, slotRows)}
                     style={event.style}
+                    title={eventTitle(event.row, showAmPm)}
                     type="button"
                   >
                     <strong>
@@ -301,38 +366,101 @@ function layoutEvents(
   }
 
   return Array.from(byDay.entries()).flatMap(([, dayRows]) => {
-    const lanes: number[] = [];
-    const assigned = dayRows
+    const timedRows = dayRows
       .slice()
       .sort((left, right) => timeToMinutes(left.start_time) - timeToMinutes(right.start_time))
-      .map((row) => {
-        const start = Math.max(timeToMinutes(row.start_time), rangeStart);
-        const end = Math.min(timeToMinutes(row.end_time), rangeEnd);
-        const lane = lanes.findIndex((laneEnd) => laneEnd <= start);
-        const nextLane = lane >= 0 ? lane : lanes.length;
-        lanes[nextLane] = end;
-        return { row, start, end, lane: nextLane };
-      });
-
-    const laneCount = Math.max(1, lanes.length);
-    return assigned.map(({ row, start, end, lane }) => {
-      const width = 100 / laneCount;
-      const left = width * lane;
-      const slotKeys = slots
-        .filter((slot) => intervalsOverlap(row.start_time, row.end_time, slot.start_time, slot.end_time))
-        .map((slot) => `${row.day}|${slot.start_time}|${slot.end_time}`);
-      return {
+      .map((row) => ({
         row,
-        slotKeys,
-        style: {
-          height: Math.max(30, ((end - start) / 60) * HOUR_HEIGHT - 4),
-          left: `calc(${left}% + 3px)`,
-          top: ((start - rangeStart) / 60) * HOUR_HEIGHT + 2,
-          width: `calc(${width}% - 6px)`,
-        } satisfies CSSProperties,
-      };
+        start: Math.max(timeToMinutes(row.start_time), rangeStart),
+        end: Math.min(timeToMinutes(row.end_time), rangeEnd),
+      }));
+
+    const clusters: { end: number; items: typeof timedRows }[] = [];
+    timedRows.forEach((item) => {
+      const activeCluster = clusters[clusters.length - 1];
+      if (activeCluster && item.start < activeCluster.end) {
+        activeCluster.items.push(item);
+        activeCluster.end = Math.max(activeCluster.end, item.end);
+        return;
+      }
+      clusters.push({ end: item.end, items: [item] });
+    });
+
+    return clusters.flatMap((cluster): CalendarLayoutItem[] => {
+      const lanes: number[] = [];
+      const assigned = cluster.items.map((item) => {
+        const lane = lanes.findIndex((laneEnd) => laneEnd <= item.start);
+        const nextLane = lane >= 0 ? lane : lanes.length;
+        lanes[nextLane] = item.end;
+        return { ...item, lane: nextLane };
+      });
+      const laneCount = Math.max(1, lanes.length);
+
+      if (laneCount > MAX_DETAILED_LANES) {
+        const start = Math.min(...cluster.items.map((item) => item.start));
+        const end = Math.max(...cluster.items.map((item) => item.end));
+        const clusterRows = cluster.items.map((item) => item.row);
+        const slotKeys = uniqueSlotKeys(clusterRows, slots);
+        return [
+          {
+            kind: "cluster",
+            day: clusterRows[0].day,
+            id: `cluster-${clusterRows[0].day}-${start}-${end}-${clusterRows.map((row) => row.session_id).join("-")}`,
+            rows: clusterRows,
+            start,
+            end,
+            slotKeys,
+            style: {
+              height: Math.max(42, ((end - start) / 60) * HOUR_HEIGHT - 6),
+              left: 5,
+              top: ((start - rangeStart) / 60) * HOUR_HEIGHT + 3,
+              width: "calc(100% - 10px)",
+            },
+          },
+        ];
+      }
+
+      return assigned.map(({ row, start, end, lane }) => {
+        const width = 100 / laneCount;
+        const left = width * lane;
+        const slotKeys = slots
+          .filter((slot) => intervalsOverlap(row.start_time, row.end_time, slot.start_time, slot.end_time))
+          .map((slot) => `${row.day}|${slot.start_time}|${slot.end_time}`);
+        return {
+          kind: "event",
+          day: row.day,
+          row,
+          slotKeys,
+          density: laneCount >= 3 ? "compact" : "normal",
+          style: {
+            height: Math.max(36, ((end - start) / 60) * HOUR_HEIGHT - 6),
+            left: `calc(${left}% + 4px)`,
+            top: ((start - rangeStart) / 60) * HOUR_HEIGHT + 3,
+            width: `calc(${width}% - 8px)`,
+          } satisfies CSSProperties,
+        };
+      });
     });
   });
+}
+
+function uniqueSlotKeys(rows: ScheduledRow[], slots: PlannerSlot[]) {
+  return Array.from(
+    new Set(
+      rows.flatMap((row) =>
+        slots
+          .filter((slot) => intervalsOverlap(row.start_time, row.end_time, slot.start_time, slot.end_time))
+          .map((slot) => `${row.day}|${slot.start_time}|${slot.end_time}`),
+      ),
+    ),
+  );
+}
+
+function eventTitle(row: ScheduledRow, showAmPm: boolean) {
+  const label = row.module_code ?? row.requirement_id ?? `Session ${row.session_id}`;
+  const group = row.student_group_code ? ` | ${row.student_group_code}` : "";
+  const room = row.delivery_mode === "Online" ? "Online" : row.room;
+  return `${label}${group} | ${formatTime(row.start_time, showAmPm)} - ${formatTime(row.end_time, showAmPm)} | ${room}`;
 }
 
 function startOfWeek(date: Date) {

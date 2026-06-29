@@ -29,6 +29,8 @@ from app.services.scheduling_constants import (
 )
 from app.services.scheduling_rules import candidate_room_allowed, candidate_slot_allowed
 
+PAIRWISE_SOFT_PENALTY_ASSIGNMENT_LIMIT = 20000
+
 
 @dataclass
 class BuiltModel:
@@ -83,55 +85,62 @@ class TimetableModelBuilder:
 
         soft_penalties = []
         if not no_candidate_reasons:
-            self._add_no_overlap_constraints(model, assignments, lambda item: item["room"].id, soft_penalties, "ROOM")
-            self._add_staff_no_overlap_constraints(model, assignments, soft_penalties)
+            self._add_no_overlap_constraints(model, assignments, lambda item: item["room"].id)
+            self._add_staff_no_overlap_constraints(model, assignments)
             self._add_no_overlap_constraints(
                 model,
                 assignments,
                 lambda item: item["session"].student_group_id,
-                soft_penalties,
-                "GROUP"
             )
 
         for assignment in assignments:
             penalty = self._single_assignment_soft_penalty(assignment, weights)
             if penalty > 0:
                 soft_penalties.append(assignment["variable"] * penalty)
-        if not no_candidate_reasons:
+        # Pairwise soft preferences can dwarf the hard model on broad imports; final checks still score them after solving.
+        if not no_candidate_reasons and len(assignments) <= PAIRWISE_SOFT_PENALTY_ASSIGNMENT_LIMIT:
             soft_penalties.extend(self._pair_soft_penalties(model, assignments, weights))
         if soft_penalties:
             model.Minimize(sum(soft_penalties))
         return BuiltModel(model, variables, assignments, soft_penalties, no_candidate_reasons)
 
-    def _add_no_overlap_constraints(self, model, assignments, key_func, penalties, code) -> None:
-        grouped: dict[int, list[dict]] = {}
+    def _add_no_overlap_constraints(self, model, assignments, key_func) -> None:
+        grouped: dict[int, dict[int, dict]] = {}
         for item in assignments:
             key = key_func(item)
             if key is None:
                 continue
-            grouped.setdefault(key, []).append(item)
+            slot = item["time_slot"]
+            bucket = grouped.setdefault(key, {}).setdefault(slot.id, {"slot": slot, "variables": []})
+            bucket["variables"].append(item["variable"])
 
-        for group in grouped.values():
-            for index, left in enumerate(group):
-                for right in group[index + 1 :]:
-                    if left["session"].id == right["session"].id:
-                        continue
-                    if slot_conflicts(left["time_slot"], right["time_slot"]):
-                        penalties.append(self._both_selected(model, left, right, code) * 100000)
+        for resource_slots in grouped.values():
+            buckets = list(resource_slots.values())
+            for bucket in buckets:
+                if len(bucket["variables"]) > 1:
+                    model.AddAtMostOne(bucket["variables"])
+            for index, left in enumerate(buckets):
+                for right in buckets[index + 1 :]:
+                    if slot_conflicts(left["slot"], right["slot"]):
+                        model.Add(sum(left["variables"] + right["variables"]) <= 1)
 
-    def _add_staff_no_overlap_constraints(self, model, assignments, penalties) -> None:
-        grouped: dict[int, list[dict]] = {}
+    def _add_staff_no_overlap_constraints(self, model, assignments) -> None:
+        grouped: dict[int, dict[int, dict]] = {}
         for item in assignments:
             for staff_id in self._session_staff_ids(item["session"]):
-                grouped.setdefault(staff_id, []).append(item)
+                slot = item["time_slot"]
+                bucket = grouped.setdefault(staff_id, {}).setdefault(slot.id, {"slot": slot, "variables": []})
+                bucket["variables"].append(item["variable"])
 
-        for group in grouped.values():
-            for index, left in enumerate(group):
-                for right in group[index + 1 :]:
-                    if left["session"].id == right["session"].id:
-                        continue
-                    if slot_conflicts(left["time_slot"], right["time_slot"]):
-                        penalties.append(self._both_selected(model, left, right, "STAFF") * 100000)
+        for staff_slots in grouped.values():
+            buckets = list(staff_slots.values())
+            for bucket in buckets:
+                if len(bucket["variables"]) > 1:
+                    model.AddAtMostOne(bucket["variables"])
+            for index, left in enumerate(buckets):
+                for right in buckets[index + 1 :]:
+                    if slot_conflicts(left["slot"], right["slot"]):
+                        model.Add(sum(left["variables"] + right["variables"]) <= 1)
 
     def _single_assignment_soft_penalty(self, assignment: dict, weights: dict[str, int]) -> int:
         session = assignment["session"]

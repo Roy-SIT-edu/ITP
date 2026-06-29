@@ -3,7 +3,7 @@ import type { Room, ScheduledRow, TimeSlot, SessionRow } from "../../types";
 import MoveControls from "./MoveControls";
 import TimetablePlanner from "./TimetablePlanner";
 import { days, type MoveDraft } from "./types";
-import { buildPlannerSlots, duration, getFirstOverlapKey, groupRowsBySlot } from "./timetableUtils";
+import { buildPlannerSlots, duration, getFirstOverlapKey, groupRowsBySlot, timeToMinutes } from "./timetableUtils";
 import { getSession, updateSession, recheckSchedule } from "../../api/client";
 
 type Props = {
@@ -64,12 +64,16 @@ export default function TimetableGrid({
   const [selectedSlotKey, setSelectedSlotKey] = useState<string | null>(
     visibleRows[0] ? getFirstOverlapKey(visibleRows[0], slots) : null,
   );
+  const [selectedRowsOverride, setSelectedRowsOverride] = useState<ScheduledRow[] | null>(null);
   const [isPlacing, setIsPlacing] = useState(false);
   const selectedRow = useMemo(
     () => visibleRows.find((row) => row.session_id === selectedSessionId) ?? visibleRows[0] ?? null,
     [visibleRows, selectedSessionId],
   );
-  const selectedSlotRows = useMemo(() => grouped.get(selectedSlotKey ?? "") ?? [], [grouped, selectedSlotKey]);
+  const selectedSlotRows = useMemo(
+    () => selectedRowsOverride ?? grouped.get(selectedSlotKey ?? "") ?? [],
+    [grouped, selectedRowsOverride, selectedSlotKey],
+  );
 
   const staffOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -87,6 +91,7 @@ export default function TimetableGrid({
     if (visibleRows.length === 0) {
       setSelectedSessionId(null);
       setSelectedSlotKey(null);
+      setSelectedRowsOverride(null);
       return;
     }
     if (!visibleRows.some((row) => row.session_id === selectedSessionId)) {
@@ -94,8 +99,18 @@ export default function TimetableGrid({
     }
     if (!selectedSlotKey || !grouped.has(selectedSlotKey)) {
       setSelectedSlotKey(getFirstOverlapKey(visibleRows[0], slots));
+      setSelectedRowsOverride(null);
     }
   }, [grouped, visibleRows, selectedSessionId, selectedSlotKey, slots]);
+
+  useEffect(() => {
+    if (
+      selectedRowsOverride &&
+      selectedRowsOverride.some((row) => !visibleRows.some((visibleRow) => visibleRow.session_id === row.session_id))
+    ) {
+      setSelectedRowsOverride(null);
+    }
+  }, [selectedRowsOverride, visibleRows]);
 
   if (editable) {
     return (
@@ -149,10 +164,12 @@ export default function TimetableGrid({
                 });
                 setIsPlacing(false);
                 setSelectedSlotKey(key);
+                setSelectedRowsOverride(null);
                 return;
               }
               if (slotRows.length > 0) {
                 setSelectedSlotKey(key);
+                setSelectedRowsOverride(slotRows);
                 setSelectedSessionId(slotRows[0].session_id);
               }
             }}
@@ -312,7 +329,7 @@ function SlotSessionList({
   selectedSessionId: number | null;
   onSelect: (sessionId: number) => void;
 }) {
-  const label = rows[0] ? `${rows[0].day}, ${rows[0].start_time}-${rows[0].end_time}` : "No slot selected";
+  const label = rows.length > 0 ? slotRowsLabel(rows) : "No slot selected";
 
   return (
     <section className="slot-detail-panel">
@@ -351,6 +368,19 @@ function SlotSessionList({
       )}
     </section>
   );
+}
+
+function slotRowsLabel(rows: ScheduledRow[]) {
+  const day = rows[0].day;
+  const start = rows.reduce(
+    (earliest, row) => (timeToMinutes(row.start_time) < timeToMinutes(earliest) ? row.start_time : earliest),
+    rows[0].start_time,
+  );
+  const end = rows.reduce(
+    (latest, row) => (timeToMinutes(row.end_time) > timeToMinutes(latest) ? row.end_time : latest),
+    rows[0].end_time,
+  );
+  return `${day}, ${start}-${end}`;
 }
 
 function SelectedSessionEditor({
