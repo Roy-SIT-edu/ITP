@@ -1,6 +1,6 @@
 /*
- * Soft constraint ranking and timetable generation page.
- * Lets users tune solver priorities before CP-SAT generation runs.
+ * Timetable generation page.
+ * Runs CP-SAT generation using soft constraint priorities configured in Settings.
  */
 
 import { RefreshCw } from "lucide-react";
@@ -11,7 +11,7 @@ import {
   getSoftConstraintPriorities,
   updateSoftConstraintPriorities,
 } from "../api/client";
-import { GenerationReadinessPanel, PriorityRanking, SoftPreferenceTable } from "../components/SoftConstraintWorkflow";
+import { GenerationReadinessPanel, SoftPreferenceTable } from "../components/SoftConstraintWorkflow";
 import InlineActivity from "../components/InlineActivity";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
 import { useSessionState } from "../sessionState";
@@ -51,26 +51,27 @@ export default function SoftConstraintsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [nextPriorities, nextSessions] = await Promise.all([
-        getSoftConstraintPriorities(),
-        getSessions(),
-      ]);
-      setPriorities(nextPriorities);
-      setSessions(nextSessions);
-      setDirty(false);
+      if (dirty) {
+        setSessions(await getSessions());
+      } else {
+        const [nextPriorities, nextSessions] = await Promise.all([getSoftConstraintPriorities(), getSessions()]);
+        setPriorities(nextPriorities);
+        setSessions(nextSessions);
+        setDirty(false);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load soft constraints");
     } finally {
       setLoading(false);
     }
-  }, [setDirty, setError, setPriorities, setSessions]);
+  }, [dirty, setDirty, setError, setPriorities, setSessions]);
 
   useEffect(() => {
-    const shouldLoadInitial = priorities.length === 0 && sessions.length === 0 && !generationResult;
+    const shouldLoadInitial = sessions.length === 0 || (!dirty && priorities.length === 0);
     if (shouldLoadInitial) {
       void load();
     }
-  }, [generationResult, load, priorities.length, sessions.length]);
+  }, [dirty, load, priorities.length, sessions.length]);
 
   const rankedPriorities = useMemo(
     () =>
@@ -94,18 +95,6 @@ export default function SoftConstraintsPage() {
   const isBusy = loading || saving || generating;
   const canGenerate = !loading;
   const readinessText = "Ready to generate.";
-
-  const movePriority = (index: number, direction: -1 | 1) => {
-    const target = index + direction;
-    if (target < 0 || target >= priorities.length) return;
-    setPriorities((current) => {
-      const next = [...current];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-    setDirty(true);
-    setSuccess(null);
-  };
 
   const savePriorities = async () => {
     setSaving(true);
@@ -152,8 +141,8 @@ export default function SoftConstraintsPage() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1>Priorities & Generate</h1>
-          <p>Rank soft constraints and run timetable generation</p>
+          <h1>Generate Timetable</h1>
+          <p>Run timetable generation with the configured soft constraint ranking</p>
         </div>
         <div className="toolbar-row">
           <button className="button secondary" onClick={() => void load()} disabled={isBusy}>
@@ -201,15 +190,6 @@ export default function SoftConstraintsPage() {
       />
 
       <div className="soft-workspace">
-        <PriorityRanking
-          dirty={dirty}
-          generating={generating}
-          priorities={rankedPriorities}
-          saving={saving}
-          onMove={movePriority}
-          onSave={() => void savePriorities()}
-        />
-
         <SoftPreferenceTable rows={softRows} warningCount={warnings.length} />
       </div>
     </div>

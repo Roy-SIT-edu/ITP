@@ -66,7 +66,7 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
     {
       id: "soft-constraints",
       step: 2,
-      label: "Priorities & Generate",
+      label: "Generate Timetable",
       detail: hasImport ? (generationRan ? "Generated" : "Ready to generate") : "Import data first",
       state: generationRan ? "complete" : hasImport ? "ready" : "pending",
       locked: !hasImport,

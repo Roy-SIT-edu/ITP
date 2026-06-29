@@ -7,7 +7,12 @@ export function duration(row: ScheduledRow) {
   return endHour * 60 + endMinute - (startHour * 60 + startMinute);
 }
 
-export function buildPlannerSlots(rows: ScheduledRow[], timeSlots: TimeSlot[]): PlannerSlot[] {
+export function buildPlannerSlots(
+  rows: ScheduledRow[],
+  timeSlots: TimeSlot[],
+  startTime?: string,
+  endTime?: string,
+): PlannerSlot[] {
   let minHour = 9;
   let maxHour = 17;
   const allTimes = [
@@ -24,6 +29,16 @@ export function buildPlannerSlots(rows: ScheduledRow[], timeSlots: TimeSlot[]): 
     minHour = Math.min(minHour, hour);
     maxHour = Math.max(maxHour, minute > 0 ? hour + 1 : hour);
   });
+
+  if (startTime) {
+    minHour = Math.max(0, Math.floor(timeToMinutes(startTime) / 60));
+  }
+  if (endTime) {
+    maxHour = Math.min(24, Math.ceil(timeToMinutes(endTime) / 60));
+  }
+  if (maxHour <= minHour) {
+    maxHour = Math.min(24, minHour + 1);
+  }
 
   const slots = [];
   for (let hour = minHour; hour < maxHour; hour += 1) {

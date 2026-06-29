@@ -26,6 +26,7 @@ import InlineActivity from "../components/InlineActivity";
 import LiveProgress from "../components/LiveProgress";
 import StatusBadge from "../components/StatusBadge";
 import TimetableGrid from "../components/TimetableGrid";
+import { days } from "../components/timetable/types";
 import { timeToMinutes } from "../components/timetable/timetableUtils";
 import { useSessionState } from "../sessionState";
 import type {
@@ -160,13 +161,14 @@ export default function TimetableReviewPage() {
       }
     }
     const available = new Set<string>();
-    const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
     const hours = new Set<number>();
     for (const slot of timeSlots) {
       const h = parseInt(slot.start_time.split(":")[0], 10);
       hours.add(h);
     }
-    if (hours.size === 0) { for (let h = 8; h < 18; h++) hours.add(h); }
+    if (hours.size === 0) {
+      for (let h = 8; h < 18; h++) hours.add(h);
+    }
     for (const day of days) {
       for (const h of hours) {
         const s = `${String(h).padStart(2, "0")}:00`;
@@ -264,7 +266,7 @@ export default function TimetableReviewPage() {
   }, [violations]);
 
   const conflictSessions = useMemo(() => {
-    return rows.filter(r => conflictSessionIds.has(r.session_id));
+    return rows.filter((r) => conflictSessionIds.has(r.session_id));
   }, [rows, conflictSessionIds]);
 
   const handleAutoResolve = async () => {
@@ -299,7 +301,7 @@ export default function TimetableReviewPage() {
         </div>
       </div>
       {error && <div className="notice bad">{error}</div>}
-      
+
       {resolving ? (
         <LiveProgress />
       ) : loading ? (
@@ -309,7 +311,7 @@ export default function TimetableReviewPage() {
           steps={["Loading latest run", "Reading conflicts", "Building timetable view"]}
         />
       ) : null}
-      
+
       {schedule && (
         <>
           <section className="status-card review-summary">
@@ -425,6 +427,7 @@ export default function TimetableReviewPage() {
             </div>
             <TimetableGrid
               rows={filteredRows}
+              allRows={rows}
               editable
               rooms={rooms}
               timeSlots={timeSlots}
@@ -445,7 +448,7 @@ export default function TimetableReviewPage() {
                 <div className="status-card-title">Conflicts</div>
                 <p>
                   {violations.length} issue{violations.length !== 1 ? "s" : ""} found —{" "}
-                  {violations.some(v => v.severity === "HARD") ? (
+                  {violations.some((v) => v.severity === "HARD") ? (
                     <strong style={{ color: "#dc2626" }}>Must resolve to finalize</strong>
                   ) : violations.length > 0 ? (
                     <span style={{ color: "#f97316" }}>Optional to resolve</span>
@@ -455,13 +458,23 @@ export default function TimetableReviewPage() {
                 </p>
               </div>
               <div style={{ display: "flex", gap: "10px" }}>
-                  <button className={`button slim ${conflictTab === "modules" ? "" : "secondary"}`} onClick={() => setConflictTab("modules")}>Modules to Reassign</button>
-                  <button className={`button slim ${conflictTab === "issues" ? "" : "secondary"}`} onClick={() => setConflictTab("issues")}>Raw Issues</button>
-                  {activeSessionId && (
-                    <button className="button secondary slim" onClick={() => setActiveSessionId(null)}>
-                      Clear Selection
-                    </button>
-                  )}
+                <button
+                  className={`button slim ${conflictTab === "modules" ? "" : "secondary"}`}
+                  onClick={() => setConflictTab("modules")}
+                >
+                  Modules to Reassign
+                </button>
+                <button
+                  className={`button slim ${conflictTab === "issues" ? "" : "secondary"}`}
+                  onClick={() => setConflictTab("issues")}
+                >
+                  Raw Issues
+                </button>
+                {activeSessionId && (
+                  <button className="button secondary slim" onClick={() => setActiveSessionId(null)}>
+                    Clear Selection
+                  </button>
+                )}
               </div>
             </div>
             {movingConflict && (
@@ -473,8 +486,8 @@ export default function TimetableReviewPage() {
             )}
             {activeSessionId && (
               <div className="conflict-resolution-banner">
-                Showing conflicts for Session <strong>{activeSessionId}</strong> —{" "}
-                click a <span className="green-label">green slot</span> on the timetable to move it.
+                Showing conflicts for Session <strong>{activeSessionId}</strong> — click a{" "}
+                <span className="green-label">green slot</span> on the timetable to move it.
               </div>
             )}
             {conflictTab === "modules" ? (
@@ -491,27 +504,33 @@ export default function TimetableReviewPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {conflictSessions.map(row => {
-                      const rowViolations = violations.filter(v => v.affected_session_ids.includes(row.session_id));
+                    {conflictSessions.map((row) => {
+                      const rowViolations = violations.filter((v) => v.affected_session_ids.includes(row.session_id));
                       const isActive = activeSessionId === row.session_id;
-                      const hasHard = rowViolations.some(v => v.severity === "HARD");
+                      const hasHard = rowViolations.some((v) => v.severity === "HARD");
                       const borderStyle = hasHard ? "4px solid #dc2626" : "4px solid #f97316";
                       return (
-                        <tr key={row.session_id} 
-                            className={isActive ? "conflict-active-row" : ""} 
-                            onClick={() => setActiveSessionId(row.session_id)}
-                            style={{ cursor: 'pointer' }}>
+                        <tr
+                          key={row.session_id}
+                          className={isActive ? "conflict-active-row" : ""}
+                          onClick={() => setActiveSessionId(row.session_id)}
+                          style={{ cursor: "pointer" }}
+                        >
                           <td style={{ borderLeft: borderStyle }}>{row.programme || `Req-${row.session_id}`}</td>
                           <td>{row.student_group_code}</td>
                           <td>{row.staff_name}</td>
-                          <td>{row.day} {row.start_time}-{row.end_time}</td>
+                          <td>
+                            {row.day} {row.start_time}-{row.end_time}
+                          </td>
                           <td>{row.room}</td>
                           <td>{rowViolations.length} issue(s)</td>
                         </tr>
                       );
                     })}
                     {conflictSessions.length === 0 && (
-                      <tr><td colSpan={6}>No modules with conflicts.</td></tr>
+                      <tr>
+                        <td colSpan={6}>No modules with conflicts.</td>
+                      </tr>
                     )}
                   </tbody>
                 </table>

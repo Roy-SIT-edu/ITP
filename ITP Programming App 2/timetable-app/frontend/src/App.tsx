@@ -11,6 +11,7 @@ import ExportPage from "./pages/ExportPage";
 import TimetableReviewPage from "./pages/TimetableReviewPage";
 import UploadPage from "./pages/UploadPage";
 import SoftConstraintsPage from "./pages/SoftConstraintsPage";
+import SettingsPage from "./pages/SettingsPage";
 
 const routeMap = {
   dashboard: DashboardPage,
@@ -23,6 +24,7 @@ const routeMap = {
   "soft-constraints": SoftConstraintsPage,
   review: TimetableReviewPage,
   export: ExportPage,
+  settings: SettingsPage,
 };
 
 type RouteKey = keyof typeof routeMap;

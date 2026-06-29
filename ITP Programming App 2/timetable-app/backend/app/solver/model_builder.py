@@ -74,17 +74,9 @@ class TimetableModelBuilder:
                     assignments.append(assignment)
                     session_vars.append(variable)
             if not session_vars:
-                dummy_slot = time_slots[0]
-                dummy_room = rooms[0]
-                variable = model.NewBoolVar(f"x_dummy_{session.id}")
-                variables[(session.id, dummy_slot.id, dummy_room.id)] = variable
-                assignments.append({
-                    "session": session,
-                    "time_slot": dummy_slot,
-                    "room": dummy_room,
-                    "variable": variable,
-                })
-                session_vars.append(variable)
+                label = session.requirement_id or (session.module.module_code if session.module else f"session {session.id}")
+                no_candidate_reasons.append(f"No feasible time slot and room combination is available for {label}.")
+                continue
             
             # Every requirement must be scheduled exactly once.
             model.Add(sum(session_vars) == 1)

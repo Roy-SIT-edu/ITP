@@ -104,12 +104,12 @@ export default function ValidationStatusBoard({
 
       <section className="status-card gate-card">
         <div className="status-card-title">Next step</div>
-        <p>After hard validation passes, set priorities and generate the timetable.</p>
+        <p>After hard validation passes, generate the timetable. Soft priority ranking is available in Settings.</p>
         <a
           className={`button large ${hasValidated && validation?.error_count === 0 ? "" : "disabled-link"}`}
           href="#soft-constraints"
         >
-          Priorities & Generate
+          Generate Timetable
         </a>
       </section>
     </div>

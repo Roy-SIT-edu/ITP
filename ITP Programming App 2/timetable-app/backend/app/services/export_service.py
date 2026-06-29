@@ -39,7 +39,10 @@ class ExportService:
                     "day": item.day,
                     "start_time": item.start_time,
                     "end_time": item.end_time,
+                    "start_week": session.start_week,
+                    "end_week": session.end_week,
                     "week_pattern": item.week_pattern,
+                    "custom_weeks": session.custom_weeks,
                     "delivery_mode": session.delivery_mode,
                     "campus_mode": session.campus_mode,
                 }

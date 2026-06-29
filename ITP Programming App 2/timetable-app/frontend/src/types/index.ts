@@ -135,7 +135,10 @@ export type ScheduledRow = {
   day: string;
   start_time: string;
   end_time: string;
+  start_week: number | null;
+  end_week: number | null;
   week_pattern: string;
+  custom_weeks: string | null;
   delivery_mode: string | null;
   campus_mode: string | null;
 };
