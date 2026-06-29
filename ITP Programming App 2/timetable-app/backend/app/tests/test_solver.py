@@ -33,6 +33,25 @@ def test_impossible_room_capacity_returns_infeasible(db_session):
     assert result["solver_status"] == "INFEASIBLE"
 
 
+def test_unavoidable_resource_clash_still_returns_reviewable_schedule(db_session):
+    sessions = db_session.query(Session).order_by(Session.id).limit(2).all()
+    for session in sessions:
+        session.delivery_mode = "Face-to-face"
+        session.venue_type_required = "classroom"
+        session.exact_class_size = 20
+        session.duration_minutes = 120
+
+    slot = db_session.query(TimeSlot).filter_by(day="Monday", start_time="09:00", end_time="11:00", week_pattern="Weekly").one()
+    room = db_session.query(Room).filter_by(room_code="SR-02").one()
+
+    result = CpSatTimetableSolver().solve(sessions, [slot], [room], max_seconds=5)
+
+    assert result["solver_status"] in {"FEASIBLE", "OPTIMAL"}
+    assert len(result["assignments"]) == 2
+    assert {assignment["room_id"] for assignment in result["assignments"]} == {room.id}
+    assert {assignment["time_slot_id"] for assignment in result["assignments"]} == {slot.id}
+
+
 def test_fixed_session_with_no_matching_slot_returns_validation_error(db_session):
     session = db_session.query(Session).first()
     session.scheduling_type = "Fixed"

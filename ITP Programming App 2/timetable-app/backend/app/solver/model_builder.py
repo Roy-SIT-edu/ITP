@@ -1,7 +1,8 @@
 """Builds the OR-Tools CP-SAT model for timetable assignments.
 
 Each boolean variable means one session is assigned to one compatible
-room/time-slot pair; constraints then prevent clashes across rooms, staff, and groups.
+room/time-slot pair. Resource clashes are penalized heavily so a timetable can
+still be produced and reviewed when the input contains unavoidable hard issues.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from app.services.scheduling_constants import (
 )
 from app.services.scheduling_rules import candidate_room_allowed, candidate_slot_allowed
 
+HARD_CONFLICT_PENALTY = 100000
 PAIRWISE_SOFT_PENALTY_ASSIGNMENT_LIMIT = 20000
 
 
@@ -85,12 +87,14 @@ class TimetableModelBuilder:
 
         soft_penalties = []
         if not no_candidate_reasons:
-            self._add_no_overlap_constraints(model, assignments, lambda item: item["room"].id)
-            self._add_staff_no_overlap_constraints(model, assignments)
+            self._add_no_overlap_constraints(model, assignments, lambda item: item["room"].id, soft_penalties, "ROOM")
+            self._add_staff_no_overlap_constraints(model, assignments, soft_penalties)
             self._add_no_overlap_constraints(
                 model,
                 assignments,
                 lambda item: item["session"].student_group_id,
+                soft_penalties,
+                "GROUP",
             )
 
         for assignment in assignments:
@@ -104,7 +108,7 @@ class TimetableModelBuilder:
             model.Minimize(sum(soft_penalties))
         return BuiltModel(model, variables, assignments, soft_penalties, no_candidate_reasons)
 
-    def _add_no_overlap_constraints(self, model, assignments, key_func) -> None:
+    def _add_no_overlap_constraints(self, model, assignments, key_func, penalties, code) -> None:
         grouped: dict[int, dict[int, dict]] = {}
         for item in assignments:
             key = key_func(item)
@@ -117,14 +121,13 @@ class TimetableModelBuilder:
         for resource_slots in grouped.values():
             buckets = list(resource_slots.values())
             for bucket in buckets:
-                if len(bucket["variables"]) > 1:
-                    model.AddAtMostOne(bucket["variables"])
+                self._add_bucket_excess_penalty(model, bucket["variables"], penalties, f"{code}_SAME_SLOT")
             for index, left in enumerate(buckets):
                 for right in buckets[index + 1 :]:
                     if slot_conflicts(left["slot"], right["slot"]):
-                        model.Add(sum(left["variables"] + right["variables"]) <= 1)
+                        self._add_bucket_excess_penalty(model, left["variables"] + right["variables"], penalties, f"{code}_OVERLAP")
 
-    def _add_staff_no_overlap_constraints(self, model, assignments) -> None:
+    def _add_staff_no_overlap_constraints(self, model, assignments, penalties) -> None:
         grouped: dict[int, dict[int, dict]] = {}
         for item in assignments:
             for staff_id in self._session_staff_ids(item["session"]):
@@ -135,12 +138,18 @@ class TimetableModelBuilder:
         for staff_slots in grouped.values():
             buckets = list(staff_slots.values())
             for bucket in buckets:
-                if len(bucket["variables"]) > 1:
-                    model.AddAtMostOne(bucket["variables"])
+                self._add_bucket_excess_penalty(model, bucket["variables"], penalties, "STAFF_SAME_SLOT")
             for index, left in enumerate(buckets):
                 for right in buckets[index + 1 :]:
                     if slot_conflicts(left["slot"], right["slot"]):
-                        model.Add(sum(left["variables"] + right["variables"]) <= 1)
+                        self._add_bucket_excess_penalty(model, left["variables"] + right["variables"], penalties, "STAFF_OVERLAP")
+
+    def _add_bucket_excess_penalty(self, model, variables, penalties, label) -> None:
+        if len(variables) <= 1:
+            return
+        excess = model.NewIntVar(0, len(variables) - 1, f"hard_{label}_{len(variables)}_{len(penalties)}")
+        model.Add(excess >= sum(variables) - 1)
+        penalties.append(excess * HARD_CONFLICT_PENALTY)
 
     def _single_assignment_soft_penalty(self, assignment: dict, weights: dict[str, int]) -> int:
         session = assignment["session"]
