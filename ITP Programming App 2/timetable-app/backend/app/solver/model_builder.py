@@ -111,7 +111,7 @@ class TimetableModelBuilder:
             if penalty > 0:
                 soft_penalties.append(assignment["variable"] * penalty)
         # Pairwise soft preferences can dwarf the hard model on broad imports; final checks still score them after solving.
-        if not no_candidate_reasons and len(assignments) <= PAIRWISE_SOFT_PENALTY_ASSIGNMENT_LIMIT:
+        if not no_candidate_reasons and not relax_hard_conflicts and len(assignments) <= PAIRWISE_SOFT_PENALTY_ASSIGNMENT_LIMIT:
             soft_penalties.extend(self._pair_soft_penalties(model, assignments, weights))
         if soft_penalties:
             model.Minimize(sum(soft_penalties))

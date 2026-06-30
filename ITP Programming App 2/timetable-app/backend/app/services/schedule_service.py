@@ -25,7 +25,7 @@ class ScheduleService:
         self.constraint_service = ConstraintService()
         self.priority_service = SoftConstraintPriorityService()
 
-    def generate(self, db: DbSession, timeout: float = 20.0, fast_mode: bool = False) -> dict:
+    def generate(self, db: DbSession, timeout: float = 0.0, fast_mode: bool = False) -> dict:
         sessions = db.query(Session).order_by(Session.id).all()
         time_slots = db.query(TimeSlot).order_by(TimeSlot.day, TimeSlot.start_time).all()
         rooms = db.query(Room).order_by(Room.room_code).all()

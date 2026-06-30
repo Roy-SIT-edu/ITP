@@ -148,14 +148,28 @@ export default function TimetableReviewPage() {
 
   const availableSlotKeys = useMemo(() => {
     if (!activeSessionId) return new Set<string>();
+    const targetRow = rows.find((r) => r.session_id === activeSessionId);
+    if (!targetRow) return new Set<string>();
+
     const occupied = new Set<string>();
     for (const row of rows) {
-      const startMin = timeToMinutes(row.start_time);
-      const endMin = timeToMinutes(row.end_time);
-      for (let h = Math.floor(startMin / 60); h < Math.ceil(endMin / 60); h++) {
-        const s = `${String(h).padStart(2, "0")}:00`;
-        const e = `${String(h + 1).padStart(2, "0")}:00`;
-        occupied.add(`${row.day}|${s}|${e}`);
+      if (row.session_id === activeSessionId) continue;
+
+      const sameRoom = row.room === targetRow.room;
+      const sameStaff =
+        (row.staff_id && targetRow.staff_id && row.staff_id === targetRow.staff_id) ||
+        (row.staff_name && targetRow.staff_name && row.staff_name === targetRow.staff_name);
+      const sameGroup =
+        row.student_group_code && targetRow.student_group_code && row.student_group_code === targetRow.student_group_code;
+
+      if (sameRoom || sameStaff || sameGroup) {
+        const startMin = timeToMinutes(row.start_time);
+        const endMin = timeToMinutes(row.end_time);
+        for (let h = Math.floor(startMin / 60); h < Math.ceil(endMin / 60); h++) {
+          const s = `${String(h).padStart(2, "0")}:00`;
+          const e = `${String(h + 1).padStart(2, "0")}:00`;
+          occupied.add(`${row.day}|${s}|${e}`);
+        }
       }
     }
     const available = new Set<string>();
@@ -264,8 +278,15 @@ export default function TimetableReviewPage() {
   }, [violations]);
 
   const conflictSessions = useMemo(() => {
-    return rows.filter((r) => conflictSessionIds.has(r.session_id));
-  }, [rows, conflictSessionIds]);
+    const sessions = rows.filter((r) => conflictSessionIds.has(r.session_id));
+    return sessions.sort((a, b) => {
+      const aHasHard = violations.some((v) => v.severity === "HARD" && v.affected_session_ids.includes(a.session_id));
+      const bHasHard = violations.some((v) => v.severity === "HARD" && v.affected_session_ids.includes(b.session_id));
+      if (aHasHard && !bHasHard) return -1;
+      if (!aHasHard && bHasHard) return 1;
+      return 0;
+    });
+  }, [rows, conflictSessionIds, violations]);
 
   return (
     <div className="page">

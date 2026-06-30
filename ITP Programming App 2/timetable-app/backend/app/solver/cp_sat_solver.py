@@ -28,7 +28,7 @@ class CpSatTimetableSolver:
         time_slots: list[TimeSlot],
         rooms: list[Room],
         soft_constraint_weights: dict[str, int] | None = None,
-        max_seconds: float = 20.0,
+        max_seconds: float = 0.0,
         fast_mode: bool = False,
     ) -> dict:
         if not sessions:
@@ -52,10 +52,10 @@ class CpSatTimetableSolver:
         if result["solver_status"] in {"OPTIMAL", "FEASIBLE"}:
             return result
 
-        # Keep the review workflow usable for genuinely over-constrained input:
-        # if strict room/staff/group clash prevention is impossible, rebuild with
+        # Keep the review workflow usable for genuinely over-constrained input or timeouts:
+        # if strict room/staff/group clash prevention is impossible or takes too long, rebuild with
         # heavy clash penalties so the timetable can still be inspected.
-        if result["solver_status"] == "INFEASIBLE":
+        if result["solver_status"] in {"INFEASIBLE", "UNKNOWN"}:
             relaxed = self.model_builder.build(
                 sessions,
                 time_slots,
@@ -63,13 +63,14 @@ class CpSatTimetableSolver:
                 soft_constraint_weights,
                 relax_hard_conflicts=True,
             )
-            return self._solve_built_model(relaxed, max_seconds, fast_mode)
+            return self._solve_built_model(relaxed, max_seconds, fast_mode=True)
 
         return result
 
     def _solve_built_model(self, built, max_seconds: float, fast_mode: bool) -> dict:
         solver = cp_model.CpSolver()
-        solver.parameters.max_time_in_seconds = max_seconds
+        if max_seconds > 0:
+            solver.parameters.max_time_in_seconds = max_seconds
         if fast_mode:
             solver.parameters.stop_after_first_solution = True
         # Multiple workers usually improves feasibility search on timetable grids.
