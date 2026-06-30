@@ -679,7 +679,7 @@ function SelectedSessionEditor({
                   list={`room-options-${row.session_id}`}
                   value={draft.room_code}
                   onChange={(e) => updateMove({ room_code: e.target.value })}
-                  placeholder="Leave empty to auto-assign"
+                  placeholder="Select a room"
                 />
               </label>
             </div>

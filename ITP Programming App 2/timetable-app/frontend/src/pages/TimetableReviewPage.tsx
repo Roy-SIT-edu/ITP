@@ -19,7 +19,6 @@ import {
   updateSession,
   recheckSchedule,
   generateSchedule,
-  autoResolveSchedule,
 } from "../api/client";
 import ConflictTable from "../components/ConflictTable";
 import InlineActivity from "../components/InlineActivity";
@@ -76,7 +75,6 @@ export default function TimetableReviewPage() {
   const [moveDrafts, setMoveDrafts] = useSessionState<Record<number, MoveDraft>>("review.moveDrafts", {});
   const [savingMove, setSavingMove] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
-  const [resolving, setResolving] = useState(false);
   const [error, setError] = useSessionState<string | null>("review.error", null);
   const [activeSessionId, setActiveSessionId] = useSessionState<number | null>("review.activeSessionId", null);
   const [movingConflict, setMovingConflict] = useState(false);
@@ -269,19 +267,6 @@ export default function TimetableReviewPage() {
     return rows.filter((r) => conflictSessionIds.has(r.session_id));
   }, [rows, conflictSessionIds]);
 
-  const handleAutoResolve = async () => {
-    setResolving(true);
-    setError(null);
-    try {
-      await autoResolveSchedule();
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to resolve conflicts");
-    } finally {
-      setResolving(false);
-    }
-  };
-
   return (
     <div className="page">
       <div className="page-header">
@@ -290,21 +275,15 @@ export default function TimetableReviewPage() {
           <p>Inspect and adjust the generated timetable</p>
         </div>
         <div className="toolbar-row">
-          <button className="button secondary" onClick={load} disabled={loading || resolving}>
-            <RefreshCw className={loading && !resolving ? "spin" : ""} size={17} />
+          <button className="button secondary" onClick={load} disabled={loading}>
+            <RefreshCw className={loading ? "spin" : ""} size={17} />
             Refresh
-          </button>
-          <button className="button primary" onClick={handleAutoResolve} disabled={loading || resolving}>
-            {resolving && <RefreshCw className="spin" size={17} />}
-            {resolving ? "Resolving..." : "Resolve Conflicts"}
           </button>
         </div>
       </div>
       {error && <div className="notice bad">{error}</div>}
 
-      {resolving ? (
-        <LiveProgress />
-      ) : loading ? (
+      {loading ? (
         <InlineActivity
           kind="review"
           title="Preparing timetable review"

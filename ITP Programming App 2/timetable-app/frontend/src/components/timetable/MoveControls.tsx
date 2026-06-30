@@ -88,7 +88,7 @@ export default function MoveControls({
             list={`room-options-${row.session_id}`}
             value={draft.room_code}
             onChange={(event) => update({ room_code: event.target.value })}
-            placeholder="Leave empty to auto-assign"
+            placeholder="Select a room"
           />
         </label>
       </div>

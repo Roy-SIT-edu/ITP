@@ -158,12 +158,6 @@ export function generateSchedule() {
   });
 }
 
-export function autoResolveSchedule() {
-  return request<ScheduleGenerateResult>("/api/schedules/auto-resolve", {
-    method: "POST",
-  });
-}
-
 export function getSoftConstraintPriorities() {
   return request<SoftConstraintPriority[]>("/api/soft-constraints");
 }
