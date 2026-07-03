@@ -1,5 +1,5 @@
 import { CalendarDays, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import type { ScheduledRow } from "../../types";
 import { days, type MoveDraft, type PlannerSlot } from "./types";
 import { getFirstOverlapKey, intervalsOverlap, timeToMinutes } from "./timetableUtils";
@@ -75,13 +75,7 @@ export default function TimetablePlanner({
   const [showAmPm, setShowAmPm] = useState(true);
   const [showClassTitle, setShowClassTitle] = useState(true);
   const [showInstructors, setShowInstructors] = useState(false);
-  const populatedDays = useMemo(() => days.filter((day) => rows.some((row) => row.day === day)), [rows]);
-  const defaultVisibleDays = useMemo(
-    () => (populatedDays.length > 0 ? populatedDays : days.slice(0, 5)),
-    [populatedDays],
-  );
-  const [visibleDays, setVisibleDays] = useState(defaultVisibleDays);
-  const [daySelectionTouched, setDaySelectionTouched] = useState(false);
+  const [visibleDays, setVisibleDays] = useState<string[]>(() => [...days]);
   const displayDays = days.filter((day) => visibleDays.includes(day));
   const rangeStart = slots[0] ? timeToMinutes(slots[0].start_time) : timeToMinutes(displayStartTime);
   const rangeEnd = slots[slots.length - 1]
@@ -96,12 +90,6 @@ export default function TimetablePlanner({
     () => layoutEvents(rows, displayDays, rangeStart, rangeEnd, slots),
     [displayDays, rangeEnd, rangeStart, rows, slots],
   );
-
-  useEffect(() => {
-    if (!daySelectionTouched) {
-      setVisibleDays(defaultVisibleDays);
-    }
-  }, [daySelectionTouched, defaultVisibleDays]);
 
   const updateStartTime = (value: string) => {
     onDisplayStartTimeChange?.(value);
@@ -118,7 +106,6 @@ export default function TimetablePlanner({
   };
 
   const toggleDay = (day: string) => {
-    setDaySelectionTouched(true);
     setVisibleDays((current) => {
       if (current.includes(day)) {
         return current.length > 1 ? current.filter((item) => item !== day) : current;
