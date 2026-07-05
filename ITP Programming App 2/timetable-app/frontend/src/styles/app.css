@@ -4751,6 +4751,54 @@ tr.conflict-active-row:hover {
   align-items: center;
 }
 
+.settings-section-heading {
+  margin-top: 2px;
+}
+
+.settings-default-card {
+  display: grid;
+  gap: 18px;
+}
+
+.settings-block-heading {
+  align-items: start;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.settings-block-heading p {
+  color: var(--color-text-secondary);
+  margin-top: 4px;
+}
+
+.settings-field-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.settings-field-grid.single {
+  grid-template-columns: minmax(260px, 420px);
+}
+
+.settings-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.settings-field span {
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.settings-field input,
+.settings-field select {
+  width: 100%;
+}
+
 .theme-toggle {
   align-items: center;
   color: var(--color-text);
