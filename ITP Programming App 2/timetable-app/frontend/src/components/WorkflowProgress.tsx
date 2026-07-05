@@ -57,22 +57,31 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
 
   const processStages: ProcessStage[] = [
     {
-      id: "upload",
+      id: "workflow/import",
+      step: 1,
       label: "Import Data",
       detail: hasImport ? `${dashboard?.imported_rows ?? 0} rows loaded` : "Waiting for data",
       state: hasImport ? "complete" : "pending",
       locked: false,
     },
     {
-      id: "soft-constraints",
+      id: "workflow/priority-rankings",
       step: 2,
+      label: "Priority Rankings",
+      detail: hasImport ? "Review solver weights" : "Import data first",
+      state: hasImport ? "ready" : "pending",
+      locked: !hasImport,
+    },
+    {
+      id: "workflow/generate",
+      step: 3,
       label: "Generate Timetable",
       detail: hasImport ? (generationRan ? "Generated" : "Ready to generate") : "Import data first",
       state: generationRan ? "complete" : hasImport ? "ready" : "pending",
       locked: !hasImport,
     },
     {
-      id: "review",
+      id: "workflow/review",
       step: 4,
       label: "Review Timetable",
       detail: generationRan ? (latest?.solver_status ?? latest?.status ?? "Review schedule") : "Generate first",
@@ -80,7 +89,7 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
       locked: !generationRan,
     },
     {
-      id: "export",
+      id: "workflow/export",
       step: 5,
       label: "Export Timetable",
       detail: success ? "Ready to export" : latest ? `${latest.hard_violation_count} hard conflicts` : "Review first",

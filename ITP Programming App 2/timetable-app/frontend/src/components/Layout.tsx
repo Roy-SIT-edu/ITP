@@ -11,6 +11,7 @@ import {
   Download,
   FileUp,
   Gauge,
+  ListOrdered,
   Settings as SettingsIcon,
   SlidersHorizontal,
   TableProperties,
@@ -35,10 +36,11 @@ const databaseItems = [
 ];
 
 const workflowItems = [
-  { id: "upload", label: "Import Data", icon: FileUp },
-  { id: "soft-constraints", label: "Generate Timetable", icon: SlidersHorizontal },
-  { id: "review", label: "Review Timetable", icon: TableProperties },
-  { id: "export", label: "Export Timetable", icon: Download },
+  { id: "workflow/import", label: "Import Data", icon: FileUp },
+  { id: "workflow/priority-rankings", label: "Priority Rankings", icon: ListOrdered },
+  { id: "workflow/generate", label: "Generate Timetable", icon: SlidersHorizontal },
+  { id: "workflow/review", label: "Review Timetable", icon: TableProperties },
+  { id: "workflow/export", label: "Export Timetable", icon: Download },
 ];
 
 export default function Layout({ route, onNavigate, children }: Props) {
@@ -84,12 +86,12 @@ export default function Layout({ route, onNavigate, children }: Props) {
             <span>Overview</span>
           </a>
           <a
-            className={route === "settings" ? "sidebar-link active" : "sidebar-link"}
+            className={route.startsWith("settings") ? "sidebar-link active" : "sidebar-link"}
             href="#settings"
             onClick={() => onNavigate("settings")}
           >
             <SettingsIcon size={18} />
-            <span>Settings</span>
+            <span>General Settings</span>
           </a>
           <div className="sidebar-nav-group">
             <button

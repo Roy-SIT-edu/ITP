@@ -1,6 +1,6 @@
 /*
  * Timetable generation page.
- * Runs CP-SAT generation using soft constraint priorities configured in Settings.
+ * Runs CP-SAT generation using soft constraint priorities configured in Priority Rankings.
  */
 
 import { RefreshCw } from "lucide-react";

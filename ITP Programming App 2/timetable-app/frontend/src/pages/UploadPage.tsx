@@ -37,6 +37,7 @@ export default function UploadPage() {
   const [error, setError] = useSessionState<string | null>("upload.error", null);
   const [success, setSuccess] = useSessionState<string | null>("upload.success", null);
   const [readinessError, setReadinessError] = useState<string | null>(null);
+  const canProceed = sessions.length > 0 || (summary?.rows_imported ?? 0) > 0;
 
   const loadReadiness = useCallback(async () => {
     setReadinessLoading(true);
@@ -144,6 +145,11 @@ export default function UploadPage() {
           <button className="button secondary" type="button" onClick={handleReset} disabled={busy || resetting}>
             {resetting ? "Clearing" : "Reset Input"}
           </button>
+          {canProceed && (
+            <a className="button" href="#workflow/priority-rankings">
+              Proceed to Priority Rankings
+            </a>
+          )}
         </div>
       </div>
 
