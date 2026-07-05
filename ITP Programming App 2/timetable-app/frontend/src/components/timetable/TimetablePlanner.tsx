@@ -75,11 +75,7 @@ export default function TimetablePlanner({
   const [showAmPm, setShowAmPm] = useState(true);
   const [showClassTitle, setShowClassTitle] = useState(true);
   const [showInstructors, setShowInstructors] = useState(false);
-  const populatedDays = useMemo(() => days.filter((day) => rows.some((row) => row.day === day)), [rows]);
-  const defaultVisibleDays = useMemo(
-    () => (populatedDays.length > 0 ? populatedDays : days.slice(0, 5)),
-    [populatedDays],
-  );
+  const defaultVisibleDays = useMemo(() => days.slice(), []);
   const [visibleDays, setVisibleDays] = useState(defaultVisibleDays);
   const [daySelectionTouched, setDaySelectionTouched] = useState(false);
   const displayDays = days.filter((day) => visibleDays.includes(day));
