@@ -73,18 +73,19 @@ class SoftConstraintPriorityService:
                 raise ValueError(f"Unknown soft constraint: {code}")
             if code not in cleaned:
                 cleaned.append(code)
-        cleaned.extend(code for code in known_codes if code not in cleaned)
+        inactive_codes = [code for code in known_codes if code not in cleaned]
+        ordered_all_codes = [*cleaned, *inactive_codes]
 
         self._ensure_defaults(db)
         rows = {
             item.constraint_code: item
             for item in db.query(SoftConstraintPriority).filter(SoftConstraintPriority.constraint_code.in_(known_codes)).all()
         }
-        total = len(known_codes)
-        for rank, code in enumerate(cleaned, start=1):
+        active_total = len(cleaned)
+        for rank, code in enumerate(ordered_all_codes, start=1):
             row = rows[code]
             row.rank = rank
-            row.weight = self.weight_for_rank(rank, total)
+            row.weight = self.weight_for_rank(rank, active_total) if code in cleaned else 0
         db.commit()
         return self.list_priorities(db)
 

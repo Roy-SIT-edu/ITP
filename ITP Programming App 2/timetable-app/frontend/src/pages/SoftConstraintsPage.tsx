@@ -16,6 +16,19 @@ import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
 import { useSessionState } from "../sessionState";
 import type { ScheduleGenerateResult, SoftConstraintPriority } from "../types";
 
+function withActiveState(items: SoftConstraintPriority[]) {
+  return items.map((item) => ({
+    ...item,
+    isActive: item.isActive ?? item.weight > 0,
+  }));
+}
+
+function activePriorityCodes(items: SoftConstraintPriority[]) {
+  return withActiveState(items)
+    .filter((item) => item.isActive)
+    .map((item) => item.constraint_code);
+}
+
 export default function SoftConstraintsPage() {
   const [priorities, setPriorities] = useSessionState<SoftConstraintPriority[]>("soft.priorities", []);
   const [generationResult, setGenerationResult] = useSessionState<ScheduleGenerateResult | null>(
@@ -35,7 +48,7 @@ export default function SoftConstraintsPage() {
     try {
       if (!dirty) {
         const nextPriorities = await getSoftConstraintPriorities();
-        setPriorities(nextPriorities);
+        setPriorities(withActiveState(nextPriorities));
         setDirty(false);
       }
     } catch (err) {
@@ -59,8 +72,8 @@ export default function SoftConstraintsPage() {
     setError(null);
     setSuccess(null);
     try {
-      const saved = await updateSoftConstraintPriorities(priorities.map((item) => item.constraint_code));
-      setPriorities(saved);
+      const saved = await updateSoftConstraintPriorities(activePriorityCodes(priorities));
+      setPriorities(withActiveState(saved));
       setDirty(false);
       setSuccess("Soft constraint ranking saved.");
       return saved;

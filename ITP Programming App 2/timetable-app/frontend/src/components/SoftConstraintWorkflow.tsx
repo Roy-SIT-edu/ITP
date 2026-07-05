@@ -3,8 +3,9 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import StatusBadge from "./StatusBadge";
 import type { ScheduleGenerateResult, SessionRow, SoftConstraintPriority } from "../types";
 
-export type RankedSoftPriority = SoftConstraintPriority & {
-  rank: number;
+export type RankedSoftPriority = Omit<SoftConstraintPriority, "rank"> & {
+  isActive: boolean;
+  rank: number | null;
   weight: number;
 };
 
@@ -131,6 +132,7 @@ export function PriorityRanking({
   saving,
   onMove,
   onSave,
+  onToggle,
 }: {
   dirty: boolean;
   generating: boolean;
@@ -138,9 +140,11 @@ export function PriorityRanking({
   saving: boolean;
   onMove: (index: number, direction: -1 | 1) => void;
   onSave: () => void;
+  onToggle: (constraintCode: string, isActive: boolean) => void;
 }) {
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
   const previousRects = useRef(new Map<string, DOMRect>());
+  const lastActiveIndex = priorities.reduce((lastIndex, item, index) => (item.isActive ? index : lastIndex), -1);
 
   const setRowRef = (code: string) => (element: HTMLDivElement | null) => {
     if (element) {
@@ -207,10 +211,20 @@ export function PriorityRanking({
       ) : (
         <div className="priority-list">
           {priorities.map((item, index) => (
-            <div className="priority-row" key={item.constraint_code} ref={setRowRef(item.constraint_code)}>
+            <div
+              className={`priority-row ${item.isActive ? "active" : "inactive"}`}
+              key={item.constraint_code}
+              ref={setRowRef(item.constraint_code)}
+            >
               <div className="priority-rank">
-                <span>Rank</span>
-                <strong>{item.rank}</strong>
+                {item.isActive && item.rank ? (
+                  <>
+                    <span>Rank</span>
+                    <strong>{item.rank}</strong>
+                  </>
+                ) : (
+                  <span className="priority-inactive-badge">Inactive</span>
+                )}
               </div>
               <div className="priority-main">
                 <strong>{item.label}</strong>
@@ -221,12 +235,26 @@ export function PriorityRanking({
                 <span>Weight</span>
                 <strong>{item.weight}</strong>
               </div>
+              <div className="priority-state">
+                <label className="priority-toggle" title={`${item.isActive ? "Disable" : "Enable"} ${item.label}`}>
+                  <input
+                    aria-label={`${item.isActive ? "Disable" : "Enable"} ${item.label}`}
+                    checked={item.isActive}
+                    disabled={saving || generating}
+                    type="checkbox"
+                    onChange={(event) => onToggle(item.constraint_code, event.target.checked)}
+                  />
+                  <span className="priority-toggle-track" aria-hidden="true">
+                    <span className="priority-toggle-thumb" />
+                  </span>
+                </label>
+              </div>
               <div className="priority-controls">
                 <button
                   className="button secondary slim"
                   type="button"
                   title={`Move ${item.label} up`}
-                  disabled={index === 0 || saving || generating}
+                  disabled={!item.isActive || index === 0 || saving || generating}
                   onClick={() => moveWithAnimation(index, -1)}
                 >
                   <ArrowUp size={14} />
@@ -235,7 +263,7 @@ export function PriorityRanking({
                   className="button secondary slim"
                   type="button"
                   title={`Move ${item.label} down`}
-                  disabled={index === priorities.length - 1 || saving || generating}
+                  disabled={!item.isActive || index >= lastActiveIndex || saving || generating}
                   onClick={() => moveWithAnimation(index, 1)}
                 >
                   <ArrowDown size={14} />

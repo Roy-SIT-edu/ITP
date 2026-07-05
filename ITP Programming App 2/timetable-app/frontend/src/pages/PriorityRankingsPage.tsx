@@ -11,12 +11,33 @@ import { PriorityRanking } from "../components/SoftConstraintWorkflow";
 import { useSessionState } from "../sessionState";
 import type { SoftConstraintPriority } from "../types";
 
+type PriorityStateItem = SoftConstraintPriority & {
+  isActive: boolean;
+};
+
 function previewWeight(index: number, total: number) {
   return Math.max(1, total - index) * 5;
 }
 
+function withActiveState(items: SoftConstraintPriority[]): PriorityStateItem[] {
+  return items.map((item) => ({
+    ...item,
+    isActive: item.isActive ?? item.weight > 0,
+  }));
+}
+
+function partitionPriorities(items: PriorityStateItem[]) {
+  return [...items.filter((item) => item.isActive), ...items.filter((item) => !item.isActive)];
+}
+
+function activeCodes(items: SoftConstraintPriority[]) {
+  return partitionPriorities(withActiveState(items))
+    .filter((item) => item.isActive)
+    .map((item) => item.constraint_code);
+}
+
 export default function PriorityRankingsPage() {
-  const [priorities, setPriorities] = useSessionState<SoftConstraintPriority[]>("soft.priorities", []);
+  const [priorities, setPriorities] = useSessionState<PriorityStateItem[]>("soft.priorities", []);
   const [dirty, setDirty] = useSessionState("soft.dirty", false);
   const [error, setError] = useSessionState<string | null>("priorityRankings.error", null);
   const [success, setSuccess] = useSessionState<string | null>("priorityRankings.success", null);
@@ -28,7 +49,7 @@ export default function PriorityRankingsPage() {
     setError(null);
     try {
       const nextPriorities = await getSoftConstraintPriorities();
-      setPriorities(nextPriorities);
+      setPriorities(partitionPriorities(withActiveState(nextPriorities)));
       setDirty(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load priority rankings");
@@ -43,24 +64,53 @@ export default function PriorityRankingsPage() {
     }
   }, [load, priorities.length]);
 
-  const rankedPriorities = useMemo(
-    () =>
-      priorities.map((item, index) => ({
+  const rankedPriorities = useMemo(() => {
+    const ordered = partitionPriorities(withActiveState(priorities));
+    const activeTotal = ordered.filter((item) => item.isActive).length;
+    let activeRank = 0;
+    return ordered.map((item) => {
+      if (!item.isActive) {
+        return {
+          ...item,
+          rank: null,
+          weight: 0,
+        };
+      }
+      activeRank += 1;
+      return {
         ...item,
-        rank: index + 1,
-        weight: dirty ? previewWeight(index, priorities.length) : item.weight,
-      })),
-    [dirty, priorities],
-  );
+        rank: activeRank,
+        weight: dirty ? previewWeight(activeRank - 1, activeTotal) : item.weight,
+      };
+    });
+  }, [dirty, priorities]);
 
   const movePriority = (index: number, direction: -1 | 1) => {
-    const target = index + direction;
-    if (target < 0 || target >= priorities.length) return;
     setPriorities((current) => {
-      const next = [...current];
+      const next = partitionPriorities(withActiveState(current));
+      const activeTotal = next.filter((item) => item.isActive).length;
+      const target = index + direction;
+      if (!next[index]?.isActive || target < 0 || target >= activeTotal) return current;
       [next[index], next[target]] = [next[target], next[index]];
-      return next;
+      return partitionPriorities(next);
     });
+    setDirty(true);
+    setSuccess(null);
+  };
+
+  const togglePriority = (constraintCode: string, isActive: boolean) => {
+    setPriorities((current) =>
+      partitionPriorities(
+        withActiveState(current).map((item) =>
+          item.constraint_code === constraintCode
+            ? {
+                ...item,
+                isActive,
+              }
+            : item,
+        ),
+      ),
+    );
     setDirty(true);
     setSuccess(null);
   };
@@ -70,8 +120,8 @@ export default function PriorityRankingsPage() {
     setError(null);
     setSuccess(null);
     try {
-      const saved = await updateSoftConstraintPriorities(priorities.map((item) => item.constraint_code));
-      setPriorities(saved);
+      const saved = await updateSoftConstraintPriorities(activeCodes(priorities));
+      setPriorities(partitionPriorities(withActiveState(saved)));
       setDirty(false);
       setSuccess("Soft constraint ranking saved.");
     } catch (err) {
@@ -123,6 +173,7 @@ export default function PriorityRankingsPage() {
         saving={saving}
         onMove={movePriority}
         onSave={() => void savePriorities()}
+        onToggle={togglePriority}
       />
     </div>
   );
