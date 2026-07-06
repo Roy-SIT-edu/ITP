@@ -54,18 +54,32 @@ SOFT_CONSTRAINT_DEFINITIONS = [
 class SoftConstraintPriorityService:
     def list_priorities(self, db: DbSession) -> list[dict]:
         self._ensure_defaults(db)
-        rows = {item.constraint_code: item for item in db.query(SoftConstraintPriority).order_by(SoftConstraintPriority.rank).all()}
-        priorities = [
-            {
-                **definition,
-                "rank": rows[definition["constraint_code"]].rank,
-                "weight": rows[definition["constraint_code"]].weight,
-            }
-            for definition in SOFT_CONSTRAINT_DEFINITIONS
-        ]
-        return sorted(priorities, key=lambda item: item["rank"])
+        rows = {
+            item.constraint_code: item
+            for item in db.query(SoftConstraintPriority).order_by(SoftConstraintPriority.rank).all()
+        }
+        priorities = []
+        for definition in SOFT_CONSTRAINT_DEFINITIONS:
+            row = rows[definition["constraint_code"]]
+            is_active = bool(row.is_active)
+            priorities.append(
+                {
+                    **definition,
+                    "rank": row.rank if is_active else 0,
+                    "weight": row.weight if is_active else 0,
+                    "is_active": is_active,
+                    "_sort_rank": row.rank,
+                }
+            )
+        sorted_priorities = sorted(
+            priorities,
+            key=lambda item: (not item["is_active"], item["_sort_rank"], item["default_rank"]),
+        )
+        for item in sorted_priorities:
+            item.pop("_sort_rank", None)
+        return sorted_priorities
 
-    def update_priorities(self, db: DbSession, ordered_codes: list[str]) -> list[dict]:
+    def update_priorities(self, db: DbSession, ordered_codes: list[str], active_codes: list[str] | None = None) -> list[dict]:
         known_codes = [definition["constraint_code"] for definition in SOFT_CONSTRAINT_DEFINITIONS]
         cleaned: list[str] = []
         for code in ordered_codes:
@@ -74,22 +88,41 @@ class SoftConstraintPriorityService:
             if code not in cleaned:
                 cleaned.append(code)
         cleaned.extend(code for code in known_codes if code not in cleaned)
+        if active_codes is None:
+            active_set = set(known_codes)
+        else:
+            active_set = set()
+            for code in active_codes:
+                if code not in known_codes:
+                    raise ValueError(f"Unknown soft constraint: {code}")
+                active_set.add(code)
+        active_order = [code for code in cleaned if code in active_set]
+        inactive_order = [code for code in cleaned if code not in active_set]
 
         self._ensure_defaults(db)
         rows = {
             item.constraint_code: item
             for item in db.query(SoftConstraintPriority).filter(SoftConstraintPriority.constraint_code.in_(known_codes)).all()
         }
-        total = len(known_codes)
-        for rank, code in enumerate(cleaned, start=1):
+        total = len(active_order)
+        for rank, code in enumerate(active_order, start=1):
             row = rows[code]
             row.rank = rank
             row.weight = self.weight_for_rank(rank, total)
+            row.is_active = True
+        for rank, code in enumerate(inactive_order, start=total + 1):
+            row = rows[code]
+            row.rank = rank
+            row.weight = 0
+            row.is_active = False
         db.commit()
         return self.list_priorities(db)
 
     def weights(self, db: DbSession) -> dict[str, int]:
-        return {item["constraint_code"]: item["weight"] for item in self.list_priorities(db)}
+        return {
+            item["constraint_code"]: item["weight"] if item["is_active"] else 0
+            for item in self.list_priorities(db)
+        }
 
     @staticmethod
     def weight_for_rank(rank: int, total: int) -> int:
@@ -109,8 +142,13 @@ class SoftConstraintPriorityService:
                     constraint_code=code,
                     rank=rank,
                     weight=self.weight_for_rank(rank, total),
+                    is_active=True,
                 )
             )
             changed = True
+        for item in existing.values():
+            if item.is_active is None:
+                item.is_active = True
+                changed = True
         if changed:
             db.commit()

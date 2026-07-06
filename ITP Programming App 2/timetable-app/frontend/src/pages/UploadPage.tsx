@@ -23,6 +23,7 @@ import { softConstraintHints } from "../components/softPreferenceHints";
 import UploadBox from "../components/UploadBox";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
 import { clearSessionState, useSessionState } from "../sessionState";
+import { rankSoftPriorities } from "../softPriorities";
 import type { ImportPreviewRow, SessionRow, SoftConstraintPriority, UploadSummary } from "../types";
 
 export default function UploadPage() {
@@ -43,7 +44,7 @@ export default function UploadPage() {
     setReadinessError(null);
     try {
       const [nextPriorities, nextSessions] = await Promise.all([getSoftConstraintPriorities(), getSessions()]);
-      setPriorities(nextPriorities);
+      setPriorities(rankSoftPriorities(nextPriorities));
       setSessions(nextSessions);
     } catch (err) {
       setReadinessError(err instanceof Error ? err.message : "Could not load generation readiness");

@@ -20,6 +20,29 @@ def test_soft_constraint_ranking_updates_weights(db_session):
     assert priorities[0]["weight"] > priorities[-1]["weight"]
 
 
+def test_inactive_soft_constraints_are_ranked_after_active_items(db_session):
+    service = SoftConstraintPriorityService()
+
+    priorities = service.update_priorities(
+        db_session,
+        ["AVOID_DAY", "ONLINE_NOT_MON_TUE", "PREFERRED_DAY_MISMATCH"],
+        active_codes=["AVOID_DAY", "PREFERRED_DAY_MISMATCH"],
+    )
+
+    assert [item["constraint_code"] for item in priorities[:2]] == ["AVOID_DAY", "PREFERRED_DAY_MISMATCH"]
+    assert [item["rank"] for item in priorities[:2]] == [1, 2]
+    assert all(item["is_active"] for item in priorities[:2])
+
+    inactive = next(item for item in priorities if item["constraint_code"] == "ONLINE_NOT_MON_TUE")
+    assert inactive["is_active"] is False
+    assert inactive["rank"] == 0
+    assert inactive["weight"] == 0
+
+    weights = service.weights(db_session)
+    assert weights["AVOID_DAY"] > 0
+    assert weights["ONLINE_NOT_MON_TUE"] == 0
+
+
 def test_solver_accepts_ranked_soft_constraint_weights(db_session):
     weights = SoftConstraintPriorityService().weights(db_session)
 

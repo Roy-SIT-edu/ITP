@@ -1,6 +1,6 @@
 """SQLAlchemy model for user-ranked soft scheduling priorities."""
 
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Boolean, Column, Integer, String
 
 from app.database import Base
 
@@ -12,3 +12,4 @@ class SoftConstraintPriority(Base):
     constraint_code = Column(String, nullable=False, unique=True, index=True)
     rank = Column(Integer, nullable=False)
     weight = Column(Integer, nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)

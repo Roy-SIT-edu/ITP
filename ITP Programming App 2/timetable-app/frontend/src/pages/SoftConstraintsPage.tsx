@@ -14,6 +14,7 @@ import { GenerationActionPanel } from "../components/SoftConstraintWorkflow";
 import InlineActivity from "../components/InlineActivity";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
 import { useSessionState } from "../sessionState";
+import { rankSoftPriorities } from "../softPriorities";
 import type { ScheduleGenerateResult, SoftConstraintPriority } from "../types";
 
 export default function SoftConstraintsPage() {
@@ -35,7 +36,7 @@ export default function SoftConstraintsPage() {
     try {
       if (!dirty) {
         const nextPriorities = await getSoftConstraintPriorities();
-        setPriorities(nextPriorities);
+        setPriorities(rankSoftPriorities(nextPriorities));
         setDirty(false);
       }
     } catch (err) {
@@ -59,8 +60,8 @@ export default function SoftConstraintsPage() {
     setError(null);
     setSuccess(null);
     try {
-      const saved = await updateSoftConstraintPriorities(priorities.map((item) => item.constraint_code));
-      setPriorities(saved);
+      const saved = await updateSoftConstraintPriorities(rankSoftPriorities(priorities, true));
+      setPriorities(rankSoftPriorities(saved));
       setDirty(false);
       setSuccess("Soft constraint ranking saved.");
       return saved;

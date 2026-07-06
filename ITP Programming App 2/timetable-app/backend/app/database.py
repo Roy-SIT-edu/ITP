@@ -134,6 +134,15 @@ def _ensure_programme_years_column(engine) -> None:
             connection.execute(text("ALTER TABLE programmes ADD COLUMN years INTEGER"))
 
 
+def _ensure_soft_constraint_active_column(engine) -> None:
+    with engine.begin() as connection:
+        columns = {row[1] for row in connection.execute(text("PRAGMA table_info(soft_constraint_priorities)")).fetchall()}
+        if columns and "is_active" not in columns:
+            connection.execute(
+                text("ALTER TABLE soft_constraint_priorities ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1")
+            )
+
+
 def _drop_column_if_exists(engine, table_name: str, column_name: str) -> None:
     with engine.begin() as connection:
         columns = {row[1] for row in connection.execute(text(f"PRAGMA table_info({table_name})")).fetchall()}
@@ -143,6 +152,7 @@ def _drop_column_if_exists(engine, table_name: str, column_name: str) -> None:
 
 def _ensure_split_schema(engines: dict[str, object]) -> None:
     _ensure_programme_years_column(engines["programmes"])
+    _ensure_soft_constraint_active_column(engines["schedule_state"])
     _drop_column_if_exists(engines["modules"], "modules", "module_host_key")
     _drop_column_if_exists(engines["staff"], "staff", "staff_host_key")
 

@@ -1108,6 +1108,10 @@ h2 {
   font-size: 20px;
 }
 
+.priority-weight {
+  visibility: hidden;
+}
+
 .priority-main strong {
   color: #111827;
 }
@@ -1126,6 +1130,93 @@ h2 {
 .priority-controls .button {
   min-width: 36px;
   padding: 0;
+}
+
+.priority-controls .button:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.priority-row.inactive .priority-main,
+.priority-row.inactive .priority-weight {
+  opacity: 0.48;
+}
+
+.priority-row.inactive .priority-controls .button:disabled {
+  opacity: 0.42;
+}
+
+.priority-rank .status-badge {
+  justify-self: start;
+}
+
+.priority-switch {
+  align-items: center;
+  color: #334155;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 7px;
+  min-height: 36px;
+  user-select: none;
+}
+
+.priority-switch.disabled {
+  cursor: not-allowed;
+}
+
+.priority-switch input {
+  height: 1px;
+  opacity: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.priority-switch-track {
+  align-items: center;
+  background: #cbd5e1;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 2px;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
+  width: 40px;
+}
+
+.priority-switch-thumb {
+  background: #ffffff;
+  border-radius: 999px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.22);
+  display: block;
+  height: 16px;
+  transform: translateX(0);
+  transition: transform 140ms ease;
+  width: 16px;
+}
+
+.priority-switch input:checked + .priority-switch-track {
+  background: #0f766e;
+  border-color: #0f766e;
+}
+
+.priority-switch input:checked + .priority-switch-track .priority-switch-thumb {
+  transform: translateX(18px);
+}
+
+.priority-switch input:disabled + .priority-switch-track,
+.priority-switch input:disabled ~ .priority-switch-label {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.priority-switch input:focus-visible + .priority-switch-track {
+  outline: 2px solid #0f766e;
+  outline-offset: 2px;
 }
 
 .data-section {
@@ -3541,7 +3632,7 @@ select {
 
   .priority-row {
     align-items: start;
-    grid-template-columns: 52px minmax(0, 1fr);
+    grid-template-columns: 76px minmax(0, 1fr);
   }
 
   .priority-weight {
@@ -4524,7 +4615,7 @@ input {
   }
 
   .priority-row {
-    grid-template-columns: 52px minmax(0, 1fr);
+    grid-template-columns: 76px minmax(0, 1fr);
   }
 
   .priority-weight,

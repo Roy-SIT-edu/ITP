@@ -119,6 +119,7 @@ export type SoftConstraintPriority = {
   default_rank: number;
   rank: number;
   weight: number;
+  isActive: boolean;
 };
 
 export type TimeSlot = {

@@ -26,6 +26,15 @@ import type {
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
+type SoftConstraintPriorityResponse = Omit<SoftConstraintPriority, "isActive"> & {
+  is_active?: boolean;
+  isActive?: boolean;
+};
+
+type SoftConstraintPriorityUpdate = Pick<SoftConstraintPriority, "constraint_code"> & {
+  isActive?: boolean;
+};
+
 export class ApiError extends Error {
   status: number;
   details: unknown;
@@ -62,6 +71,13 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     throw new ApiError(response.status, message, detail);
   }
   return payload as T;
+}
+
+function normalizeSoftConstraintPriority(item: SoftConstraintPriorityResponse): SoftConstraintPriority {
+  return {
+    ...item,
+    isActive: item.isActive ?? item.is_active ?? true,
+  };
 }
 
 export function getDashboard() {
@@ -159,15 +175,29 @@ export function generateSchedule() {
 }
 
 export function getSoftConstraintPriorities() {
-  return request<SoftConstraintPriority[]>("/api/soft-constraints");
+  return request<SoftConstraintPriorityResponse[]>("/api/soft-constraints").then((items) =>
+    items.map(normalizeSoftConstraintPriority),
+  );
 }
 
-export function updateSoftConstraintPriorities(orderedCodes: string[]) {
-  return request<SoftConstraintPriority[]>("/api/soft-constraints", {
+export function updateSoftConstraintPriorities(priorities: SoftConstraintPriorityUpdate[] | string[]) {
+  const normalized = priorities.map((item) =>
+    typeof item === "string"
+      ? { constraint_code: item, isActive: true }
+      : { constraint_code: item.constraint_code, isActive: item.isActive !== false },
+  );
+  const activeItems = normalized.filter((item) => item.isActive);
+  const inactiveItems = normalized.filter((item) => !item.isActive);
+  const displayList = [...activeItems, ...inactiveItems];
+
+  return request<SoftConstraintPriorityResponse[]>("/api/soft-constraints", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ordered_codes: orderedCodes }),
-  });
+    body: JSON.stringify({
+      ordered_codes: displayList.map((item) => item.constraint_code),
+      active_codes: activeItems.map((item) => item.constraint_code),
+    }),
+  }).then((items) => items.map(normalizeSoftConstraintPriority));
 }
 
 export function getScheduleRuns() {

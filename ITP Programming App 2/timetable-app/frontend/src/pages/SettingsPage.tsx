@@ -9,12 +9,9 @@ import { getSoftConstraintPriorities, updateSoftConstraintPriorities } from "../
 import InlineActivity from "../components/InlineActivity";
 import { PriorityRanking } from "../components/SoftConstraintWorkflow";
 import { useSessionState } from "../sessionState";
+import { moveSoftPriority, rankSoftPriorities, setSoftPriorityActive } from "../softPriorities";
 import { useThemeMode } from "../theme";
 import type { SoftConstraintPriority } from "../types";
-
-function previewWeight(index: number, total: number) {
-  return Math.max(1, total - index) * 5;
-}
 
 export default function SettingsPage() {
   const [priorities, setPriorities] = useSessionState<SoftConstraintPriority[]>("soft.priorities", []);
@@ -31,7 +28,7 @@ export default function SettingsPage() {
     setError(null);
     try {
       const nextPriorities = await getSoftConstraintPriorities();
-      setPriorities(nextPriorities);
+      setPriorities(rankSoftPriorities(nextPriorities));
       setDirty(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load settings");
@@ -47,23 +44,18 @@ export default function SettingsPage() {
   }, [load, priorities.length]);
 
   const rankedPriorities = useMemo(
-    () =>
-      priorities.map((item, index) => ({
-        ...item,
-        rank: index + 1,
-        weight: dirty ? previewWeight(index, priorities.length) : item.weight,
-      })),
+    () => rankSoftPriorities(priorities, dirty),
     [dirty, priorities],
   );
 
   const movePriority = (index: number, direction: -1 | 1) => {
-    const target = index + direction;
-    if (target < 0 || target >= priorities.length) return;
-    setPriorities((current) => {
-      const next = [...current];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
+    setPriorities((current) => moveSoftPriority(current, index, direction));
+    setDirty(true);
+    setSuccess(null);
+  };
+
+  const togglePriority = (constraintCode: string, isActive: boolean) => {
+    setPriorities((current) => setSoftPriorityActive(current, constraintCode, isActive));
     setDirty(true);
     setSuccess(null);
   };
@@ -73,8 +65,8 @@ export default function SettingsPage() {
     setError(null);
     setSuccess(null);
     try {
-      const saved = await updateSoftConstraintPriorities(priorities.map((item) => item.constraint_code));
-      setPriorities(saved);
+      const saved = await updateSoftConstraintPriorities(rankSoftPriorities(priorities, true));
+      setPriorities(rankSoftPriorities(saved));
       setDirty(false);
       setSuccess("Soft constraint ranking saved.");
     } catch (err) {
@@ -143,6 +135,7 @@ export default function SettingsPage() {
         saving={saving}
         onMove={movePriority}
         onSave={() => void savePriorities()}
+        onToggle={togglePriority}
       />
     </div>
   );

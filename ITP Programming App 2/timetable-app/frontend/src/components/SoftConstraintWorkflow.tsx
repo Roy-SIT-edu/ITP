@@ -6,6 +6,7 @@ import type { ScheduleGenerateResult, SessionRow, SoftConstraintPriority } from 
 export type RankedSoftPriority = SoftConstraintPriority & {
   rank: number;
   weight: number;
+  isActive: boolean;
 };
 
 export type SoftPreferenceHint = {
@@ -131,6 +132,7 @@ export function PriorityRanking({
   saving,
   onMove,
   onSave,
+  onToggle,
 }: {
   dirty: boolean;
   generating: boolean;
@@ -138,9 +140,11 @@ export function PriorityRanking({
   saving: boolean;
   onMove: (index: number, direction: -1 | 1) => void;
   onSave: () => void;
+  onToggle: (constraintCode: string, isActive: boolean) => void;
 }) {
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
   const previousRects = useRef(new Map<string, DOMRect>());
+  const activeCount = priorities.filter((item) => item.isActive).length;
 
   const setRowRef = (code: string) => (element: HTMLDivElement | null) => {
     if (element) {
@@ -159,6 +163,11 @@ export function PriorityRanking({
   const moveWithAnimation = (index: number, direction: -1 | 1) => {
     captureRowPositions();
     onMove(index, direction);
+  };
+
+  const toggleWithAnimation = (constraintCode: string, isActive: boolean) => {
+    captureRowPositions();
+    onToggle(constraintCode, isActive);
   };
 
   useLayoutEffect(() => {
@@ -206,43 +215,73 @@ export function PriorityRanking({
         <div className="empty-state">No soft constraints are available.</div>
       ) : (
         <div className="priority-list">
-          {priorities.map((item, index) => (
-            <div className="priority-row" key={item.constraint_code} ref={setRowRef(item.constraint_code)}>
-              <div className="priority-rank">
-                <span>Rank</span>
-                <strong>{item.rank}</strong>
+          {priorities.map((item, index) => {
+            const isActive = item.isActive;
+            return (
+              <div
+                className={`priority-row ${isActive ? "active" : "inactive"}`}
+                key={item.constraint_code}
+                ref={setRowRef(item.constraint_code)}
+              >
+                <div className="priority-rank">
+                  {isActive ? (
+                    <>
+                      <span>Rank</span>
+                      <strong>{item.rank}</strong>
+                    </>
+                  ) : (
+                    <StatusBadge label="Inactive" tone="neutral" />
+                  )}
+                </div>
+                <div className="priority-main">
+                  <strong>{item.label}</strong>
+                  <span>{item.description}</span>
+                  <small>{item.constraint_code}</small>
+                </div>
+                <div className="priority-weight" aria-hidden="true">
+                  <span>Weight</span>
+                  <strong className="priority-weight-value" aria-hidden="true">
+                    {item.weight}
+                  </strong>
+                </div>
+                <div className="priority-controls">
+                  <label
+                    className={`priority-switch ${saving || generating ? "disabled" : ""}`}
+                    title={`${isActive ? "Disable" : "Enable"} ${item.label}`}
+                  >
+                    <input
+                      checked={isActive}
+                      disabled={saving || generating}
+                      type="checkbox"
+                      onChange={(event) => toggleWithAnimation(item.constraint_code, event.target.checked)}
+                    />
+                    <span className="priority-switch-track" aria-hidden="true">
+                      <span className="priority-switch-thumb" />
+                    </span>
+                    <span className="priority-switch-label">{isActive ? "Active" : "Off"}</span>
+                  </label>
+                  <button
+                    className="button secondary slim"
+                    type="button"
+                    title={`Move ${item.label} up`}
+                    disabled={!isActive || index === 0 || saving || generating}
+                    onClick={() => moveWithAnimation(index, -1)}
+                  >
+                    <ArrowUp size={14} />
+                  </button>
+                  <button
+                    className="button secondary slim"
+                    type="button"
+                    title={`Move ${item.label} down`}
+                    disabled={!isActive || index >= activeCount - 1 || saving || generating}
+                    onClick={() => moveWithAnimation(index, 1)}
+                  >
+                    <ArrowDown size={14} />
+                  </button>
+                </div>
               </div>
-              <div className="priority-main">
-                <strong>{item.label}</strong>
-                <span>{item.description}</span>
-                <small>{item.constraint_code}</small>
-              </div>
-              <div className="priority-weight">
-                <span>Weight</span>
-                <strong>{item.weight}</strong>
-              </div>
-              <div className="priority-controls">
-                <button
-                  className="button secondary slim"
-                  type="button"
-                  title={`Move ${item.label} up`}
-                  disabled={index === 0 || saving || generating}
-                  onClick={() => moveWithAnimation(index, -1)}
-                >
-                  <ArrowUp size={14} />
-                </button>
-                <button
-                  className="button secondary slim"
-                  type="button"
-                  title={`Move ${item.label} down`}
-                  disabled={index === priorities.length - 1 || saving || generating}
-                  onClick={() => moveWithAnimation(index, 1)}
-                >
-                  <ArrowDown size={14} />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>
