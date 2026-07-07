@@ -24,6 +24,8 @@ type Props = {
   onSelectSlot?: (key: string, rows: ScheduledRow[]) => void;
   conflictSlotKeys?: Set<string>;
   availableSlotKeys?: Set<string>;
+  softAvailableSlotKeys?: Set<string>;
+  blockedSlotKeys?: Set<string>;
 };
 
 const HOUR_HEIGHT = 64;
@@ -70,6 +72,8 @@ export default function TimetablePlanner({
   onSelectSlot,
   conflictSlotKeys = new Set(),
   availableSlotKeys = new Set(),
+  softAvailableSlotKeys = new Set(),
+  blockedSlotKeys = new Set(),
 }: Props) {
   const safeWeekStart = weekStart ?? startOfWeek(new Date());
   const [showAmPm, setShowAmPm] = useState(true);
@@ -209,7 +213,9 @@ export default function TimetablePlanner({
               const slotRows = grouped.get(key) ?? [];
               const selected = key === selectedSlotKey;
               const isConflictCell = conflictSlotKeys.has(key);
-              const isAvailableCell = availableSlotKeys.has(key);
+              const isSoftAvailableCell = softAvailableSlotKeys.has(key);
+              const isAvailableCell = availableSlotKeys.has(key) && !isSoftAvailableCell;
+              const isBlockedCell = blockedSlotKeys.has(key);
               const draftSelected =
                 selectedSessionDraft?.day === day &&
                 Boolean(selectedSessionDraft.start_time) &&
@@ -227,11 +233,14 @@ export default function TimetablePlanner({
                     isPlacing ? "placing-mode" : ""
                   } ${draftSelected ? "highlight-draft" : ""} ${isConflictCell ? "conflict-current" : ""} ${
                     isAvailableCell ? "conflict-available" : ""
+                  } ${isSoftAvailableCell ? "conflict-soft-available" : ""} ${
+                    isBlockedCell ? "conflict-blocked" : ""
                   }`}
-                  disabled={!slotRows.length && !onSelectSlot && !isPlacing}
+                  disabled={(isPlacing && isBlockedCell) || (!slotRows.length && !onSelectSlot && !isPlacing)}
                   key={key}
                   onClick={() => onSelectSlot?.(key, slotRows)}
                   style={{ height: HOUR_HEIGHT }}
+                  title={isBlockedCell ? "Hard conflict blocked" : undefined}
                   type="button"
                 />
               );

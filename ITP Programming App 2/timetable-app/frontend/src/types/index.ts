@@ -176,6 +176,25 @@ export type ConstraintViolation = {
   affected_session_ids: number[];
 };
 
+export type QuickFixSuggestion = {
+  type: "VENUE_CHANGE" | "TIME_CHANGE" | "ALTERNATIVE_BEST";
+  description: string;
+  session_id: number;
+  new_room: string;
+  new_time: string;
+  room_code: string;
+  day: string;
+  start_time: string;
+  end_time: string;
+};
+
+export type QuickFixResponse = {
+  conflict_id: number | null;
+  severity: "HARD" | "SOFT";
+  session_id: number;
+  suggestions: QuickFixSuggestion[];
+};
+
 export type SessionRow = {
   id: number;
   requirement_id: string | null;

@@ -18,7 +18,11 @@ type Props = {
   onSaveMove?: (row: ScheduledRow) => void;
   conflictSlotKeys?: Set<string>;
   availableSlotKeys?: Set<string>;
+  softAvailableSlotKeys?: Set<string>;
+  blockedSlotKeys?: Set<string>;
   onClickAvailableSlot?: (day: string, startTime: string, endTime: string) => void;
+  onBlockedSlot?: (message: string) => void;
+  onSelectSession?: (sessionId: number | null) => void;
   scheduleRunId?: number;
   onRefresh?: () => void;
 };
@@ -37,7 +41,11 @@ export default function TimetableGrid({
   onSaveMove,
   conflictSlotKeys = new Set(),
   availableSlotKeys = new Set(),
+  softAvailableSlotKeys = new Set(),
+  blockedSlotKeys = new Set(),
   onClickAvailableSlot,
+  onBlockedSlot,
+  onSelectSession,
   scheduleRunId,
   onRefresh,
 }: Props) {
@@ -137,7 +145,13 @@ export default function TimetableGrid({
             }
             conflictSlotKeys={conflictSlotKeys}
             availableSlotKeys={availableSlotKeys}
+            softAvailableSlotKeys={softAvailableSlotKeys}
+            blockedSlotKeys={blockedSlotKeys}
             onSelectSlot={(key, slotRows) => {
+              if (blockedSlotKeys?.has(key) && (isPlacing || slotRows.length === 0)) {
+                onBlockedSlot?.("Cannot move here: this slot creates a hard conflict.");
+                return;
+              }
               // Conflict resolution: clicking an available slot triggers move
               if (onClickAvailableSlot && availableSlotKeys?.has(key)) {
                 const [day, startTime, endTime] = key.split("|");
@@ -171,6 +185,7 @@ export default function TimetableGrid({
                 setSelectedSlotKey(key);
                 setSelectedRowsOverride(slotRows);
                 setSelectedSessionId(slotRows[0].session_id);
+                onSelectSession?.(slotRows[0].session_id);
               }
             }}
           />
@@ -178,7 +193,10 @@ export default function TimetableGrid({
         <SlotSessionList
           rows={selectedSlotRows}
           selectedSessionId={selectedRow?.session_id ?? null}
-          onSelect={setSelectedSessionId}
+          onSelect={(sessionId) => {
+            setSelectedSessionId(sessionId);
+            onSelectSession?.(sessionId);
+          }}
         />
         <SelectedSessionEditor
           row={selectedRow}
@@ -193,6 +211,7 @@ export default function TimetableGrid({
           scheduleRunId={scheduleRunId}
           onRefresh={onRefresh}
           staffOptions={staffOptions}
+          onSelectSession={onSelectSession}
         />
       </div>
     );
@@ -396,6 +415,7 @@ function SelectedSessionEditor({
   scheduleRunId,
   onRefresh,
   staffOptions,
+  onSelectSession,
 }: {
   row: ScheduledRow | null;
   rooms: Room[];
@@ -409,6 +429,7 @@ function SelectedSessionEditor({
   scheduleRunId?: number;
   onRefresh?: () => void;
   staffOptions: { id: string; name: string }[];
+  onSelectSession?: (sessionId: number | null) => void;
 }) {
   const [sessionData, setSessionData] = useState<SessionRow | null>(null);
   const [savingDetails, setSavingDetails] = useState(false);
@@ -528,7 +549,10 @@ function SelectedSessionEditor({
               </div>
               <button
                 className={`button slim ${isPlacing ? "primary" : "secondary"}`}
-                onClick={() => setIsPlacing(!isPlacing)}
+                onClick={() => {
+                  onSelectSession?.(row.session_id);
+                  setIsPlacing(!isPlacing);
+                }}
                 type="button"
               >
                 {isPlacing ? "Cancel Selection" : "Pick Time"}

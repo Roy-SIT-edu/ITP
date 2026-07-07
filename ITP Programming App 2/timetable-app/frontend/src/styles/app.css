@@ -1235,6 +1235,40 @@ h2 {
   gap: 16px;
 }
 
+.export-gate {
+  border: 1px solid;
+  border-radius: 8px;
+  font-weight: 700;
+  padding: 10px 12px;
+}
+
+.export-gate.locked {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+.export-gate.ready {
+  background: #ecfdf5;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.export-disabled,
+.button.export-disabled,
+a.export-disabled {
+  background: #cbd5e1;
+  border-color: #cbd5e1;
+  color: #64748b;
+  cursor: not-allowed;
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+.dashboard-export-card {
+  align-content: start;
+}
+
 .preference-dropdown {
   gap: 0;
   padding: 0;
@@ -2526,6 +2560,25 @@ select {
 
 .calendar-slot.conflict-available:hover {
   box-shadow: inset 0 0 0 2px #16a34a;
+}
+
+.calendar-slot.conflict-soft-available {
+  background: rgba(254, 243, 199, 0.92);
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.5);
+}
+
+.calendar-slot.conflict-soft-available:hover {
+  box-shadow: inset 0 0 0 2px #f59e0b;
+}
+
+.calendar-slot.conflict-blocked {
+  background: rgba(254, 226, 226, 0.95);
+  box-shadow: inset 0 0 0 1px rgba(220, 38, 38, 0.45);
+  cursor: not-allowed;
+}
+
+.calendar-slot.conflict-blocked:hover {
+  box-shadow: inset 0 0 0 2px #dc2626;
 }
 
 .calendar-event {
@@ -4630,6 +4683,7 @@ input {
   .move-controls-header,
   .move-control-fields,
   .selected-session-facts,
+  .quick-fix-card,
   .soft-workspace .preference-tools,
   .soft-workspace .preference-item,
   .quick-edit-grid {
@@ -4788,6 +4842,30 @@ input {
   outline-offset: -2px;
 }
 
+.conflict-hard-row {
+  background: #fff7f7;
+}
+
+.conflict-hard-row td:first-child {
+  border-left: 4px solid #dc2626;
+}
+
+.conflict-soft-row {
+  background: #fffbeb;
+}
+
+.conflict-soft-row td:first-child {
+  border-left: 4px solid #f59e0b;
+}
+
+.quick-fix-resolving {
+  opacity: 0.5;
+  transform: translateY(-2px);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
 .conflict-active-row td {
   color: var(--color-text, #0f172a) !important;
 }
@@ -4814,6 +4892,103 @@ tr.conflict-active-row:hover {
 .conflict-resolution-banner .green-label {
   color: #22c55e;
   font-weight: 600;
+}
+
+.conflict-resolution-banner .amber-label {
+  color: #f59e0b;
+  font-weight: 600;
+}
+
+.quick-fix-toggle {
+  white-space: nowrap;
+}
+
+.quick-fix-toggle svg:last-child {
+  transition: transform 140ms ease;
+}
+
+.quick-fix-toggle.open svg:last-child {
+  transform: rotate(180deg);
+}
+
+.quick-fix-row td {
+  background: #f8fafc;
+  border-top: 0;
+  padding: 0;
+}
+
+.quick-fix-tray {
+  border-top: 1px solid #e2e8f0;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.quick-fix-heading {
+  align-items: center;
+  color: #334155;
+  display: flex;
+  gap: 8px;
+}
+
+.quick-fix-heading svg {
+  color: #4f46e5;
+}
+
+.quick-fix-list {
+  display: grid;
+  gap: 10px;
+}
+
+.quick-fix-card {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 12px;
+}
+
+.quick-fix-card > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.quick-fix-card span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.quick-fix-card strong {
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+
+.quick-fix-loading {
+  display: grid;
+  gap: 8px;
+}
+
+.quick-fix-loading div {
+  animation: quick-fix-pulse 900ms ease-in-out infinite;
+  background: linear-gradient(90deg, #e2e8f0, #f8fafc, #e2e8f0);
+  background-size: 200% 100%;
+  border-radius: 8px;
+  height: 42px;
+}
+
+@keyframes quick-fix-pulse {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
 }
 
 .legend-conflict {
@@ -4954,7 +5129,9 @@ tr.conflict-active-row:hover {
 :root[data-theme="night"] .selected-session-main strong,
 :root[data-theme="night"] .selected-session-facts strong,
 :root[data-theme="night"] .calendar-week-title strong,
-:root[data-theme="night"] .calendar-day-heading strong {
+:root[data-theme="night"] .calendar-day-heading strong,
+:root[data-theme="night"] .quick-fix-card strong,
+:root[data-theme="night"] .quick-fix-heading {
   color: var(--color-text);
 }
 
@@ -4976,7 +5153,8 @@ tr.conflict-active-row:hover {
 :root[data-theme="night"] .calendar-day-heading span,
 :root[data-theme="night"] .calendar-time-label,
 :root[data-theme="night"] .calendar-option-grid label,
-:root[data-theme="night"] .modal-body label {
+:root[data-theme="night"] .modal-body label,
+:root[data-theme="night"] .quick-fix-card span {
   color: var(--color-text-secondary);
 }
 
@@ -4998,7 +5176,8 @@ tr.conflict-active-row:hover {
 :root[data-theme="night"] .calendar-week-title,
 :root[data-theme="night"] .calendar-corner,
 :root[data-theme="night"] .calendar-day-heading,
-:root[data-theme="night"] th {
+:root[data-theme="night"] th,
+:root[data-theme="night"] .quick-fix-row td {
   background: var(--color-muted-panel);
   border-color: var(--color-border);
 }
@@ -5010,8 +5189,48 @@ tr.conflict-active-row:hover {
 :root[data-theme="night"] .calendar-corner,
 :root[data-theme="night"] .calendar-day-heading,
 :root[data-theme="night"] .calendar-time-label,
-:root[data-theme="night"] .calendar-slot {
+:root[data-theme="night"] .calendar-slot,
+:root[data-theme="night"] .quick-fix-card,
+:root[data-theme="night"] .quick-fix-tray {
   border-color: var(--color-border);
+}
+
+:root[data-theme="night"] .quick-fix-card {
+  background: var(--color-card);
+}
+
+:root[data-theme="night"] .export-gate.locked {
+  background: #450a0a;
+  border-color: #991b1b;
+  color: #fecaca;
+}
+
+:root[data-theme="night"] .export-gate.ready {
+  background: #052e1a;
+  border-color: #15803d;
+  color: #bbf7d0;
+}
+
+:root[data-theme="night"] .calendar-slot.conflict-available {
+  background: rgba(20, 83, 45, 0.55);
+}
+
+:root[data-theme="night"] .calendar-slot.conflict-soft-available {
+  background: rgba(113, 63, 18, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.65);
+}
+
+:root[data-theme="night"] .calendar-slot.conflict-blocked {
+  background: rgba(127, 29, 29, 0.58);
+  box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.55);
+}
+
+:root[data-theme="night"] .conflict-hard-row {
+  background: rgba(127, 29, 29, 0.18);
+}
+
+:root[data-theme="night"] .conflict-soft-row {
+  background: rgba(146, 64, 14, 0.16);
 }
 
 :root[data-theme="night"] input,

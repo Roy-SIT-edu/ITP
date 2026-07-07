@@ -11,6 +11,7 @@ import type {
   DatabaseRow,
   DatabaseTypeInfo,
   ImportPreviewRow,
+  QuickFixResponse,
   Room,
   ScheduleComparison,
   ScheduleExplanation,
@@ -234,6 +235,17 @@ export function moveScheduledSession(
       body: JSON.stringify(data),
     },
   );
+}
+
+export function suggestScheduleFixes(
+  scheduleRunId: number,
+  data: { conflict_id?: number | null; session_id?: number | null },
+) {
+  return request<QuickFixResponse>(`/api/schedules/${scheduleRunId}/suggest-fixes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
 }
 
 export function recheckSchedule(scheduleRunId: number) {

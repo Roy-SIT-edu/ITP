@@ -14,6 +14,7 @@ from app.models.time_slot import TimeSlot
 from app.services.compatibility import is_online_mode, parse_day_list
 from app.services.constraint_service import ConstraintService
 from app.services.export_service import ExportService
+from app.services.quick_fix_service import QuickFixService
 from app.services.schedule_service import ScheduleService
 from app.services.serializers import schedule_run_to_dict, violation_to_dict
 from app.services.soft_constraint_priority_service import SoftConstraintPriorityService
@@ -26,6 +27,11 @@ class ManualMoveInput(BaseModel):
     start_time: str
     end_time: str
     room_code: str
+
+
+class QuickFixInput(BaseModel):
+    conflict_id: int | None = None
+    session_id: int | None = None
 
 
 @router.post("/generate")
@@ -101,7 +107,9 @@ def move_scheduled_session(schedule_run_id: int, session_id: int, data: ManualMo
         raise HTTPException(status_code=400, detail="No matching time slot exists for that day, time, and week pattern.")
 
     item.room_id = room.id
+    item.room = room
     item.time_slot_id = slot.id
+    item.time_slot = slot
     item.day = slot.day
     item.start_time = slot.start_time
     item.end_time = slot.end_time
@@ -112,6 +120,18 @@ def move_scheduled_session(schedule_run_id: int, session_id: int, data: ManualMo
         item.session.fixed_day = None
         item.session.fixed_start_time = None
         item.session.fixed_end_time = None
+
+    preview_violations = ConstraintService().check_schedule(db, schedule_run_id)
+    blocking_violations = _hard_violations_for_session(preview_violations, session_id)
+    if blocking_violations:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": _manual_move_blocked_message(blocking_violations),
+                "violations": blocking_violations,
+            },
+        )
 
     soft_weights = SoftConstraintPriorityService().weights(db)
     check = ConstraintService().check_and_store(db, schedule_run_id, soft_weights)
@@ -126,6 +146,14 @@ def move_scheduled_session(schedule_run_id: int, session_id: int, data: ManualMo
         "schedule_run": schedule_run_to_dict(run) if run else None,
         "violations": check["violations"],
     }
+
+
+@router.post("/{schedule_run_id}/suggest-fixes")
+def suggest_schedule_fixes(schedule_run_id: int, data: QuickFixInput, db: DbSession = Depends(get_db)):
+    try:
+        return QuickFixService().suggest_fixes(db, schedule_run_id, data.conflict_id, data.session_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/{schedule_run_id}/recheck")
@@ -201,3 +229,24 @@ def schedule_violations(schedule_run_id: int, db: DbSession = Depends(get_db)):
         .order_by(ConstraintViolation.severity, ConstraintViolation.constraint_code)
         .all()
     ]
+
+
+def _hard_violations_for_session(violations: list[dict], session_id: int) -> list[dict]:
+    return [
+        violation
+        for violation in violations
+        if violation.get("severity") == "HARD" and session_id in violation.get("affected_session_ids", [])
+    ]
+
+
+def _manual_move_blocked_message(violations: list[dict]) -> str:
+    code = violations[0].get("constraint_code") if violations else ""
+    messages = {
+        "STAFF_DOUBLE_BOOKING": "Cannot move here: Staff member is double-booked.",
+        "ROOM_DOUBLE_BOOKING": "Cannot move here: Room is double-booked.",
+        "STUDENT_GROUP_DOUBLE_BOOKING": "Cannot move here: Student group is double-booked.",
+        "ROOM_CAPACITY_MISMATCH": "Cannot move here: Room capacity is too low.",
+        "DELIVERY_ROOM_MISMATCH": "Cannot move here: Room type does not match the session delivery mode.",
+        "INVALID_FIXED_TIME": "Cannot move here: Fixed session would be outside its fixed slot.",
+    }
+    return messages.get(code, "Cannot move here: this placement creates a hard conflict.")

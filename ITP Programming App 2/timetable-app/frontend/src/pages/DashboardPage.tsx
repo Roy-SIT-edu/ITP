@@ -14,7 +14,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { getAvailability, getConstraintInsights, getDashboard } from "../api/client";
+import { exportUrl, getAvailability, getConstraintInsights, getDashboard } from "../api/client";
 import type { Availability, ConstraintInsights, Dashboard } from "../types";
 import StatusBadge from "../components/StatusBadge";
 
@@ -40,6 +40,8 @@ export default function DashboardPage() {
   if (!dashboard) return <div className="empty-state">Loading dashboard.</div>;
 
   const latest = dashboard.latest_schedule;
+  const hardConflicts = latest?.hard_violation_count ?? 0;
+  const exportReady = Boolean(latest) && hardConflicts === 0;
   const kpis = [
     {
       label: "Total sessions",
@@ -150,6 +152,32 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="empty-state">No current constraint issues.</div>
+          )}
+        </div>
+
+        <div className="status-card dashboard-export-card">
+          <div className="section-heading">
+            <div>
+              <div className="status-card-title">Export Readiness</div>
+              <p>
+                {exportReady
+                  ? "🎉 All hard conflicts resolved! Timetable is ready for export."
+                  : latest
+                    ? "⚠️ You must resolve all Hard Conflicts before you can export your timetable."
+                    : "Generate a timetable before exporting."}
+              </p>
+            </div>
+          </div>
+          {exportReady ? (
+            <a className="button" href={exportUrl(latest!.id, "xlsx")}>
+              <FileSpreadsheet size={18} />
+              Export to Excel
+            </a>
+          ) : (
+            <button className="button export-disabled" disabled type="button">
+              <FileSpreadsheet size={18} />
+              Export to Excel
+            </button>
           )}
         </div>
 
