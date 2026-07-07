@@ -21,6 +21,7 @@ const routeMap = {
   "database-programmes": () => <DatabasePage dataType="programmes" />,
   "database-modules": () => <DatabasePage dataType="modules" />,
   "database-student-groups": () => <DatabasePage dataType="student-groups" />,
+  "database-lab-requirements": () => <DatabasePage dataType="lab-requirements" />,
   "soft-constraints": SoftConstraintsPage,
   review: TimetableReviewPage,
   export: ExportPage,

@@ -15,15 +15,10 @@ import {
   getTimeSlots,
   getViolations,
   moveScheduledSession,
-  getSession,
-  updateSession,
-  recheckSchedule,
-  generateSchedule,
   suggestScheduleFixes,
 } from "../api/client";
 import ConflictTable from "../components/ConflictTable";
 import InlineActivity from "../components/InlineActivity";
-import LiveProgress from "../components/LiveProgress";
 import StatusBadge from "../components/StatusBadge";
 import TimetableGrid from "../components/TimetableGrid";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
@@ -38,7 +33,6 @@ import type {
   ScheduleResponse,
   ScheduleRun,
   ScheduledRow,
-  SessionRow,
   TimeSlot,
 } from "../types";
 
@@ -62,6 +56,8 @@ type QuickFixTarget = {
   conflictId?: number | null;
   sessionId?: number | null;
 };
+
+type ConflictSeverityFilter = "all" | "hard" | "soft";
 
 const emptyFilters: Filters = {
   programme: "",
@@ -87,6 +83,10 @@ export default function TimetableReviewPage() {
   const [activeSessionId, setActiveSessionId] = useSessionState<number | null>("review.activeSessionId", null);
   const [movingConflict, setMovingConflict] = useState(false);
   const [conflictTab, setConflictTab] = useSessionState<"modules" | "issues">("review.conflictTab", "modules");
+  const [conflictSeverityFilter, setConflictSeverityFilter] = useSessionState<ConflictSeverityFilter>(
+    "review.conflictSeverityFilter",
+    "all",
+  );
   const [quickFixOpenKey, setQuickFixOpenKey] = useState<string | null>(null);
   const [quickFixSuggestions, setQuickFixSuggestions] = useState<Record<string, QuickFixSuggestion[]>>({});
   const [quickFixErrors, setQuickFixErrors] = useState<Record<string, string>>({});
@@ -252,7 +252,7 @@ export default function TimetableReviewPage() {
     }
   };
 
-  const handleConflictMove = async (day: string, startTime: string, _endTime: string) => {
+  const handleConflictMove = async (day: string, startTime: string) => {
     if (!schedule || !activeSessionId || movingConflict) return;
     const targetRow = rows.find((r) => r.session_id === activeSessionId);
     if (!targetRow) return;
@@ -421,29 +421,69 @@ export default function TimetableReviewPage() {
     );
   };
 
-  const conflictSessionIds = useMemo(() => {
-    const ids = new Set<number>();
-    for (const v of violations) {
-      for (const id of v.affected_session_ids) ids.add(id);
-    }
-    return ids;
-  }, [violations]);
-
   const hardConflictCount = useMemo(
     () => violations.filter((violation) => violation.severity === "HARD").length,
     [violations],
   );
+  const softConflictCount = useMemo(
+    () => violations.filter((violation) => violation.severity === "SOFT").length,
+    [violations],
+  );
+
+  const visibleViolations = useMemo(() => {
+    if (conflictSeverityFilter === "hard") return violations.filter((violation) => violation.severity === "HARD");
+    if (conflictSeverityFilter === "soft") return violations.filter((violation) => violation.severity === "SOFT");
+    return violations;
+  }, [conflictSeverityFilter, violations]);
+
+  const conflictSessionIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const violation of visibleViolations) {
+      for (const id of violation.affected_session_ids) ids.add(id);
+    }
+    return ids;
+  }, [visibleViolations]);
 
   const conflictSessions = useMemo(() => {
     const sessions = rows.filter((r) => conflictSessionIds.has(r.session_id));
     return sessions.sort((a, b) => {
-      const aHasHard = violations.some((v) => v.severity === "HARD" && v.affected_session_ids.includes(a.session_id));
-      const bHasHard = violations.some((v) => v.severity === "HARD" && v.affected_session_ids.includes(b.session_id));
+      const aHasHard = visibleViolations.some((v) => v.severity === "HARD" && v.affected_session_ids.includes(a.session_id));
+      const bHasHard = visibleViolations.some((v) => v.severity === "HARD" && v.affected_session_ids.includes(b.session_id));
       if (aHasHard && !bHasHard) return -1;
       if (!aHasHard && bHasHard) return 1;
       return 0;
     });
-  }, [rows, conflictSessionIds, violations]);
+  }, [rows, conflictSessionIds, visibleViolations]);
+
+  const conflictSessionGroups = useMemo(() => {
+    const hardRows: ScheduledRow[] = [];
+    const softRows: ScheduledRow[] = [];
+    conflictSessions.forEach((row) => {
+      const rowViolations = visibleViolations.filter((violation) => violation.affected_session_ids.includes(row.session_id));
+      if (rowViolations.some((violation) => violation.severity === "HARD")) {
+        hardRows.push(row);
+        return;
+      }
+      if (rowViolations.length > 0) softRows.push(row);
+    });
+
+    return [
+      {
+        key: "hard" as const,
+        label: "Hard Constraints",
+        hint: "Must be fixed before export",
+        rows: hardRows,
+        issueCount: countUniqueGroupIssues(hardRows, visibleViolations),
+      },
+      {
+        key: "soft" as const,
+        label: "Soft Constraints",
+        hint: "Optional quality warnings",
+        rows: softRows,
+        issueCount: countUniqueGroupIssues(softRows, visibleViolations),
+      },
+    ].filter((group) => group.rows.length > 0);
+  }, [conflictSessions, visibleViolations]);
 
   return (
     <div className="page">
@@ -620,19 +660,41 @@ export default function TimetableReviewPage() {
                   )}
                 </p>
               </div>
-              <div style={{ display: "flex", gap: "10px" }}>
-                <button
-                  className={`button slim ${conflictTab === "modules" ? "" : "secondary"}`}
-                  onClick={() => setConflictTab("modules")}
-                >
-                  Modules to Reassign
-                </button>
-                <button
-                  className={`button slim ${conflictTab === "issues" ? "" : "secondary"}`}
-                  onClick={() => setConflictTab("issues")}
-                >
-                  Raw Issues
-                </button>
+              <div className="conflict-panel-toolbar">
+                <div className="conflict-view-tabs">
+                  <button
+                    className={`button slim ${conflictTab === "modules" ? "" : "secondary"}`}
+                    onClick={() => setConflictTab("modules")}
+                  >
+                    Modules to Reassign
+                  </button>
+                  <button
+                    className={`button slim ${conflictTab === "issues" ? "" : "secondary"}`}
+                    onClick={() => setConflictTab("issues")}
+                  >
+                    Raw Issues
+                  </button>
+                </div>
+                <div className="conflict-severity-filter" aria-label="Filter conflicts by severity">
+                  {[
+                    { key: "all" as const, label: "All", count: violations.length },
+                    { key: "hard" as const, label: "Hard", count: hardConflictCount },
+                    { key: "soft" as const, label: "Soft", count: softConflictCount },
+                  ].map((option) => (
+                    <button
+                      aria-pressed={conflictSeverityFilter === option.key}
+                      className={`conflict-severity-button ${option.key} ${
+                        conflictSeverityFilter === option.key ? "active" : ""
+                      }`}
+                      key={option.key}
+                      onClick={() => setConflictSeverityFilter(option.key)}
+                      type="button"
+                    >
+                      <span>{option.label}</span>
+                      <strong>{option.count}</strong>
+                    </button>
+                  ))}
+                </div>
                 {activeSessionId && (
                   <button className="button secondary slim" onClick={() => setActiveSessionId(null)}>
                     Clear Selection
@@ -669,56 +731,72 @@ export default function TimetableReviewPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {conflictSessions.map((row) => {
-                      const rowViolations = violations.filter((v) => v.affected_session_ids.includes(row.session_id));
-                      const isActive = activeSessionId === row.session_id;
-                      const hasHard = rowViolations.some((v) => v.severity === "HARD");
-                      const borderStyle = hasHard ? "4px solid #dc2626" : "4px solid #f97316";
-                      const quickFixKey = `session-${row.session_id}`;
-                      const quickFixOpen = quickFixOpenKey === quickFixKey;
-                      const resolvingClass = applyingQuickFix?.startsWith(`${quickFixKey}-`) ? "quick-fix-resolving" : "";
-                      const urgencyClass = hasHard ? "conflict-hard-row" : "conflict-soft-row";
-                      return (
-                        <Fragment key={row.session_id}>
-                          <tr
-                            className={`${urgencyClass} ${resolvingClass} ${isActive ? "conflict-active-row" : ""}`}
-                            onClick={() => setActiveSessionId(row.session_id)}
-                            style={{ cursor: "pointer" }}
-                          >
-                            <td style={{ borderLeft: borderStyle }}>{row.programme || `Req-${row.session_id}`}</td>
-                            <td>{row.student_group_code}</td>
-                            <td>{row.staff_name}</td>
-                            <td>
-                              {row.day} {row.start_time}-{row.end_time}
-                            </td>
-                            <td>{row.room}</td>
-                            <td>{rowViolations.length} issue(s)</td>
-                            <td>
-                              <button
-                                className={`button secondary slim quick-fix-toggle ${quickFixOpen ? "open" : ""}`}
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void toggleQuickFix({ key: quickFixKey, sessionId: row.session_id });
-                                }}
+                    {conflictSessionGroups.map((group) => (
+                      <Fragment key={group.key}>
+                        <tr className={`conflict-group-row ${group.key}`}>
+                          <td colSpan={7}>
+                            <div>
+                              <strong>{group.label}</strong>
+                              <span>
+                                {group.rows.length} module{group.rows.length === 1 ? "" : "s"} | {group.issueCount} issue
+                                {group.issueCount === 1 ? "" : "s"} | {group.hint}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                        {group.rows.map((row) => {
+                          const rowViolations = visibleViolations.filter((v) => v.affected_session_ids.includes(row.session_id));
+                          const isActive = activeSessionId === row.session_id;
+                          const hasHard = rowViolations.some((v) => v.severity === "HARD");
+                          const quickFixKey = `session-${row.session_id}`;
+                          const quickFixOpen = quickFixOpenKey === quickFixKey;
+                          const resolvingClass = applyingQuickFix?.startsWith(`${quickFixKey}-`) ? "quick-fix-resolving" : "";
+                          const urgencyClass = hasHard ? "conflict-hard-row" : "conflict-soft-row";
+                          return (
+                            <Fragment key={row.session_id}>
+                              <tr
+                                className={`${urgencyClass} ${resolvingClass} ${isActive ? "conflict-active-row" : ""}`}
+                                onClick={() => setActiveSessionId(row.session_id)}
+                                style={{ cursor: "pointer" }}
                               >
-                                <Zap size={14} />
-                                Quick Fix
-                                <ChevronDown size={14} />
-                              </button>
-                            </td>
-                          </tr>
-                          {quickFixOpen && (
-                            <tr className="quick-fix-row">
-                              <td colSpan={7}>{renderQuickFixTray(quickFixKey)}</td>
-                            </tr>
-                          )}
-                        </Fragment>
-                      );
-                    })}
-                    {conflictSessions.length === 0 && (
+                                <td>{row.programme || `Req-${row.session_id}`}</td>
+                                <td>{row.student_group_code}</td>
+                                <td>{row.staff_name}</td>
+                                <td>
+                                  {row.day} {row.start_time}-{row.end_time}
+                                </td>
+                                <td>{row.room}</td>
+                                <td>
+                                  {rowViolations.length} {group.key} issue{rowViolations.length === 1 ? "" : "s"}
+                                </td>
+                                <td>
+                                  <button
+                                    className={`button secondary slim quick-fix-toggle ${quickFixOpen ? "open" : ""}`}
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void toggleQuickFix({ key: quickFixKey, sessionId: row.session_id });
+                                    }}
+                                  >
+                                    <Zap size={14} />
+                                    Quick Fix
+                                    <ChevronDown size={14} />
+                                  </button>
+                                </td>
+                              </tr>
+                              {quickFixOpen && (
+                                <tr className="quick-fix-row">
+                                  <td colSpan={7}>{renderQuickFixTray(quickFixKey)}</td>
+                                </tr>
+                              )}
+                            </Fragment>
+                          );
+                        })}
+                      </Fragment>
+                    ))}
+                    {conflictSessionGroups.length === 0 && (
                       <tr>
-                        <td colSpan={7}>No modules with conflicts.</td>
+                        <td colSpan={7}>No modules match the selected conflict filter.</td>
                       </tr>
                     )}
                   </tbody>
@@ -726,7 +804,7 @@ export default function TimetableReviewPage() {
               </div>
             ) : (
               <ConflictTable
-                violations={violations}
+                violations={visibleViolations}
                 activeConflictId={null}
                 quickFixOpenId={
                   quickFixOpenKey?.startsWith("conflict-") ? Number(quickFixOpenKey.replace("conflict-", "")) : null
@@ -820,6 +898,11 @@ function uniqueStaff(rows: ScheduledRow[]) {
         .map(String),
     ),
   ).sort();
+}
+
+function countUniqueGroupIssues(rows: ScheduledRow[], violations: ConstraintViolation[]) {
+  const sessionIds = new Set(rows.map((row) => row.session_id));
+  return violations.filter((violation) => violation.affected_session_ids.some((id) => sessionIds.has(id))).length;
 }
 
 function slotDisplayKey(day: string, startTime: string) {

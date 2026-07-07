@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Room, ScheduledRow, TimeSlot, SessionRow } from "../../types";
 import MoveControls from "./MoveControls";
 import TimetablePlanner from "./TimetablePlanner";
@@ -73,6 +73,7 @@ export default function TimetableGrid({
     visibleRows[0] ? getFirstOverlapKey(visibleRows[0], slots) : null,
   );
   const [selectedRowsOverride, setSelectedRowsOverride] = useState<ScheduledRow[] | null>(null);
+  const [slotDetailsAttention, setSlotDetailsAttention] = useState(0);
   const [isPlacing, setIsPlacing] = useState(false);
   const selectedRow = useMemo(
     () => visibleRows.find((row) => row.session_id === selectedSessionId) ?? visibleRows[0] ?? null,
@@ -147,9 +148,17 @@ export default function TimetableGrid({
             availableSlotKeys={availableSlotKeys}
             softAvailableSlotKeys={softAvailableSlotKeys}
             blockedSlotKeys={blockedSlotKeys}
-            onSelectSlot={(key, slotRows) => {
+            onSelectSlot={(key, slotRows, options) => {
               if (blockedSlotKeys?.has(key) && (isPlacing || slotRows.length === 0)) {
                 onBlockedSlot?.("Cannot move here: this slot creates a hard conflict.");
+                return;
+              }
+              if (options?.focusSlotDetails && slotRows.length > 0) {
+                setSelectedSlotKey(key);
+                setSelectedRowsOverride(slotRows);
+                setSelectedSessionId(slotRows[0].session_id);
+                onSelectSession?.(slotRows[0].session_id);
+                setSlotDetailsAttention((current) => current + 1);
                 return;
               }
               // Conflict resolution: clicking an available slot triggers move
@@ -191,6 +200,7 @@ export default function TimetableGrid({
           />
         </div>
         <SlotSessionList
+          attentionKey={slotDetailsAttention}
           rows={selectedSlotRows}
           selectedSessionId={selectedRow?.session_id ?? null}
           onSelect={(sessionId) => {
@@ -340,18 +350,30 @@ function parseDateInput(value: string) {
 }
 
 function SlotSessionList({
+  attentionKey,
   rows,
   selectedSessionId,
   onSelect,
 }: {
+  attentionKey: number;
   rows: ScheduledRow[];
   selectedSessionId: number | null;
   onSelect: (sessionId: number) => void;
 }) {
   const label = rows.length > 0 ? slotRowsLabel(rows) : "No slot selected";
+  const panelRef = useRef<HTMLElement | null>(null);
+  const [isHighlighted, setIsHighlighted] = useState(false);
+
+  useEffect(() => {
+    if (attentionKey <= 0) return;
+    panelRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setIsHighlighted(true);
+    const timeout = window.setTimeout(() => setIsHighlighted(false), 1800);
+    return () => window.clearTimeout(timeout);
+  }, [attentionKey]);
 
   return (
-    <section className="slot-detail-panel">
+    <section className={`slot-detail-panel ${isHighlighted ? "attention" : ""}`} ref={panelRef}>
       <div className="schedule-edit-heading">
         <div>
           <strong>Slot Details</strong>
@@ -435,16 +457,17 @@ function SelectedSessionEditor({
   const [savingDetails, setSavingDetails] = useState(false);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [isSessionDirty, setIsSessionDirty] = useState(false);
+  const rowSessionId = row?.session_id ?? null;
 
   useEffect(() => {
-    if (row && scheduleRunId) {
-      getSession(row.session_id)
+    if (rowSessionId && scheduleRunId) {
+      getSession(rowSessionId)
         .then(setSessionData)
         .catch((err) => setErrorDetails(err.message));
     } else {
       setSessionData(null);
     }
-  }, [row?.session_id, scheduleRunId]);
+  }, [rowSessionId, scheduleRunId]);
 
   const draft = row
     ? (moveDrafts[row.session_id] ?? {

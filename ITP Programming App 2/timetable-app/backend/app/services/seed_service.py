@@ -9,9 +9,11 @@ intentionally not seeded.
 from __future__ import annotations
 
 import re
+import json
 from pathlib import Path
 
 import pandas as pd
+from app.models.lab_requirement import LabRequirement
 from app.models.module import Module
 from app.models.programme import Programme
 from app.models.room import Room
@@ -21,9 +23,11 @@ from app.models.student_group import StudentGroup
 from app.models.time_slot import TimeSlot
 from app.services.compatibility import clean_text, minutes_to_time
 from app.services.student_group_service import ensure_programme_year_groups, normalize_student_group_ids, student_group_code
+from sqlalchemy import func
 from sqlalchemy.orm import Session as DbSession
 
 DEFAULT_RAW_DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "Raw Data.xlsx"
+DEFAULT_LAB_REQUIREMENTS_PATH = Path(__file__).resolve().parents[1] / "data" / "lab_requirements_seed.json"
 
 PROGRAMME_NAMES = {
     "AAI": "Applied Artificial Intelligence",
@@ -97,8 +101,14 @@ def _get_or_create(db: DbSession, model, defaults: dict | None = None, **filters
     return instance
 
 
-def seed_defaults(db: DbSession, raw_data_path: Path | None = DEFAULT_RAW_DATA_PATH) -> None:
+def seed_defaults(
+    db: DbSession,
+    raw_data_path: Path | None = DEFAULT_RAW_DATA_PATH,
+    seed_lab_requirements: bool = True,
+) -> None:
     seed_reference_data(db, raw_data_path=raw_data_path)
+    if seed_lab_requirements:
+        seed_lab_reference_data(db, DEFAULT_LAB_REQUIREMENTS_PATH)
     db.commit()
 
 
@@ -114,9 +124,10 @@ def seed_reference_data(db: DbSession, raw_data_path: Path | None = None) -> Non
 def seed_time_slots(db: DbSession) -> None:
     for day in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]:
         for week_pattern in ["Weekly", "Odd", "Even"]:
-            for duration in [60, 120]:
-                latest_start = 18 * 60 - duration
-                for start in range(9 * 60, latest_start + 1, 60):
+            for duration in [60, 90, 120, 150, 180, 240, 300]:
+                latest_start = 22 * 60 - duration
+                step = 30 if duration in {90, 150} else 60
+                for start in range(9 * 60, latest_start + 1, step):
                     end = start + duration
                     _get_or_create(
                         db,
@@ -127,6 +138,89 @@ def seed_time_slots(db: DbSession) -> None:
                         week_pattern=week_pattern,
                         defaults={"duration_minutes": duration},
                     )
+
+
+def seed_lab_reference_data(db: DbSession, seed_path: Path | None = DEFAULT_LAB_REQUIREMENTS_PATH) -> None:
+    """Seed built-in lab source rows and reference records without overwriting admin edits."""
+
+    if not seed_path or not seed_path.exists():
+        return
+    data = json.loads(seed_path.read_text(encoding="ascii"))
+    for item in data.get("rooms", []):
+        room = _get_or_create(
+            db,
+            Room,
+            room_code=clean_text(item.get("room_code")),
+            defaults={
+                "room_name": clean_text(item.get("room_name")) or clean_text(item.get("room_code")),
+                "room_type": clean_text(item.get("room_type")) or "Lab",
+                "capacity": _int_or_default(item.get("capacity"), 1),
+                "is_virtual": bool(item.get("is_virtual")),
+                "campus_mode": clean_text(item.get("campus_mode")) or ("Virtual" if item.get("is_virtual") else "Physical"),
+                "recording_available": bool(item.get("recording_available")),
+            },
+        )
+        if not room.room_name:
+            room.room_name = clean_text(item.get("room_name")) or room.room_code
+        if not room.room_type:
+            room.room_type = clean_text(item.get("room_type")) or "Lab"
+        if not room.capacity or room.capacity <= 0:
+            room.capacity = _int_or_default(item.get("capacity"), 1)
+    for item in data.get("modules", []):
+        module_code = clean_text(item.get("module_code"))
+        if not module_code:
+            continue
+        _get_or_create(
+            db,
+            Module,
+            module_code=module_code,
+            defaults={
+                "module_title": clean_text(item.get("module_title")) or module_code,
+                "term": clean_text(item.get("term")),
+            },
+        )
+    for item in data.get("missing_staff", []):
+        staff_name = _clean_staff_name(item.get("staff_name"))
+        if not staff_name:
+            continue
+        existing = db.query(Staff).filter(func.lower(Staff.staff_name) == staff_name.lower()).first()
+        if not existing:
+            db.add(Staff(staff_name=staff_name, staff_id=clean_text(item.get("staff_id"))))
+            db.flush()
+    if db.query(LabRequirement).count() > 0:
+        return
+    for item in data.get("lab_requirements", []):
+        db.add(
+            LabRequirement(
+                requirement_id=clean_text(item.get("requirement_id")),
+                is_active=bool(item.get("is_active")),
+                source_sheet=clean_text(item.get("source_sheet")),
+                source_row_no=_int_or_default(item.get("source_row_no"), 0),
+                programme=clean_text(item.get("programme")),
+                raw_programme=clean_text(item.get("raw_programme")),
+                year=_int_or_default(item.get("year"), 0) or None,
+                module_code=clean_text(item.get("module_code")),
+                student_group=clean_text(item.get("student_group")),
+                student_group_codes=clean_text(item.get("student_group_codes")),
+                group_size=_int_or_default(item.get("group_size"), 0) or None,
+                fixed_day=clean_text(item.get("fixed_day")),
+                fixed_start_time=clean_text(item.get("fixed_start_time")),
+                fixed_end_time=clean_text(item.get("fixed_end_time")),
+                duration_minutes=_int_or_default(item.get("duration_minutes"), 0) or None,
+                week_pattern=clean_text(item.get("week_pattern")),
+                custom_weeks=clean_text(item.get("custom_weeks")),
+                location=clean_text(item.get("location")),
+                required_room_codes=clean_text(item.get("required_room_codes")),
+                staff_names=clean_text(item.get("staff_names")),
+                class_type=clean_text(item.get("class_type")),
+                delivery_mode=clean_text(item.get("delivery_mode")),
+                campus_mode=clean_text(item.get("campus_mode")),
+                venue_type_required=clean_text(item.get("venue_type_required")),
+                start_at_7pm=bool(item.get("start_at_7pm")),
+                setup_turnaround_note=clean_text(item.get("setup_turnaround_note")),
+                notes=clean_text(item.get("notes")),
+            )
+        )
 
 
 def seed_raw_data_workbook(db: DbSession, workbook_path: Path) -> None:

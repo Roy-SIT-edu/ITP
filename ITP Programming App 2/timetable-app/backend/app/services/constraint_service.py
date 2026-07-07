@@ -7,14 +7,16 @@ for the review and validation pages after a timetable has been generated.
 from __future__ import annotations
 
 from app.models.constraint_violation import ConstraintViolation
+from app.models.room import Room
 from app.models.scheduled_session import ScheduledSession
+from app.models.student_group import StudentGroup
 from app.services.compatibility import (
     delivery_room_compatible,
     intervals_overlap,
     is_online_mode,
     normalize_token,
+    session_weeks_conflict,
     time_to_minutes,
-    weeks_conflict,
 )
 from app.services.scheduling_constants import (
     DEFAULT_SOFT_CONSTRAINT_WEIGHTS,
@@ -22,6 +24,7 @@ from app.services.scheduling_constants import (
     SHORT_CAMPUS_DAY_MAX_MINUTES,
     TUTOR_IDLE_GAP_MINUTES,
 )
+from app.services.scheduling_rules import required_room_codes, required_student_group_codes
 from sqlalchemy.orm import Session as DbSession
 
 
@@ -67,41 +70,52 @@ class ConstraintService:
             .order_by(ScheduledSession.day, ScheduledSession.start_time)
             .all()
         )
+        room_labels = {item.id: item.room_code for item in db.query(Room).all()}
+        group_ids_by_code = {item.group_code.lower(): item.id for item in db.query(StudentGroup).all()}
+        group_labels = {item.id: item.group_code for item in db.query(StudentGroup).all()}
         violations: list[dict] = []
-        self._hard_double_booking_checks(scheduled, violations)
+        self._hard_double_booking_checks(scheduled, violations, room_labels, group_ids_by_code, group_labels)
         self._hard_staff_double_booking_checks(scheduled, violations)
         self._hard_quality_checks(scheduled, violations)
-        self._soft_checks(scheduled, violations)
+        self._soft_checks(scheduled, violations, group_ids_by_code)
         return violations
 
-    def _hard_double_booking_checks(self, scheduled: list[ScheduledSession], violations: list[dict]) -> None:
+    def _hard_double_booking_checks(
+        self,
+        scheduled: list[ScheduledSession],
+        violations: list[dict],
+        room_labels: dict[int, str],
+        group_ids_by_code: dict[str, int],
+        group_labels: dict[int, str],
+    ) -> None:
         pairs = [
             (
                 "ROOM_DOUBLE_BOOKING",
-                lambda item: item.room_id,
-                lambda item: f"Room {item.room.room_code}",
+                lambda item: self._scheduled_room_ids(item),
+                lambda key: f"Room {room_labels.get(key, key)}",
             ),
             (
                 "STUDENT_GROUP_DOUBLE_BOOKING",
-                lambda item: item.session.student_group_id,
-                lambda item: f"Student group {item.session.student_group.group_code if item.session.student_group else item.session.student_group_id}",
+                lambda item: self._scheduled_group_ids(item, group_ids_by_code),
+                lambda key: f"Student group {group_labels.get(key, key)}",
             ),
         ]
         for code, key_func, label_func in pairs:
             grouped: dict[int, list[ScheduledSession]] = {}
             for item in scheduled:
-                key = key_func(item)
-                if key is not None:
+                for key in key_func(item):
                     grouped.setdefault(key, []).append(item)
-            for items in grouped.values():
+            for key, items in grouped.items():
                 for index, left in enumerate(items):
                     for right in items[index + 1 :]:
+                        if self._both_lab_requirements(left, right):
+                            continue
                         if self._scheduled_conflict(left, right):
                             violations.append(
                                 {
                                     "constraint_code": code,
                                     "severity": "HARD",
-                                    "message": f"{label_func(left)} is assigned to {self._module_label(left)} and {self._module_label(right)} on {left.day} {left.start_time}-{left.end_time}.",
+                                    "message": f"{label_func(key)} is assigned to {self._module_label(left)} and {self._module_label(right)} on {left.day} {left.start_time}-{left.end_time}.",
                                     "affected_session_ids": [left.session_id, right.session_id],
                                 }
                             )
@@ -117,6 +131,8 @@ class ConstraintService:
         for staff_id, items in grouped.items():
             for index, left in enumerate(items):
                 for right in items[index + 1 :]:
+                    if self._both_lab_requirements(left, right):
+                        continue
                     if not self._scheduled_conflict(left, right):
                         continue
                     pair = (staff_id, min(left.session_id, right.session_id), max(left.session_id, right.session_id))
@@ -134,7 +150,13 @@ class ConstraintService:
 
     def _hard_quality_checks(self, scheduled: list[ScheduledSession], violations: list[dict]) -> None:
         for item in scheduled:
-            if item.session.exact_class_size and item.room.capacity < item.session.exact_class_size:
+            if item.session.is_lab_requirement:
+                continue
+            if (
+                item.session.exact_class_size
+                and len(required_room_codes(item.session)) <= 1
+                and item.room.capacity < item.session.exact_class_size
+            ):
                 violations.append(
                     {
                         "constraint_code": "ROOM_CAPACITY_MISMATCH",
@@ -149,6 +171,16 @@ class ConstraintService:
                         "constraint_code": "DELIVERY_ROOM_MISMATCH",
                         "severity": "HARD",
                         "message": f"{item.session.delivery_mode} session {self._module_label(item)} is placed in incompatible room {item.room.room_code}.",
+                        "affected_session_ids": [item.session_id],
+                    }
+                )
+            required_codes = required_room_codes(item.session)
+            if required_codes and item.room.room_code.lower() not in {code.lower() for code in required_codes}:
+                violations.append(
+                    {
+                        "constraint_code": "REQUIRED_ROOM_MISMATCH",
+                        "severity": "HARD",
+                        "message": f"{self._module_label(item)} must use one of {', '.join(required_codes)} but is placed in {item.room.room_code}.",
                         "affected_session_ids": [item.session_id],
                     }
                 )
@@ -167,10 +199,18 @@ class ConstraintService:
                         }
                     )
 
-    def _soft_checks(self, scheduled: list[ScheduledSession], violations: list[dict]) -> None:
+    def _both_lab_requirements(self, left: ScheduledSession, right: ScheduledSession) -> bool:
+        return bool(left.session and right.session and left.session.is_lab_requirement and right.session.is_lab_requirement)
+
+    def _soft_checks(
+        self,
+        scheduled: list[ScheduledSession],
+        violations: list[dict],
+        group_ids_by_code: dict[str, int],
+    ) -> None:
         self._tutor_gap_checks(scheduled, violations)
-        self._student_day_checks(scheduled, violations)
-        self._adjacent_switch_checks(scheduled, violations)
+        self._student_day_checks(scheduled, violations, group_ids_by_code)
+        self._adjacent_switch_checks(scheduled, violations, group_ids_by_code)
         for item in scheduled:
             if is_online_mode(item.session.delivery_mode) and item.day not in {"Monday", "Tuesday"}:
                 violations.append(
@@ -201,11 +241,15 @@ class ConstraintService:
                         }
                     )
 
-    def _student_day_checks(self, scheduled: list[ScheduledSession], violations: list[dict]) -> None:
+    def _student_day_checks(
+        self,
+        scheduled: list[ScheduledSession],
+        violations: list[dict],
+        group_ids_by_code: dict[str, int],
+    ) -> None:
         grouped: dict[tuple[int, str], list[ScheduledSession]] = {}
         for item in scheduled:
-            group_id = item.session.student_group_id
-            if group_id:
+            for group_id in self._scheduled_group_ids(item, group_ids_by_code):
                 grouped.setdefault((group_id, item.day), []).append(item)
         for items in grouped.values():
             ordered = sorted(items, key=lambda item: item.start_time)
@@ -248,7 +292,12 @@ class ConstraintService:
                     )
                     break
 
-    def _adjacent_switch_checks(self, scheduled: list[ScheduledSession], violations: list[dict]) -> None:
+    def _adjacent_switch_checks(
+        self,
+        scheduled: list[ScheduledSession],
+        violations: list[dict],
+        group_ids_by_code: dict[str, int],
+    ) -> None:
         def add_checks(grouped: dict[tuple[int, str], list[ScheduledSession]], label: str) -> None:
             for items in grouped.values():
                 ordered = sorted(items, key=lambda item: item.start_time)
@@ -272,8 +321,7 @@ class ConstraintService:
         for item in scheduled:
             for staff_id, _ in self._session_staff_labels(item):
                 by_staff.setdefault((staff_id, item.day), []).append(item)
-            group_id = item.session.student_group_id
-            if group_id:
+            for group_id in self._scheduled_group_ids(item, group_ids_by_code):
                 by_group.setdefault((group_id, item.day), []).append(item)
         add_checks(by_staff, "Tutor")
         add_checks(by_group, "Student group")
@@ -293,9 +341,21 @@ class ConstraintService:
     def _scheduled_conflict(self, left: ScheduledSession, right: ScheduledSession) -> bool:
         return (
             left.day == right.day
-            and weeks_conflict(left.week_pattern, right.week_pattern)
+            and session_weeks_conflict(left.session, left.time_slot, right.session, right.time_slot)
             and intervals_overlap(left.start_time, left.end_time, right.start_time, right.end_time)
         )
+
+    def _scheduled_room_ids(self, item: ScheduledSession) -> list[int]:
+        return [item.room_id] if item.room_id is not None else []
+
+    def _scheduled_group_ids(self, item: ScheduledSession, group_ids_by_code: dict[str, int]) -> list[int]:
+        ids = [item.session.student_group_id] if item.session and item.session.student_group_id is not None else []
+        if item.session:
+            for code in required_student_group_codes(item.session):
+                group_id = group_ids_by_code.get(code.lower())
+                if group_id is not None:
+                    ids.append(group_id)
+        return list(dict.fromkeys(ids))
 
     def _module_label(self, item: ScheduledSession) -> str:
         module = item.session.module.module_code if item.session.module else item.session.requirement_id

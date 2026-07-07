@@ -7,16 +7,17 @@ import re
 from app.models.constraint_violation import ConstraintViolation
 from app.models.room import Room
 from app.models.scheduled_session import ScheduledSession
+from app.models.student_group import StudentGroup
 from app.models.time_slot import TimeSlot
 from app.services.compatibility import (
     DAY_ORDER,
     intervals_overlap,
     normalize_token,
     parse_day_list,
+    session_weeks_conflict,
     time_to_minutes,
-    weeks_conflict,
 )
-from app.services.scheduling_rules import candidate_room_allowed
+from app.services.scheduling_rules import candidate_room_allowed, required_student_group_codes
 from sqlalchemy.orm import Session as DbSession
 
 
@@ -44,8 +45,9 @@ class QuickFixService:
             raise ValueError("Scheduled session not found for this run.")
 
         rooms = db.query(Room).order_by(Room.room_code).all()
+        groups = db.query(StudentGroup).order_by(StudentGroup.group_code).all()
         slots = db.query(TimeSlot).order_by(TimeSlot.day, TimeSlot.start_time).all()
-        suggestions = self._ranked_suggestions(target, scheduled, rooms, slots)
+        suggestions = self._ranked_suggestions(target, scheduled, rooms, groups, slots)
         severity = violation.severity if violation is not None else self._target_severity(db, schedule_run_id, target.session_id)
 
         return {
@@ -60,8 +62,12 @@ class QuickFixService:
         target: ScheduledSession,
         scheduled: list[ScheduledSession],
         rooms: list[Room],
+        groups: list[StudentGroup],
         slots: list[TimeSlot],
     ) -> list[dict]:
+        if target.session and target.session.is_lab_requirement:
+            return []
+        group_ids_by_code = {group.group_code.lower(): group.id for group in groups}
         candidates = []
         for room in rooms:
             if not candidate_room_allowed(target.session, room):
@@ -71,7 +77,7 @@ class QuickFixService:
                     continue
                 if self._same_placement(target, room, slot):
                     continue
-                if not self._placement_is_clean(target, room, slot, scheduled):
+                if not self._placement_is_clean(target, room, slot, scheduled, group_ids_by_code):
                     continue
                 suggestion_type = self._suggestion_type(target, room, slot)
                 candidates.append((suggestion_type, self._score(target, room, slot, suggestion_type), room, slot))
@@ -149,26 +155,28 @@ class QuickFixService:
         room: Room,
         slot: TimeSlot,
         scheduled: list[ScheduledSession],
+        group_ids_by_code: dict[str, int],
     ) -> bool:
         target_staff_ids = set(self._session_staff_ids(target))
-        target_group_id = target.session.student_group_id
+        target_group_ids = set(self._scheduled_group_ids(target, group_ids_by_code))
+        target_room_ids = {room.id}
         for item in scheduled:
             if item.id == target.id:
                 continue
-            if not self._overlaps(item, slot):
+            if not self._overlaps(item, slot, target.session):
                 continue
-            if item.room_id == room.id:
+            if target_room_ids.intersection(self._scheduled_room_ids(item)):
                 return False
-            if target_group_id and item.session.student_group_id == target_group_id:
+            if target_group_ids.intersection(self._scheduled_group_ids(item, group_ids_by_code)):
                 return False
             if target_staff_ids.intersection(self._session_staff_ids(item)):
                 return False
         return True
 
-    def _overlaps(self, item: ScheduledSession, slot: TimeSlot) -> bool:
+    def _overlaps(self, item: ScheduledSession, slot: TimeSlot, target_session) -> bool:
         return (
             item.day == slot.day
-            and weeks_conflict(item.week_pattern, slot.week_pattern)
+            and session_weeks_conflict(item.session, item.time_slot, target_session, slot)
             and intervals_overlap(item.start_time, item.end_time, slot.start_time, slot.end_time)
         )
 
@@ -233,6 +241,18 @@ class QuickFixService:
         if not ids and item.staff_id is not None:
             ids.append(item.staff_id)
         return ids
+
+    def _scheduled_room_ids(self, item: ScheduledSession) -> list[int]:
+        return [item.room_id] if item.room_id is not None else []
+
+    def _scheduled_group_ids(self, item: ScheduledSession, group_ids_by_code: dict[str, int]) -> list[int]:
+        ids = [item.session.student_group_id] if item.session and item.session.student_group_id is not None else []
+        if item.session:
+            for code in required_student_group_codes(item.session):
+                group_id = group_ids_by_code.get(code.lower())
+                if group_id is not None:
+                    ids.append(group_id)
+        return list(dict.fromkeys(ids))
 
     def _serialize_suggestion(self, target: ScheduledSession, suggestion_type: str, room: Room, slot: TimeSlot) -> dict:
         description = self._description(target, suggestion_type, room, slot)

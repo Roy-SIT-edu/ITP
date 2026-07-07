@@ -13,6 +13,7 @@ from io import BytesIO
 from typing import Any
 
 import pandas as pd
+from app.models.lab_requirement import LabRequirement
 from app.models.module import Module
 from app.models.programme import Programme
 from app.models.room import Room
@@ -29,9 +30,11 @@ from app.services.compatibility import (
     minutes_to_time,
     time_to_minutes,
 )
+from app.services.lab_requirement_service import LabRequirementService
 from app.services.schedule_state_service import clear_schedule_state
 from app.services.serializers import (
     group_to_dict,
+    lab_requirement_to_dict,
     module_to_dict,
     programme_to_dict,
     room_to_dict,
@@ -85,6 +88,7 @@ ROOM_TYPE_OPTIONS = (
     "Auditorium",
     "Classroom",
     "Computer Room",
+    "External",
     "Lab",
     "Lectorial",
     "Project Room",
@@ -93,6 +97,8 @@ ROOM_TYPE_OPTIONS = (
 )
 DAY_OPTIONS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
 WEEK_PATTERN_OPTIONS = ("Weekly", "Odd", "Even", "Custom")
+DELIVERY_MODE_OPTIONS = ("Face-to-face", "Online", "Hybrid", "Asynchronous")
+CAMPUS_MODE_OPTIONS = ("Physical", "Virtual")
 
 
 DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
@@ -126,7 +132,7 @@ DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
         model=Staff,
         columns=(
             ColumnSpec("id", "ID", "number", read_only=True),
-            ColumnSpec("staff_id", "Staff ID", required=True, max_length=80),
+            ColumnSpec("staff_id", "Staff ID", max_length=80),
             ColumnSpec("staff_name", "Staff Name", required=True, aliases=("Name",), max_length=120),
         ),
         key_fields=("staff_id",),
@@ -229,12 +235,54 @@ DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
         serializer=session_to_dict,
         sort_fields=("requirement_id",),
     ),
+    "lab-requirements": DatabaseTypeConfig(
+        id="lab-requirements",
+        label="Lab Requirements",
+        model=LabRequirement,
+        columns=(
+            ColumnSpec("id", "ID", "number", read_only=True),
+            ColumnSpec("requirement_id", "Requirement ID", max_length=80),
+            ColumnSpec("is_active", "Active", "boolean"),
+            ColumnSpec("source_sheet", "Source Sheet", max_length=40),
+            ColumnSpec("source_row_no", "Source Row", "number", min_value=1, max_value=9999),
+            ColumnSpec("programme", "Programme", max_length=120),
+            ColumnSpec("raw_programme", "Raw Programme", max_length=120),
+            ColumnSpec("year", "Year", "number", min_value=1, max_value=6),
+            ColumnSpec("module_code", "Module Code", required=True, max_length=80),
+            ColumnSpec("student_group", "Group", max_length=120),
+            ColumnSpec("student_group_codes", "Student Group Codes"),
+            ColumnSpec("group_size", "Group Size", "number", min_value=1, max_value=2000),
+            ColumnSpec("fixed_day", "Fixed Day", options=DAY_OPTIONS),
+            ColumnSpec("fixed_start_time", "Fixed Start", "time"),
+            ColumnSpec("fixed_end_time", "Fixed End", "time"),
+            ColumnSpec("duration_minutes", "Duration", "number", min_value=1, max_value=480),
+            ColumnSpec("week_pattern", "Week Pattern", options=WEEK_PATTERN_OPTIONS),
+            ColumnSpec("custom_weeks", "Custom Weeks"),
+            ColumnSpec("location", "Location"),
+            ColumnSpec("required_room_codes", "Required Room Codes"),
+            ColumnSpec("staff_names", "Staff Names"),
+            ColumnSpec("class_type", "Class Type", max_length=80),
+            ColumnSpec("delivery_mode", "Delivery Mode", options=DELIVERY_MODE_OPTIONS),
+            ColumnSpec("campus_mode", "Campus Mode", options=CAMPUS_MODE_OPTIONS),
+            ColumnSpec("venue_type_required", "Venue Type", max_length=80),
+            ColumnSpec("start_at_7pm", "Start at 7pm", "boolean"),
+            ColumnSpec("setup_turnaround_note", "Setup/Turnaround"),
+            ColumnSpec("notes", "Notes"),
+        ),
+        key_fields=("requirement_id",),
+        serializer=lab_requirement_to_dict,
+        sort_fields=("source_sheet", "source_row_no", "requirement_id"),
+    ),
 }
 
-ADMIN_DATABASE_TYPE_IDS = ("rooms", "staff", "programmes", "modules", "student-groups")
+ADMIN_DATABASE_TYPE_IDS = ("rooms", "staff", "programmes", "modules", "student-groups", "lab-requirements")
+LAB_INTERNAL_COLUMNS = {"requirement_id", "is_active", "source_sheet", "source_row_no", "raw_programme"}
 
 
 class DatabaseService:
+    def __init__(self) -> None:
+        self.lab_requirement_service = LabRequirementService()
+
     def types(self, db: DbSession | None = None) -> list[dict]:
         return [
             {
@@ -268,6 +316,9 @@ class DatabaseService:
 
     def list_rows(self, db: DbSession, data_type: str) -> list[dict]:
         config = self._config(data_type)
+        if config.id == "lab-requirements" and self.lab_requirement_service.normalize_saved_requirements(db):
+            self._clear_schedule_state(db)
+            db.commit()
         query = db.query(config.model)
         for field in config.sort_fields:
             query = query.order_by(getattr(config.model, field))
@@ -333,19 +384,28 @@ class DatabaseService:
             except ValueError as exc:
                 errors.append({"row": int(index) + 2, "field": "Row", "message": str(exc)})
         payloads = self._sorted_payloads(config, payloads)
+        if config.id == "lab-requirements":
+            self._assign_lab_requirement_ids(payloads)
         errors.extend(self._duplicate_key_errors(config, payloads))
         if errors:
             raise DatabaseValidationError(errors)
 
         self._clear_schedule_state(db)
         self._replace_rows(db, config, payloads)
+        if config.id == "lab-requirements":
+            db.flush()
+            self.lab_requirement_service.normalize_saved_requirements(db)
         db.commit()
         return {"rows_read": rows_read, "rows_imported": len(payloads), "rows_failed": 0, "errors": []}
 
     def example_workbook(self, db: DbSession, data_type: str) -> BytesIO:
         config = self._config(data_type)
         rows = self.list_rows(db, data_type)
-        columns = [column.key for column in config.columns if not column.read_only]
+        columns = [
+            column.key
+            for column in config.columns
+            if not column.read_only and not (config.id == "lab-requirements" and column.key in LAB_INTERNAL_COLUMNS)
+        ]
         frame = pd.DataFrame([{column: row.get(column) for column in columns} for row in rows], columns=columns)
         buffer = BytesIO()
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
@@ -381,7 +441,7 @@ class DatabaseService:
     def _validate_columns(self, config: DatabaseTypeConfig, frame: pd.DataFrame) -> list[dict]:
         actual = {str(column).strip().lower(): column for column in frame.columns}
         errors = []
-        for column in (column for column in config.columns if not column.read_only):
+        for column in (column for column in config.columns if column.required and not column.read_only):
             names = self._column_names(column)
             if not any(name.lower() in actual for name in names):
                 errors.append({"row": 1, "field": column.key, "message": f"Missing required column '{column.key}'."})
@@ -450,6 +510,8 @@ class DatabaseService:
                 data["code"] = data["code"].upper()
         elif config.id == "requirements":
             data = self._coerce_requirement(db, data)
+        elif config.id == "lab-requirements":
+            data = self._coerce_lab_requirement(db, data)
         elif config.id == "time-slots":
             data["day"] = canonical_day(data.get("day"))
             data["week_pattern"] = canonical_week_pattern(data.get("week_pattern")) or "Weekly"
@@ -499,6 +561,38 @@ class DatabaseService:
         data["fixed_day"] = canonical_day(data.get("fixed_day"))
         data["source_file"] = clean_text(data.get("source_file")) or "Database Entry"
         return data
+
+    def _coerce_lab_requirement(self, db: DbSession, data: dict) -> dict:
+        data["requirement_id"] = clean_text(data.get("requirement_id")) or self._next_lab_requirement_id(db)
+        data["is_active"] = True
+        data["module_code"] = self.lab_requirement_service._module_code(data.get("module_code"))
+        data["fixed_day"] = canonical_day(data.get("fixed_day"))
+        data["week_pattern"] = canonical_week_pattern(data.get("week_pattern")) or "Custom"
+        data["delivery_mode"] = canonical_delivery_mode(data.get("delivery_mode")) or "Face-to-face"
+        data["campus_mode"] = data.get("campus_mode") or self._derived_campus_mode(data.get("delivery_mode"))
+        if data.get("fixed_start_time") and data.get("fixed_end_time"):
+            start = time_to_minutes(data["fixed_start_time"])
+            end = time_to_minutes(data["fixed_end_time"])
+            if start is None or end is None or end <= start:
+                raise ValueError("Fixed End must be after Fixed Start.")
+            data["duration_minutes"] = data.get("duration_minutes") or end - start
+        elif data.get("fixed_start_time") and data.get("duration_minutes"):
+            start = time_to_minutes(data["fixed_start_time"])
+            if start is not None:
+                data["fixed_end_time"] = minutes_to_time(start + int(data["duration_minutes"]))
+        return data
+
+    def _next_lab_requirement_id(self, db: DbSession) -> str:
+        ids = [
+            item.requirement_id
+            for item in db.query(LabRequirement.requirement_id).filter(LabRequirement.requirement_id.like("LAB-ADMIN-%")).all()
+        ]
+        numbers = []
+        for value in ids:
+            match = re.search(r"(\d+)$", value or "")
+            if match:
+                numbers.append(int(match.group(1)))
+        return f"LAB-ADMIN-{(max(numbers) + 1) if numbers else 1:03d}"
 
     def _derived_campus_mode(self, delivery_mode: str | None) -> str:
         return "Virtual" if delivery_mode in {"Online", "Asynchronous"} else "Physical"
@@ -568,6 +662,8 @@ class DatabaseService:
     def _after_row_saved(self, db: DbSession, config: DatabaseTypeConfig, item) -> None:
         if config.id == "programmes":
             ensure_programme_year_groups(db, item)
+        elif config.id == "lab-requirements":
+            self.lab_requirement_service.normalize_saved_requirements(db)
 
     def _replace_rows(self, db: DbSession, config: DatabaseTypeConfig, payloads: list[dict]) -> None:
         existing = db.query(config.model).all()
@@ -627,7 +723,29 @@ class DatabaseService:
             seen.add(key)
         return errors
 
+    def _assign_lab_requirement_ids(self, payloads: list[dict]) -> None:
+        seen: set[str] = set()
+        next_number = 1
+        for payload in payloads:
+            value = clean_text(payload.get("requirement_id"))
+            if not value or value.lower() in seen:
+                while f"lab-admin-{next_number:03d}" in seen:
+                    next_number += 1
+                value = f"LAB-ADMIN-{next_number:03d}"
+                next_number += 1
+            payload["requirement_id"] = value
+            seen.add(value.lower())
+
     def _ensure_unique_key(self, db: DbSession, config: DatabaseTypeConfig, item, row_id: int | None = None) -> None:
+        if config.id == "staff" and not getattr(item, "staff_id", None):
+            query = db.query(Staff).filter(func.lower(Staff.staff_name) == (item.staff_name or "").lower())
+            if row_id is not None:
+                query = query.filter(Staff.id != row_id)
+            if query.first():
+                raise DatabaseValidationError(
+                    [{"row": 0, "field": "staff_name", "message": "A staff row with this name already exists."}]
+                )
+            return
         filters = [getattr(config.model, field) == getattr(item, field) for field in config.key_fields]
         query = db.query(config.model).filter(*filters)
         if row_id is not None:
@@ -638,6 +756,9 @@ class DatabaseService:
             )
 
     def _key(self, config: DatabaseTypeConfig, payload: dict) -> tuple:
+        if config.id == "staff" and not payload.get("staff_id"):
+            name = payload.get("staff_name")
+            return ("staff_name", name.strip().lower() if isinstance(name, str) else name)
         return tuple(
             (payload.get(field) or "").strip().lower() if isinstance(payload.get(field), str) else payload.get(field)
             for field in config.key_fields

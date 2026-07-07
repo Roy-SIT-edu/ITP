@@ -32,6 +32,7 @@ const databaseItems = [
   { id: "database-programmes", label: "Programmes" },
   { id: "database-modules", label: "Modules" },
   { id: "database-student-groups", label: "Student Groups" },
+  { id: "database-lab-requirements", label: "Lab Requirements" },
 ];
 
 const workflowItems = [

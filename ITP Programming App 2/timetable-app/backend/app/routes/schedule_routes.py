@@ -95,6 +95,11 @@ def move_scheduled_session(schedule_run_id: int, session_id: int, data: ManualMo
     item = db.query(ScheduledSession).filter_by(schedule_run_id=schedule_run_id, session_id=session_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Scheduled session not found.")
+    if item.session and item.session.is_lab_requirement:
+        raise HTTPException(
+            status_code=409,
+            detail="Built-in lab bookings are hard constraints. Edit the Lab Requirements database row instead.",
+        )
     room = db.query(Room).filter_by(room_code=data.room_code).first()
     if not room:
         raise HTTPException(status_code=400, detail="Room not found.")

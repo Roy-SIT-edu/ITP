@@ -74,7 +74,10 @@ def time_slots(db: DbSession = Depends(get_db)):
 
 @router.get("/sessions")
 def sessions(db: DbSession = Depends(get_db)):
-    return [session_to_dict(item) for item in db.query(Session).order_by(Session.id).all()]
+    return [
+        session_to_dict(item)
+        for item in db.query(Session).filter(Session.is_lab_requirement.is_(False)).order_by(Session.id).all()
+    ]
 
 
 @router.get("/sessions/{session_id}")
@@ -91,7 +94,7 @@ def dashboard(db: DbSession = Depends(get_db)):
     validation = ValidationService().validate_latest(db)
     return {
         "total_sessions": db.query(Session).count(),
-        "imported_rows": db.query(Session).count(),
+        "imported_rows": db.query(Session).filter(Session.is_lab_requirement.is_(False)).count(),
         "validation": {
             "is_valid": validation["is_valid"],
             "error_count": validation["error_count"],

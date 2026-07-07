@@ -21,7 +21,7 @@ type Props = {
   selectedSlotKey?: string | null;
   isPlacing?: boolean;
   selectedSessionDraft?: MoveDraft;
-  onSelectSlot?: (key: string, rows: ScheduledRow[]) => void;
+  onSelectSlot?: (key: string, rows: ScheduledRow[], options?: { focusSlotDetails?: boolean }) => void;
   conflictSlotKeys?: Set<string>;
   availableSlotKeys?: Set<string>;
   softAvailableSlotKeys?: Set<string>;
@@ -29,8 +29,11 @@ type Props = {
 };
 
 const HOUR_HEIGHT = 64;
-const MAX_DETAILED_LANES = 4;
+const MAX_DETAILED_LANES = 2;
+const MAX_DETAILED_EVENTS_PER_SLOT = 2;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+type CalendarEventDensity = "normal" | "short" | "compact";
 
 type CalendarLayoutItem =
   | {
@@ -39,7 +42,7 @@ type CalendarLayoutItem =
       row: ScheduledRow;
       slotKeys: string[];
       style: CSSProperties;
-      density: "normal" | "compact";
+      density: CalendarEventDensity;
     }
   | {
       kind: "cluster";
@@ -260,7 +263,13 @@ export default function TimetablePlanner({
                       }`}
                       disabled={!onSelectSlot}
                       key={event.id}
-                      onClick={() => onSelectSlot?.(firstKey, event.rows)}
+                      onClick={() => {
+                        if (isPlacing) {
+                          onSelectSlot?.(firstKey, event.rows);
+                          return;
+                        }
+                        onSelectSlot?.(firstKey, event.rows, { focusSlotDetails: true });
+                      }}
                       style={event.style}
                       title={event.rows.map((row) => eventTitle(row, showAmPm)).join("\n")}
                       type="button"
@@ -299,16 +308,20 @@ export default function TimetablePlanner({
                       {event.row.module_code ?? event.row.requirement_id ?? `Session ${event.row.session_id}`}
                     </strong>
                     {showClassTitle && (
-                      <span>
+                      <span className="calendar-event-class">
                         {[event.row.student_group_code, event.row.class_type].filter(Boolean).join(" - ") || "Class"}
                       </span>
                     )}
-                    <span>
+                    <span className="calendar-event-time">
                       {formatTime(event.row.start_time, showAmPm)} - {formatTime(event.row.end_time, showAmPm)}
                     </span>
-                    <span>{event.row.delivery_mode === "Online" ? "Online" : event.row.room}</span>
+                    <span className="calendar-event-location">
+                      {event.row.delivery_mode === "Online" ? "Online" : event.row.room}
+                    </span>
                     {showInstructors && (
-                      <small>{event.row.co_teacher_names || event.row.staff_name || "No instructor"}</small>
+                      <small className="calendar-event-instructor">
+                        {event.row.co_teacher_names || event.row.staff_name || "No instructor"}
+                      </small>
                     )}
                   </button>
                 );
@@ -400,11 +413,12 @@ function layoutEvents(
         return { ...item, lane: nextLane };
       });
       const laneCount = Math.max(1, lanes.length);
+      const clusterRows = cluster.items.map((item) => item.row);
+      const isCrowdedSlot = maxRowsInPlannerSlot(clusterRows, slots) > MAX_DETAILED_EVENTS_PER_SLOT;
 
-      if (laneCount > MAX_DETAILED_LANES) {
+      if (laneCount > MAX_DETAILED_LANES || isCrowdedSlot) {
         const start = Math.min(...cluster.items.map((item) => item.start));
         const end = Math.max(...cluster.items.map((item) => item.end));
-        const clusterRows = cluster.items.map((item) => item.row);
         const slotKeys = uniqueSlotKeys(clusterRows, slots);
         return [
           {
@@ -428,6 +442,7 @@ function layoutEvents(
       return assigned.map(({ row, start, end, lane }) => {
         const width = 100 / laneCount;
         const left = width * lane;
+        const durationMinutes = end - start;
         const slotKeys = slots
           .filter((slot) => intervalsOverlap(row.start_time, row.end_time, slot.start_time, slot.end_time))
           .map((slot) => `${row.day}|${slot.start_time}|${slot.end_time}`);
@@ -436,7 +451,7 @@ function layoutEvents(
           day: row.day,
           row,
           slotKeys,
-          density: laneCount >= 3 ? "compact" : "normal",
+          density: eventDensity(durationMinutes, laneCount),
           style: {
             height: Math.max(36, ((end - start) / 60) * HOUR_HEIGHT - 6),
             left: `calc(${left}% + 4px)`,
@@ -447,6 +462,23 @@ function layoutEvents(
       });
     });
   });
+}
+
+function maxRowsInPlannerSlot(rows: ScheduledRow[], slots: PlannerSlot[]) {
+  return slots.reduce((largest, slot) => {
+    const count = rows.filter((row) => intervalsOverlap(row.start_time, row.end_time, slot.start_time, slot.end_time)).length;
+    return Math.max(largest, count);
+  }, 0);
+}
+
+function eventDensity(durationMinutes: number, laneCount: number): CalendarEventDensity {
+  if (laneCount >= 3 || durationMinutes <= 45) {
+    return "compact";
+  }
+  if (durationMinutes <= 60) {
+    return "short";
+  }
+  return "normal";
 }
 
 function uniqueSlotKeys(rows: ScheduledRow[], slots: PlannerSlot[]) {

@@ -17,7 +17,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createDatabaseRow,
   databaseCurrentInputUrl,
@@ -40,12 +40,21 @@ type SortState = {
   direction: "asc" | "desc";
 } | null;
 
+type RecordsTableOptions = {
+  className?: string;
+  emptyText?: string;
+  showNewRow?: boolean;
+};
+
+const hiddenLabEditColumns = new Set(["requirement_id", "is_active", "source_sheet", "source_row_no", "raw_programme"]);
+
 const fallbackLabels: Record<string, string> = {
   rooms: "Rooms",
   staff: "Staff",
   programmes: "Programmes",
   modules: "Modules",
   "student-groups": "Student Groups",
+  "lab-requirements": "Lab Requirements",
   "time-slots": "Time Slots",
   requirements: "Requirements",
 };
@@ -60,6 +69,131 @@ function displayValue(value: DatabaseRow[string]) {
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (value === null || value === undefined) return "";
   return String(value);
+}
+
+function textValue(row: DatabaseRow, key: string) {
+  const value = row[key];
+  if (value === null || value === undefined || typeof value === "boolean") return "";
+  return String(value).trim();
+}
+
+function listFromSet(values: Set<string>) {
+  return [...values].sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" }));
+}
+
+function labProgramme(row: DatabaseRow) {
+  return textValue(row, "programme") || textValue(row, "raw_programme") || textValue(row, "source_sheet") || "Unassigned";
+}
+
+function labVenue(row: DatabaseRow) {
+  return textValue(row, "location") || textValue(row, "required_room_codes") || "Unassigned venue";
+}
+
+function splitDisplayValues(value: string) {
+  return value
+    .split(/[,;]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function ListCell({ empty = "-", value }: { empty?: string; value: string }) {
+  const values = splitDisplayValues(value);
+  if (values.length === 0) return <span>{empty}</span>;
+  return (
+    <span className="lab-cell-list">
+      {values.map((item) => (
+        <span key={item}>{item}</span>
+      ))}
+    </span>
+  );
+}
+
+function LabUsageOverview({
+  rows,
+  adding,
+  renderLabRecords,
+}: {
+  rows: DatabaseRow[];
+  adding: boolean;
+  renderLabRecords: (tableRows: DatabaseRow[], options?: RecordsTableOptions) => ReactNode;
+}) {
+  const [selectedProgramme, setSelectedProgramme] = useState("all");
+  const programmeOptions = useMemo(() => listFromSet(new Set(rows.map(labProgramme))), [rows]);
+  const programmeRows = useMemo(
+    () => (selectedProgramme === "all" ? rows : rows.filter((row) => labProgramme(row) === selectedProgramme)),
+    [rows, selectedProgramme],
+  );
+  const groupedRows = useMemo(() => {
+    const grouped = new Map<string, DatabaseRow[]>();
+    programmeRows.forEach((row) => {
+      const programme = labProgramme(row);
+      grouped.set(programme, [...(grouped.get(programme) ?? []), row]);
+    });
+    return [...grouped.entries()].sort((left, right) =>
+      left[0].localeCompare(right[0], undefined, { numeric: true, sensitivity: "base" }),
+    );
+  }, [programmeRows]);
+
+  useEffect(() => {
+    if (selectedProgramme !== "all" && !programmeOptions.includes(selectedProgramme)) {
+      setSelectedProgramme("all");
+    }
+  }, [programmeOptions, selectedProgramme]);
+
+  return (
+    <div className="lab-usage-overview">
+      <div className="lab-usage-header">
+        <div>
+          <div className="status-card-title">Lab Requirement Records</div>
+          <p>
+            {programmeRows.length} record{programmeRows.length === 1 ? "" : "s"} grouped by programme
+          </p>
+        </div>
+        <div className="lab-usage-total">{selectedProgramme === "all" ? "All programmes" : selectedProgramme}</div>
+      </div>
+      <div className="lab-filter-panel">
+        <label>
+          <span>Programme</span>
+          <select value={selectedProgramme} onChange={(event) => setSelectedProgramme(event.target.value)}>
+            <option value="all">All programmes</option>
+            {programmeOptions.map((programme) => (
+              <option key={programme} value={programme}>
+                {programme}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {programmeRows.length > 0 ? (
+        <>
+          {adding && (
+            <div className="lab-new-record-panel">
+              <div className="lab-records-heading">
+                <strong>New Lab Requirement Row</strong>
+                <span>Fill the row, then save it into the database.</span>
+              </div>
+              {renderLabRecords([], { showNewRow: true })}
+            </div>
+          )}
+          <div className="lab-programme-group-list">
+            {groupedRows.map(([programme, records]) => (
+              <section className="lab-record-programme-group" key={programme}>
+                <div className="lab-records-heading">
+                  <strong>{programme}</strong>
+                  <span>
+                    {records.length} row{records.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                {renderLabRecords(records, { emptyText: "No editable records found for this programme." })}
+              </section>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="empty-state">No lab requirement records match the selected programme.</div>
+      )}
+    </div>
+  );
 }
 
 function buildBlankDraft(columns: DatabaseColumn[], dataType?: string) {
@@ -326,6 +460,269 @@ export default function DatabasePage({ dataType }: Props) {
     );
   };
 
+  const renderRecordsTable = (tableRows: DatabaseRow[], options: RecordsTableOptions = {}) => {
+    const showNewRow = Boolean(options.showNewRow);
+    return (
+      <div className={["table-wrap database-table", options.className].filter(Boolean).join(" ")}>
+        <table>
+          <thead>
+            <tr>
+              <th className="action-col">Actions</th>
+              {columns.map((column) => (
+                <th key={column.key}>
+                  <button
+                    aria-label={`Sort by ${column.label}`}
+                    aria-pressed={sort?.key === column.key}
+                    className="table-sort-button"
+                    onClick={() => toggleSort(column)}
+                    type="button"
+                  >
+                    <span>{column.label}</span>
+                    {sort?.key === column.key ? (
+                      sort.direction === "asc" ? (
+                        <ArrowUp size={13} />
+                      ) : (
+                        <ArrowDown size={13} />
+                      )
+                    ) : (
+                      <ArrowUpDown size={13} />
+                    )}
+                  </button>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {showNewRow && (
+              <tr>
+                <td className="action-cell">
+                  <form className="row-actions" id="new-database-row" onSubmit={saveNew}>
+                    <button className="button slim" disabled={busy} title="Save" type="submit">
+                      <Save size={14} />
+                    </button>
+                    <button
+                      className="button secondary slim"
+                      title="Cancel"
+                      type="button"
+                      onClick={() => setAdding(false)}
+                    >
+                      <X size={14} />
+                    </button>
+                  </form>
+                </td>
+                {columns.map((column) => (
+                  <td key={column.key}>{column.read_only ? "" : fieldInput(column, newDraft[column.key], "new")}</td>
+                ))}
+              </tr>
+            )}
+            {tableRows.map((row) => {
+              const editing = editingId === row.id;
+              return (
+                <tr key={row.id}>
+                  <td className="action-cell">
+                    {editing ? (
+                      <form className="row-actions" onSubmit={saveEdit}>
+                        <button className="button slim" disabled={busy} title="Save" type="submit">
+                          <Save size={14} />
+                        </button>
+                        <button
+                          className="button secondary slim"
+                          title="Cancel"
+                          type="button"
+                          onClick={() => setEditingId(null)}
+                        >
+                          <X size={14} />
+                        </button>
+                      </form>
+                    ) : (
+                      <div className="row-actions">
+                        <button
+                          className="button secondary slim"
+                          title="Edit"
+                          type="button"
+                          onClick={() => beginEdit(row)}
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          className="button danger slim"
+                          title="Delete"
+                          type="button"
+                          onClick={() => removeRow(row)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                  {columns.map((column) => (
+                    <td key={column.key}>
+                      {editing && !column.read_only
+                        ? fieldInput(column, draft[column.key], "edit")
+                        : displayValue(row[column.key])}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+            {!loading && tableRows.length === 0 && !showNewRow && (
+              <tr>
+                <td className="table-empty-cell" colSpan={columns.length + 1}>
+                  {options.emptyText ?? "No rows found."}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  const renderLabEditForm = (target: "edit" | "new") => {
+    const values = target === "edit" ? draft : newDraft;
+    const labEditableColumns = editableColumns.filter((column) => !hiddenLabEditColumns.has(column.key));
+    return (
+      <div className="lab-edit-grid">
+        {labEditableColumns.map((column) => (
+          <label key={column.key}>
+            <span>{column.label}</span>
+            {fieldInput(column, values[column.key], target)}
+          </label>
+        ))}
+      </div>
+    );
+  };
+
+  const renderLabRecords = (tableRows: DatabaseRow[], options: RecordsTableOptions = {}) => {
+    const showNewRow = Boolean(options.showNewRow);
+    return (
+      <div className="table-wrap lab-simple-records-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Actions</th>
+              <th>ID</th>
+              <th>Programme</th>
+              <th>Year</th>
+              <th>Module</th>
+              <th>Student Groups</th>
+              <th>Size</th>
+              <th>Day</th>
+              <th>Time</th>
+              <th>Weeks</th>
+              <th>Venue Name</th>
+              <th>Venue Address</th>
+              <th>Staff</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {showNewRow && (
+              <tr>
+                <td colSpan={14}>
+                  <form className="lab-inline-edit-form" onSubmit={saveNew}>
+                    <div className="lab-inline-edit-header">
+                      <strong>New lab requirement</strong>
+                      <div className="row-actions">
+                        <button className="button slim" disabled={busy} title="Save" type="submit">
+                          <Save size={14} />
+                        </button>
+                        <button className="button secondary slim" title="Cancel" type="button" onClick={() => setAdding(false)}>
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </div>
+                    {renderLabEditForm("new")}
+                  </form>
+                </td>
+              </tr>
+            )}
+            {tableRows.map((row) => {
+              const editing = editingId === row.id;
+              if (editing) {
+                return (
+                  <tr key={row.id}>
+                    <td colSpan={14}>
+                      <form className="lab-inline-edit-form" onSubmit={saveEdit}>
+                        <div className="lab-inline-edit-header">
+                          <strong>Lab row {row.id}</strong>
+                          <div className="row-actions">
+                            <button className="button slim" disabled={busy} title="Save" type="submit">
+                              <Save size={14} />
+                            </button>
+                            <button
+                              className="button secondary slim"
+                              title="Cancel"
+                              type="button"
+                              onClick={() => setEditingId(null)}
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        </div>
+                        {renderLabEditForm("edit")}
+                      </form>
+                    </td>
+                  </tr>
+                );
+              }
+
+              const start = textValue(row, "fixed_start_time");
+              const end = textValue(row, "fixed_end_time");
+              const time = start && end ? `${start}-${end}` : start || end || "-";
+              const weeks = textValue(row, "custom_weeks") || textValue(row, "week_pattern");
+
+              return (
+                <tr key={row.id}>
+                  <td>
+                    <div className="row-actions">
+                      <button className="button secondary slim" title="Edit" type="button" onClick={() => beginEdit(row)}>
+                        <Edit2 size={14} />
+                      </button>
+                      <button className="button danger slim" title="Delete" type="button" onClick={() => removeRow(row)}>
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </td>
+                  <td>{displayValue(row.id)}</td>
+                  <td>{textValue(row, "programme") || "-"}</td>
+                  <td>{displayValue(row.year) || "-"}</td>
+                  <td>{textValue(row, "module_code") || "-"}</td>
+                  <td>
+                    <ListCell value={textValue(row, "student_group_codes") || textValue(row, "student_group")} />
+                  </td>
+                  <td>{displayValue(row.group_size) || "-"}</td>
+                  <td>{textValue(row, "fixed_day") || "-"}</td>
+                  <td>
+                    <strong>{time}</strong>
+                  </td>
+                  <td>{weeks ? `W${weeks}` : "-"}</td>
+                  <td>
+                    <strong>{labVenue(row)}</strong>
+                  </td>
+                  <td>
+                    <ListCell value={textValue(row, "required_room_codes")} />
+                  </td>
+                  <td>
+                    <ListCell value={textValue(row, "staff_names")} />
+                  </td>
+                  <td>{textValue(row, "notes") || textValue(row, "setup_turnaround_note") || "-"}</td>
+                </tr>
+              );
+            })}
+            {!loading && tableRows.length === 0 && !showNewRow && (
+              <tr>
+                <td className="table-empty-cell" colSpan={14}>
+                  {options.emptyText ?? "No rows found."}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
   return (
     <div className="page database-page">
       <div className="page-header">
@@ -416,118 +813,15 @@ export default function DatabasePage({ dataType }: Props) {
           <span className="muted">{filteredRows.length} rows</span>
         </div>
 
-        <div className="table-wrap database-table">
-          <table>
-            <thead>
-              <tr>
-                <th className="action-col">Actions</th>
-                {columns.map((column) => (
-                  <th key={column.key}>
-                    <button
-                      aria-label={`Sort by ${column.label}`}
-                      aria-pressed={sort?.key === column.key}
-                      className="table-sort-button"
-                      onClick={() => toggleSort(column)}
-                      type="button"
-                    >
-                      <span>{column.label}</span>
-                      {sort?.key === column.key ? (
-                        sort.direction === "asc" ? (
-                          <ArrowUp size={13} />
-                        ) : (
-                          <ArrowDown size={13} />
-                        )
-                      ) : (
-                        <ArrowUpDown size={13} />
-                      )}
-                    </button>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {adding && (
-                <tr>
-                  <td className="action-cell">
-                    <form className="row-actions" id="new-database-row" onSubmit={saveNew}>
-                      <button className="button slim" disabled={busy} title="Save" type="submit">
-                        <Save size={14} />
-                      </button>
-                      <button
-                        className="button secondary slim"
-                        title="Cancel"
-                        type="button"
-                        onClick={() => setAdding(false)}
-                      >
-                        <X size={14} />
-                      </button>
-                    </form>
-                  </td>
-                  {columns.map((column) => (
-                    <td key={column.key}>{column.read_only ? "" : fieldInput(column, newDraft[column.key], "new")}</td>
-                  ))}
-                </tr>
-              )}
-              {filteredRows.map((row) => {
-                const editing = editingId === row.id;
-                return (
-                  <tr key={row.id}>
-                    <td className="action-cell">
-                      {editing ? (
-                        <form className="row-actions" onSubmit={saveEdit}>
-                          <button className="button slim" disabled={busy} title="Save" type="submit">
-                            <Save size={14} />
-                          </button>
-                          <button
-                            className="button secondary slim"
-                            title="Cancel"
-                            type="button"
-                            onClick={() => setEditingId(null)}
-                          >
-                            <X size={14} />
-                          </button>
-                        </form>
-                      ) : (
-                        <div className="row-actions">
-                          <button
-                            className="button secondary slim"
-                            title="Edit"
-                            type="button"
-                            onClick={() => beginEdit(row)}
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button
-                            className="button danger slim"
-                            title="Delete"
-                            type="button"
-                            onClick={() => removeRow(row)}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                    {columns.map((column) => (
-                      <td key={column.key}>
-                        {editing && !column.read_only
-                          ? fieldInput(column, draft[column.key], "edit")
-                          : displayValue(row[column.key])}
-                      </td>
-                    ))}
-                  </tr>
-                );
-              })}
-              {!loading && filteredRows.length === 0 && !adding && (
-                <tr>
-                  <td className="table-empty-cell" colSpan={columns.length + 1}>
-                    No rows found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        {dataType === "lab-requirements" ? (
+          <LabUsageOverview
+            adding={adding}
+            rows={filteredRows}
+            renderLabRecords={renderLabRecords}
+          />
+        ) : (
+          renderRecordsTable(filteredRows, { showNewRow: adding })
+        )}
       </section>
     </div>
   );

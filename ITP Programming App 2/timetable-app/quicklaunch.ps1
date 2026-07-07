@@ -1,5 +1,14 @@
 $ErrorActionPreference = "Stop"
 
+$ProcessPath = [Environment]::GetEnvironmentVariable("Path", "Process")
+if (-not $ProcessPath) {
+    $ProcessPath = [Environment]::GetEnvironmentVariable("PATH", "Process")
+}
+if ($ProcessPath) {
+    [Environment]::SetEnvironmentVariable("PATH", $null, "Process")
+    [Environment]::SetEnvironmentVariable("Path", $ProcessPath, "Process")
+}
+
 $AppRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackendDir = Join-Path $AppRoot "backend"
 $FrontendDir = Join-Path $AppRoot "frontend"
@@ -309,7 +318,13 @@ function Start-Backend {
     $stderr = Join-Path $BackendDir "quicklaunch-backend-$BackendPort.err.log"
     Start-Process `
         -FilePath $Python `
-        -ArgumentList @("-m", "uvicorn", "app.main:app", "--reload", "--host", $HostName, "--port", "$BackendPort") `
+        -ArgumentList @(
+            "-m", "uvicorn", "app.main:app",
+            "--reload",
+            "--reload-dir", "app",
+            "--host", $HostName,
+            "--port", "$BackendPort"
+        ) `
         -WorkingDirectory $BackendDir `
         -RedirectStandardOutput $stdout `
         -RedirectStandardError $stderr `

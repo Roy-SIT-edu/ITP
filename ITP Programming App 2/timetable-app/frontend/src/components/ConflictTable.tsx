@@ -31,6 +31,21 @@ export default function ConflictTable({
   }
 
   const hasQuickFix = Boolean(onToggleQuickFix && renderQuickFixTray);
+  const groups = [
+    {
+      key: "hard" as const,
+      label: "Hard Constraints",
+      hint: "Must be fixed before export",
+      items: violations.filter((item) => item.severity === "HARD"),
+    },
+    {
+      key: "soft" as const,
+      label: "Soft Constraints",
+      hint: "Optional quality warnings",
+      items: violations.filter((item) => item.severity === "SOFT"),
+    },
+  ].filter((group) => group.items.length > 0);
+  const columnCount = hasQuickFix ? 5 : 4;
 
   return (
     <div className="table-wrap">
@@ -45,48 +60,64 @@ export default function ConflictTable({
           </tr>
         </thead>
         <tbody>
-          {violations.map((item) => {
-            const quickFixOpen = item.id === quickFixOpenId;
-            const urgencyClass = item.severity === "HARD" ? "conflict-hard-row" : "conflict-soft-row";
-            const resolvingClass = item.id === resolvingConflictId ? "quick-fix-resolving" : "";
-            return (
-              <Fragment key={item.id}>
-                <tr
-                  className={`${urgencyClass} ${resolvingClass} ${item.id === activeConflictId ? "conflict-active-row" : ""}`}
-                  style={{ cursor: onSelectConflict ? "pointer" : "default" }}
-                  onClick={() => onSelectConflict?.(item)}
-                >
-                  <td>
-                    <StatusBadge label={item.severity} tone={item.severity === "HARD" ? "bad" : "warn"} />
-                  </td>
-                  <td>{item.constraint_code}</td>
-                  <td>{item.message}</td>
-                  <td>{item.affected_session_ids.join(", ")}</td>
-                  {hasQuickFix && (
-                    <td>
-                      <button
-                        className={`button secondary slim quick-fix-toggle ${quickFixOpen ? "open" : ""}`}
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onToggleQuickFix?.(item);
-                        }}
-                      >
-                        <Zap size={14} />
-                        Quick Fix
-                        <ChevronDown size={14} />
-                      </button>
-                    </td>
-                  )}
-                </tr>
-                {quickFixOpen && hasQuickFix && (
-                  <tr className="quick-fix-row">
-                    <td colSpan={5}>{renderQuickFixTray?.(item)}</td>
-                  </tr>
-                )}
-              </Fragment>
-            );
-          })}
+          {groups.map((group) => (
+            <Fragment key={group.key}>
+              <tr className={`conflict-group-row ${group.key}`}>
+                <td colSpan={columnCount}>
+                  <div>
+                    <strong>{group.label}</strong>
+                    <span>
+                      {group.items.length} issue{group.items.length === 1 ? "" : "s"} | {group.hint}
+                    </span>
+                  </div>
+                </td>
+              </tr>
+              {group.items.map((item) => {
+                const quickFixOpen = item.id === quickFixOpenId;
+                const urgencyClass = item.severity === "HARD" ? "conflict-hard-row" : "conflict-soft-row";
+                const resolvingClass = item.id === resolvingConflictId ? "quick-fix-resolving" : "";
+                return (
+                  <Fragment key={item.id}>
+                    <tr
+                      className={`${urgencyClass} ${resolvingClass} ${
+                        item.id === activeConflictId ? "conflict-active-row" : ""
+                      }`}
+                      style={{ cursor: onSelectConflict ? "pointer" : "default" }}
+                      onClick={() => onSelectConflict?.(item)}
+                    >
+                      <td>
+                        <StatusBadge label={item.severity} tone={item.severity === "HARD" ? "bad" : "warn"} />
+                      </td>
+                      <td>{item.constraint_code}</td>
+                      <td>{item.message}</td>
+                      <td>{item.affected_session_ids.join(", ")}</td>
+                      {hasQuickFix && (
+                        <td>
+                          <button
+                            className={`button secondary slim quick-fix-toggle ${quickFixOpen ? "open" : ""}`}
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onToggleQuickFix?.(item);
+                            }}
+                          >
+                            <Zap size={14} />
+                            Quick Fix
+                            <ChevronDown size={14} />
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                    {quickFixOpen && hasQuickFix && (
+                      <tr className="quick-fix-row">
+                        <td colSpan={columnCount}>{renderQuickFixTray?.(item)}</td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </Fragment>
+          ))}
         </tbody>
       </table>
     </div>

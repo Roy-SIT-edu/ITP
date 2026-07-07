@@ -8,6 +8,8 @@ from drifting apart.
 
 from __future__ import annotations
 
+import re
+
 from app.models.room import Room
 from app.models.session import Session
 from app.models.time_slot import TimeSlot
@@ -18,8 +20,8 @@ from app.services.compatibility import (
     parse_custom_weeks,
     parse_day_list,
     room_capacity_fits,
+    session_weeks_conflict,
     venue_room_compatible,
-    weeks_conflict,
 )
 
 
@@ -62,7 +64,26 @@ def candidate_slot_allowed(session: Session, slot: TimeSlot) -> bool:
 def candidate_room_allowed(session: Session, room: Room) -> bool:
     """Return whether a saved requirement can be assigned to a room."""
 
+    required_codes = required_room_codes(session)
+    if required_codes:
+        if room.room_code.lower() not in {code.lower() for code in required_codes}:
+            return False
+        capacity_ok = True if len(required_codes) > 1 else room_capacity_fits(session, room)
+        return capacity_ok and delivery_room_compatible(session, room)
     return room_capacity_fits(session, room) and delivery_room_compatible(session, room) and venue_room_compatible(session, room)
+
+
+def required_room_codes(session: Session) -> list[str]:
+    return _split_codes(getattr(session, "required_room_codes", None))
+
+
+def required_student_group_codes(session: Session) -> list[str]:
+    return _split_codes(getattr(session, "required_student_group_codes", None))
+
+
+def _split_codes(value: object) -> list[str]:
+    text = value if isinstance(value, str) else ""
+    return [part.strip() for part in re.split(r"[,;]+", text) if part.strip()]
 
 
 def fixed_sessions_conflict(left: Session, right: Session) -> bool:
@@ -70,7 +91,7 @@ def fixed_sessions_conflict(left: Session, right: Session) -> bool:
 
     return (
         left.fixed_day == right.fixed_day
-        and weeks_conflict(left.week_pattern, right.week_pattern)
+        and session_weeks_conflict(left, None, right, None)
         and intervals_overlap(
             left.fixed_start_time or "",
             left.fixed_end_time or "",

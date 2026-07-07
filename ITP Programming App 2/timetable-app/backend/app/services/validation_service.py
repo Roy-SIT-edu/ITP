@@ -19,6 +19,7 @@ from app.services.compatibility import (
     parse_day_list,
     weeks_conflict,
 )
+from app.services.lab_requirement_service import LabRequirementService
 from app.services.requirement_input_service import RequirementInputService
 from app.services.scheduling_rules import (
     candidate_room_allowed,
@@ -32,6 +33,13 @@ from sqlalchemy.orm import Session as DbSession
 
 
 class ValidationService:
+    LAB_OPTIONAL_FIELDS = {
+        "Year",
+        "Exact Class Size",
+        "Staff 1 ID or Staff 1 Name",
+        "Start Week",
+        "End Week",
+    }
     REQUIRED_FIELDS = [
         ("Requirement ID", "requirement_id"),
         ("Programme", "programme_id"),
@@ -55,7 +63,12 @@ class ValidationService:
     def validate_latest(self, db: DbSession) -> dict:
         errors: list[dict] = []
         warnings: list[dict] = []
-        sessions = db.query(Session).order_by(Session.id).all()
+        active_lab_requirement_ids = LabRequirementService().active_requirement_ids(db)
+        sessions = [
+            item
+            for item in db.query(Session).order_by(Session.id).all()
+            if not item.is_lab_requirement or item.requirement_id in active_lab_requirement_ids
+        ]
         self._duplicate_requirement_checks(sessions, errors)
 
         for session in sessions:
@@ -111,6 +124,8 @@ class ValidationService:
 
     def _required_checks(self, session: Session, row: int, errors: list[dict]) -> None:
         for field_name, attr in self.REQUIRED_FIELDS:
+            if session.is_lab_requirement and field_name in self.LAB_OPTIONAL_FIELDS:
+                continue
             value = self._read_attr(session, attr)
             if value is None or value == "":
                 errors.append(
@@ -253,7 +268,7 @@ class ValidationService:
         errors: list[dict],
         warnings: list[dict],
     ) -> None:
-        if session.exact_class_size is None or session.exact_class_size <= 0:
+        if not session.is_lab_requirement and (session.exact_class_size is None or session.exact_class_size <= 0):
             errors.append(
                 {
                     "row": row,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.models.constraint_violation import ConstraintViolation
+from app.models.lab_requirement import LabRequirement
 from app.models.module import Module
 from app.models.programme import Programme
 from app.models.room import Room
@@ -96,6 +97,39 @@ def time_slot_to_dict(item: TimeSlot) -> dict:
     }
 
 
+def lab_requirement_to_dict(item: LabRequirement) -> dict:
+    return {
+        "id": item.id,
+        "requirement_id": item.requirement_id,
+        "is_active": item.is_active,
+        "source_sheet": item.source_sheet,
+        "source_row_no": item.source_row_no,
+        "programme": item.programme,
+        "raw_programme": item.raw_programme,
+        "year": item.year,
+        "module_code": item.module_code,
+        "student_group": item.student_group,
+        "student_group_codes": item.student_group_codes,
+        "group_size": item.group_size,
+        "fixed_day": item.fixed_day,
+        "fixed_start_time": item.fixed_start_time,
+        "fixed_end_time": item.fixed_end_time,
+        "duration_minutes": item.duration_minutes,
+        "week_pattern": item.week_pattern,
+        "custom_weeks": item.custom_weeks,
+        "location": item.location,
+        "required_room_codes": item.required_room_codes,
+        "staff_names": item.staff_names,
+        "class_type": item.class_type,
+        "delivery_mode": item.delivery_mode,
+        "campus_mode": item.campus_mode,
+        "venue_type_required": item.venue_type_required,
+        "start_at_7pm": item.start_at_7pm,
+        "setup_turnaround_note": item.setup_turnaround_note,
+        "notes": item.notes,
+    }
+
+
 def session_to_dict(item: Session) -> dict:
     return {
         "id": item.id,
@@ -129,6 +163,10 @@ def session_to_dict(item: Session) -> dict:
         "remarks": item.remarks,
         "source_file": item.source_file,
         "source_row_no": item.source_row_no,
+        "required_room_codes": item.required_room_codes,
+        "required_student_group_codes": item.required_student_group_codes,
+        "is_lab_requirement": item.is_lab_requirement,
+        "lab_requirement_id": item.lab_requirement_id,
     }
 
 
