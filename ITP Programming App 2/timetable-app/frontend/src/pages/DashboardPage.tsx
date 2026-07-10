@@ -1,296 +1,355 @@
 /*
- * Dashboard page.
- * Shows current import/validation/generation metrics; the flow chart lives in the global layout.
+ * Operational dashboard for timetable readiness and schedule health.
  */
 
 import {
   AlertTriangle,
-  CalendarDays,
+  ArrowRight,
   CalendarCheck,
+  CalendarDays,
+  CheckCircle2,
   FileSpreadsheet,
-  Info,
   RefreshCw,
-  ShieldCheck,
+  ShieldAlert,
   Sparkles,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { exportUrl, getAvailability, getConstraintInsights, getDashboard } from "../api/client";
-import type { Availability, ConstraintInsights, Dashboard } from "../types";
+import { type CSSProperties, useCallback, useEffect, useState } from "react";
+import { exportUrl, getConstraintInsights, getDashboard } from "../api/client";
 import OptimisedScoreInfo from "../components/OptimisedScoreInfo";
 import StatusBadge from "../components/StatusBadge";
+import type { ConstraintInsights, Dashboard } from "../types";
 
 export default function DashboardPage() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [insights, setInsights] = useState<ConstraintInsights | null>(null);
-  const [availability, setAvailability] = useState<Availability | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const load = () => {
-    Promise.all([getDashboard(), getConstraintInsights(), getAvailability()])
-      .then(([nextDashboard, nextInsights, nextAvailability]) => {
-        setDashboard(nextDashboard);
-        setInsights(nextInsights);
-        setAvailability(nextAvailability);
-      })
-      .catch((err: Error) => setError(err.message));
-  };
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [nextDashboard, nextInsights] = await Promise.all([getDashboard(), getConstraintInsights()]);
+      setDashboard(nextDashboard);
+      setInsights(nextInsights);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load dashboard");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  useEffect(load, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  if (error) return <div className="notice bad">{error}</div>;
+  if (error && !dashboard) return <div className="notice bad">{error}</div>;
   if (!dashboard) return <div className="empty-state">Loading dashboard.</div>;
 
   const latest = dashboard.latest_schedule;
   const quality = latest?.quality;
+  const scheduledCount = latest?.scheduled_count ?? 0;
+  const coveragePercent = dashboard.total_sessions
+    ? Math.round((scheduledCount / dashboard.total_sessions) * 100)
+    : 0;
   const hardConflicts = latest?.hard_violation_count ?? 0;
-  const exportReady = Boolean(latest) && hardConflicts === 0;
+  const softWarnings = quality?.soft_warning_count ?? 0;
+  const readiness = dashboardReadiness(dashboard);
+  const ReadinessIcon = readiness.icon;
+  const labRows = Math.max(0, dashboard.total_sessions - dashboard.imported_rows);
+
   const kpis = [
     {
-      label: "Total sessions",
-      value: dashboard.total_sessions,
-      icon: CalendarDays,
-      tone: "blue",
+      label: "Schedule coverage",
+      value: `${scheduledCount}/${dashboard.total_sessions}`,
+      detail: latest ? `${coveragePercent}% of sessions placed` : "Generate a schedule to measure coverage",
+      icon: CalendarCheck,
+      tone: coveragePercent === 100 ? "success" : "blue",
+      badge: latest ? <StatusBadge label={`${coveragePercent}%`} tone={coveragePercent === 100 ? "good" : "info"} /> : null,
     },
     {
-      label: "Imported rows",
-      value: dashboard.imported_rows,
-      icon: FileSpreadsheet,
-      tone: "teal",
-    },
-    {
-      label: "Validation",
+      label: "Input errors",
       value: dashboard.validation.error_count,
-      icon: ShieldCheck,
-      tone: dashboard.validation.is_valid ? "success" : "error",
+      detail: `${dashboard.validation.warning_count} additional input warnings`,
+      icon: ShieldAlert,
+      tone: dashboard.validation.error_count > 0 ? "error" : "success",
       badge: (
         <StatusBadge
-          label={dashboard.validation.is_valid ? "Valid" : "Needs fixes"}
-          tone={dashboard.validation.is_valid ? "good" : "bad"}
+          label={dashboard.validation.error_count > 0 ? "Needs attention" : "Inputs valid"}
+          tone={dashboard.validation.error_count > 0 ? "bad" : "good"}
         />
       ),
-      helper: (
-        <span
-          title={
-            "Input validation checks uploaded session data for missing or invalid fields. Schedule issues are constraint violations detected after generating a timetable (conflicts in scheduled sessions)."
-          }
-        >
-          <Info size={14} />
-        </span>
-      ),
-    },
-    {
-      label: "Schedule",
-      value: latest?.solver_status ?? "None",
-      icon: CalendarCheck,
-      tone: "indigo",
-      badge: <StatusBadge label={latest?.status ?? "No run"} tone={latest ? "info" : "neutral"} />,
     },
     {
       label: "Hard conflicts",
-      value: latest?.hard_violation_count ?? 0,
+      value: hardConflicts,
+      detail: latest ? "Blocking schedule issues" : "No generated schedule yet",
       icon: AlertTriangle,
-      tone: (latest?.hard_violation_count ?? 0) > 0 ? "error" : "success",
+      tone: hardConflicts > 0 ? "error" : "success",
+      badge: latest ? <StatusBadge label={hardConflicts > 0 ? "Blocked" : "Conflict-free"} tone={hardConflicts > 0 ? "bad" : "good"} /> : null,
     },
     {
-      label: "Optimised score",
-      value: quality ? `${quality.score}/100` : "None",
+      label: "Soft warnings",
+      value: softWarnings,
+      detail: quality ? `${quality.affected_session_count} sessions affected` : "Measured after generation",
+      icon: CalendarDays,
+      tone: softWarnings > 0 ? "warning" : "teal",
+      badge: quality ? <StatusBadge label={softWarnings > 0 ? "Reviewable" : "Clear"} tone={softWarnings > 0 ? "warn" : "good"} /> : null,
+    },
+    {
+      label: "Quality score",
+      value: quality ? `${quality.score}/100` : "Not scored",
+      detail: quality?.summary ?? "Generate a timetable to calculate quality",
       icon: Sparkles,
       tone: "purple",
-      badge: quality ? <StatusBadge label={quality.label} tone={quality.tone} /> : undefined,
-      helper: quality ? <OptimisedScoreInfo quality={quality} /> : undefined,
+      badge: quality ? <StatusBadge label={quality.label} tone={quality.tone} /> : null,
     },
   ];
 
   return (
-    <div className="page dashboard-page">
-      <section className="dashboard-hero">
+    <div className="page dashboard-page dashboard-page-v2">
+      <section className="dashboard-hero dashboard-control-centre">
         <div className="page-header dashboard-page-header">
           <div>
+            <span className="dashboard-eyebrow">Scheduling control centre</span>
             <h1>Overview</h1>
-            <p>Academic timetable scheduling status</p>
+            <p>
+              {dashboard.imported_rows} uploaded requirements and {labRows} lab bookings in the current input
+            </p>
           </div>
           <div className="toolbar-row">
-            <button className="button secondary" onClick={load}>
-              <RefreshCw size={17} />
-              Refresh
+            <button className="button secondary" disabled={loading} onClick={() => void load()}>
+              <RefreshCw className={loading ? "spin" : ""} size={17} />
+              {loading ? "Refreshing" : "Refresh"}
             </button>
           </div>
         </div>
 
-        <div className="metric-grid dashboard-metrics">
+        {error && <div className="notice bad">{error}</div>}
+
+        <div className={`dashboard-readiness ${readiness.tone}`}>
+          <span className="dashboard-readiness-icon" aria-hidden="true">
+            <ReadinessIcon size={24} />
+          </span>
+          <div className="dashboard-readiness-copy">
+            <span>{readiness.eyebrow}</span>
+            <strong>{readiness.title}</strong>
+            <p>{readiness.description}</p>
+            {latest && (
+              <div className="dashboard-run-meta">
+                <span>Run #{latest.id}</span>
+                <span>{formatStatus(latest.solver_status ?? latest.status)}</span>
+                <span>{formatDate(latest.created_at)}</span>
+              </div>
+            )}
+          </div>
+          <div className="dashboard-readiness-actions">
+            <a className="button" href={readiness.href}>
+              {readiness.action}
+              <ArrowRight size={17} />
+            </a>
+            {readiness.exportReady && latest && (
+              <a className="button secondary" href={exportUrl(latest.id, "xlsx")}>
+                <FileSpreadsheet size={17} />
+                Download XLSX
+              </a>
+            )}
+          </div>
+        </div>
+
+        <div className="metric-grid dashboard-health-grid">
           {kpis.map((item) => {
             const Icon = item.icon;
             return (
-              <div className="metric-card" key={item.label}>
-                <div className={`metric-icon ${item.tone}`}>
-                  <Icon size={20} />
+              <article className="metric-card dashboard-kpi-card" key={item.label}>
+                <div className="dashboard-kpi-top">
+                  <div className={`metric-icon ${item.tone}`}>
+                    <Icon size={20} />
+                  </div>
+                  {item.badge}
                 </div>
                 <span>{item.label}</span>
-                <div className="metric-value-row">
-                  <strong>{item.value}</strong>
-                  {item.helper}
-                </div>
-                {item.badge}
-              </div>
+                <strong>{item.value}</strong>
+                <p>{item.detail}</p>
+              </article>
             );
           })}
         </div>
       </section>
 
-      <section className="dashboard-grid dashboard-insights">
-        <div className="status-card">
+      <section className="dashboard-command-grid">
+        <article className="status-card dashboard-issues-card">
           <div className="section-heading">
             <div>
-              <div className="status-card-title">Smart Constraint Dashboard</div>
-              <p>Highest priority validation and schedule issues</p>
+              <div className="status-card-title">Attention Needed</div>
+              <p>Highest-impact input and schedule issues, ordered by frequency</p>
             </div>
+            <a
+              className="button secondary slim"
+              href={dashboard.validation.error_count > 0 ? "#upload" : "#review"}
+            >
+              Open {dashboard.validation.error_count > 0 ? "input" : "review"}
+              <ArrowRight size={15} />
+            </a>
           </div>
+
           {insights && insights.top_issues.length > 0 ? (
-            <div className="issue-stack">
-              {insights.top_issues.slice(0, 6).map((issue) => (
-                <div className="issue-pill" key={issue.code}>
-                  <span>{issue.code.split("_").join(" ")}</span>
-                  <strong>{issue.count}</strong>
+            <div className="dashboard-issue-list">
+              {insights.top_issues.slice(0, 6).map((issue, index) => (
+                <div className="dashboard-issue-row" key={issue.code}>
+                  <span className="dashboard-issue-rank">{index + 1}</span>
+                  <div>
+                    <strong>{formatIssueLabel(issue.code)}</strong>
+                    <small>{issueSource(issue.code)} issue</small>
+                  </div>
+                  <StatusBadge label={issue.severity === "HARD" ? "Hard" : "Soft"} tone={issue.severity === "HARD" ? "bad" : "warn"} />
+                  <strong className="dashboard-issue-count">{issue.count}</strong>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="empty-state">No current constraint issues.</div>
+            <div className="dashboard-clear-state">
+              <CheckCircle2 size={24} />
+              <div>
+                <strong>No current issues</strong>
+                <p>Input validation and the latest schedule are clear.</p>
+              </div>
+            </div>
           )}
-        </div>
+        </article>
 
-        <div className="status-card dashboard-export-card">
+        <article className="status-card dashboard-quality-card">
           <div className="section-heading">
             <div>
-              <div className="status-card-title">Export Readiness</div>
-              <p>
-                {exportReady
-                  ? "🎉 All hard conflicts resolved! Timetable is ready for export."
-                  : latest
-                    ? "⚠️ You must resolve all Hard Conflicts before you can export your timetable."
-                    : "Generate a timetable before exporting."}
-              </p>
+              <div className="status-card-title">Schedule Quality</div>
+              <p>What contributes to the current score</p>
             </div>
+            {quality && <OptimisedScoreInfo quality={quality} />}
           </div>
-          {exportReady ? (
-            <a className="button" href={exportUrl(latest!.id, "xlsx")}>
-              <FileSpreadsheet size={18} />
-              Export to Excel
-            </a>
+
+          {quality ? (
+            <>
+              <div className="dashboard-quality-summary">
+                <div
+                  className="dashboard-quality-ring"
+                  style={{ "--quality-score": `${quality.score}%` } as CSSProperties}
+                >
+                  <span>
+                    <strong>{quality.score}</strong>
+                    <small>/100</small>
+                  </span>
+                </div>
+                <div>
+                  <StatusBadge label={quality.label} tone={quality.tone} />
+                  <p>{quality.summary}</p>
+                </div>
+              </div>
+              <div className="dashboard-quality-facts">
+                <QualityFact label="Sessions affected" value={`${quality.affected_session_count} (${quality.affected_session_percent}%)`} />
+                <QualityFact label="Soft warnings" value={quality.soft_warning_count} />
+                <QualityFact label="Preference pressure" value={`${quality.soft_pressure_per_session}/session`} />
+              </div>
+              {latest && (
+                <a className="button secondary" href={`#run-report/${latest.id}`}>
+                  View full run report
+                  <ArrowRight size={16} />
+                </a>
+              )}
+            </>
           ) : (
-            <button className="button export-disabled" disabled type="button">
-              <FileSpreadsheet size={18} />
-              Export to Excel
-            </button>
+            <div className="empty-state">Generate a timetable to see its quality breakdown.</div>
           )}
-        </div>
-
-        <div className="status-card">
-          <div className="section-heading">
-            <div>
-              <div className="status-card-title">Staff Availability</div>
-              <p>Current teaching load by day</p>
-            </div>
-          </div>
-          <AvailabilityList
-            emptyText="Generate a timetable to see staff load."
-            items={availability?.staff.map((item) => ({ label: item.name, busy: item.busy })) ?? []}
-          />
-        </div>
-
-        <div className="status-card">
-          <div className="section-heading">
-            <div>
-              <div className="status-card-title">Room Availability</div>
-              <p>Current room usage by day</p>
-            </div>
-          </div>
-          <AvailabilityList
-            emptyText="Generate a timetable to see room usage."
-            items={availability?.rooms.map((item) => ({ label: item.room_code, busy: item.busy })) ?? []}
-          />
-        </div>
+        </article>
       </section>
+
     </div>
   );
 }
 
-function AvailabilityList({
-  items,
-  emptyText,
-}: {
-  items: { label: string; busy: { day: string }[] }[];
-  emptyText: string;
-}) {
-  if (items.length === 0) {
-    return <div className="empty-state">{emptyText}</div>;
+function QualityFact({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function dashboardReadiness(dashboard: Dashboard) {
+  const latest = dashboard.latest_schedule;
+  if (latest && latest.hard_violation_count > 0) {
+    return {
+      tone: "bad",
+      icon: AlertTriangle,
+      eyebrow: "Review required",
+      title: `${latest.hard_violation_count} hard conflict${latest.hard_violation_count === 1 ? "" : "s"} block export`,
+      description: "Review the affected sessions and apply a valid timetable adjustment.",
+      action: "Review conflicts",
+      href: "#review",
+      exportReady: false,
+    };
   }
-  const days = [
-    ["Monday", "Mon"],
-    ["Tuesday", "Tue"],
-    ["Wednesday", "Wed"],
-    ["Thursday", "Thu"],
-    ["Friday", "Fri"],
-  ];
-  return (
-    <div className="availability-list">
-      <div className="availability-header" aria-hidden="true">
-        <span>Resource</span>
-        {days.map(([day, label]) => (
-          <small key={day}>{label}</small>
-        ))}
-      </div>
-      {items.slice(0, 6).map((item) => (
-        <AvailabilityRow days={days} item={item} key={item.label} />
-      ))}
-      {items.length > 6 && <span className="muted">Showing 6 of {items.length}</span>}
-      <div className="heatmap-legend" aria-label="Teaching load colour legend">
-        <span>
-          <i className="heat-0" />0
-        </span>
-        <span>
-          <i className="heat-1" />1
-        </span>
-        <span>
-          <i className="heat-2" />2
-        </span>
-        <span>
-          <i className="heat-4" />
-          3-4
-        </span>
-        <span>
-          <i className="heat-5" />
-          5+
-        </span>
-      </div>
-    </div>
-  );
+  if (latest) {
+    const hasInputErrors = dashboard.validation.error_count > 0;
+    return {
+      tone: hasInputErrors ? "warn" : "good",
+      icon: CheckCircle2,
+      eyebrow: "Current schedule",
+      title: "Timetable is ready for export",
+      description: hasInputErrors
+        ? `No hard conflicts remain. Correct ${dashboard.validation.error_count} input issue${dashboard.validation.error_count === 1 ? "" : "s"} before the next generation.`
+        : (latest.quality?.summary ?? "No hard conflicts remain in the latest schedule."),
+      action: "Open export options",
+      href: "#export",
+      exportReady: true,
+    };
+  }
+  if (dashboard.validation.error_count > 0) {
+    return {
+      tone: "bad",
+      icon: ShieldAlert,
+      eyebrow: "Input readiness",
+      title: `${dashboard.validation.error_count} validation issue${dashboard.validation.error_count === 1 ? "" : "s"} require attention`,
+      description: "Correct invalid or incomplete inputs before generating the first timetable.",
+      action: "Review input data",
+      href: "#upload",
+      exportReady: false,
+    };
+  }
+  return {
+    tone: "info",
+    icon: CalendarDays,
+    eyebrow: "Ready for generation",
+    title: "Inputs are ready for the solver",
+    description: "Generate the first timetable to evaluate coverage, conflicts, and quality.",
+    action: "Generate timetable",
+    href: "#soft-constraints",
+    exportReady: false,
+  };
 }
 
-function AvailabilityRow({ days, item }: { days: string[][]; item: { label: string; busy: { day: string }[] } }) {
-  const counts = item.busy.reduce<Record<string, number>>((current, entry) => {
-    current[entry.day] = (current[entry.day] ?? 0) + 1;
-    return current;
-  }, {});
-
-  return (
-    <div className="availability-row">
-      <span className="availability-name" title={item.label}>
-        {item.label}
-      </span>
-      {days.map(([day]) => (
-        <small className={`heat-cell ${heatClass(counts[day] ?? 0)}`} key={day} title={`${day}: ${counts[day] ?? 0}`}>
-          {counts[day] ?? 0}
-        </small>
-      ))}
-    </div>
-  );
+function formatIssueLabel(code: string) {
+  return code
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function heatClass(value: number) {
-  if (value === 0) return "heat-0";
-  if (value === 1) return "heat-1";
-  if (value === 2) return "heat-2";
-  if (value <= 4) return "heat-4";
-  return "heat-5";
+function issueSource(code: string) {
+  return code.includes("_") && code === code.toUpperCase() ? "Schedule" : "Input";
+}
+
+function formatStatus(status: string) {
+  return status.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Latest run";
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }

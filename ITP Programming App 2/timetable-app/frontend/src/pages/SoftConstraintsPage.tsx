@@ -13,6 +13,7 @@ import {
 import { GenerationActionPanel } from "../components/SoftConstraintWorkflow";
 import InlineActivity from "../components/InlineActivity";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
+import { getGenerationMode } from "../generationMode";
 import { useSessionState } from "../sessionState";
 import { rankSoftPriorities } from "../softPriorities";
 import type { ScheduleGenerateResult, SoftConstraintPriority } from "../types";
@@ -29,6 +30,7 @@ export default function SoftConstraintsPage() {
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [dirty, setDirty] = useSessionState("soft.dirty", false);
+  const generationMode = getGenerationMode();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -85,7 +87,7 @@ export default function SoftConstraintsPage() {
         const saved = await savePriorities();
         if (!saved) return;
       }
-      const result = await generateSchedule();
+      const result = await generateSchedule(generationMode);
       setGenerationResult(result);
       setSuccess(result.message);
       notifyWorkflowProgressChange();
@@ -140,6 +142,7 @@ export default function SoftConstraintsPage() {
         dirty={dirty}
         generating={generating}
         generationResult={generationResult}
+        generationMode={generationMode}
         saving={saving}
         onGenerate={handleGenerate}
       />

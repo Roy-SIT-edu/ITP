@@ -25,6 +25,7 @@ import type {
   UploadSummary,
   ValidationResult,
 } from "../types";
+import type { GenerationMode } from "../generationMode";
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
@@ -170,8 +171,8 @@ export function getValidation() {
   return request<ValidationResult>("/api/validation/latest");
 }
 
-export function generateSchedule() {
-  return request<ScheduleGenerateResult>("/api/schedules/generate", {
+export function generateSchedule(mode: GenerationMode = "standard") {
+  return request<ScheduleGenerateResult>(`/api/schedules/generate?mode=${encodeURIComponent(mode)}`, {
     method: "POST",
   });
 }

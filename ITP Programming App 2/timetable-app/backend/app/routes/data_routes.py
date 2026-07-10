@@ -99,6 +99,7 @@ def dashboard(db: DbSession = Depends(get_db)):
         violations = db.query(ConstraintViolation).filter_by(schedule_run_id=latest_run.id).all()
         latest_schedule = {
             **schedule_run_to_dict(latest_run),
+            "scheduled_count": scheduled_count,
             "quality": schedule_quality_from_violations(
                 scheduled_count=scheduled_count,
                 raw_soft_score=latest_run.soft_score or 0,

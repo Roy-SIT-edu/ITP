@@ -3,11 +3,12 @@
  * Keeps solver preference configuration outside the generation workflow page.
  */
 
-import { Moon, RefreshCw, Sun } from "lucide-react";
+import { Gauge, Moon, RefreshCw, Repeat2, Sun } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getSoftConstraintPriorities, updateSoftConstraintPriorities } from "../api/client";
 import InlineActivity from "../components/InlineActivity";
 import { PriorityRanking } from "../components/SoftConstraintWorkflow";
+import { generationModeLabel, useGenerationMode } from "../generationMode";
 import { useSessionState } from "../sessionState";
 import { moveSoftPriority, rankSoftPriorities, setSoftPriorityActive } from "../softPriorities";
 import { useThemeMode } from "../theme";
@@ -21,6 +22,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const { themeMode, setThemeMode } = useThemeMode();
+  const { generationMode, setGenerationMode } = useGenerationMode();
   const nightMode = themeMode === "night";
 
   const load = useCallback(async () => {
@@ -81,7 +83,7 @@ export default function SettingsPage() {
       <div className="page-header">
         <div>
           <h1>Settings</h1>
-          <p>Configure soft constraint priority ranking for timetable generation</p>
+          <p>Configure solver behaviour, appearance, and soft constraint priorities</p>
         </div>
         <div className="toolbar-row">
           <button className="button secondary" onClick={() => void load()} disabled={loading || saving}>
@@ -126,6 +128,50 @@ export default function SettingsPage() {
             <span className="theme-toggle-label">{nightMode ? "Night mode" : "Day mode"}</span>
           </label>
         </div>
+      </section>
+
+      <section className="status-card settings-card generation-mode-card">
+        <div className="section-heading">
+          <div>
+            <div className="status-card-title">Generation Mode</div>
+            <p>Choose whether generation prioritises speed or repeatable results</p>
+          </div>
+          <span className="generation-mode-current">Current: {generationModeLabel(generationMode)}</span>
+        </div>
+
+        <div className="generation-mode-options" aria-label="Timetable generation mode" role="group">
+          <button
+            aria-pressed={generationMode === "standard"}
+            className={`generation-mode-option ${generationMode === "standard" ? "selected" : ""}`}
+            onClick={() => setGenerationMode("standard")}
+            type="button"
+          >
+            <span className="generation-mode-icon" aria-hidden="true">
+              <Gauge size={20} />
+            </span>
+            <span>
+              <strong>Standard</strong>
+              <small>Faster parallel search. Results can vary slightly between runs.</small>
+            </span>
+          </button>
+          <button
+            aria-pressed={generationMode === "reproducible"}
+            className={`generation-mode-option ${generationMode === "reproducible" ? "selected" : ""}`}
+            onClick={() => setGenerationMode("reproducible")}
+            type="button"
+          >
+            <span className="generation-mode-icon" aria-hidden="true">
+              <Repeat2 size={20} />
+            </span>
+            <span>
+              <strong>Reproducible</strong>
+              <small>Fixed single-worker search for more consistent results from the same inputs.</small>
+            </span>
+          </button>
+        </div>
+        <p className="generation-mode-note">
+          Reproducible mode may take longer on large timetables. Changes apply to the next generation run.
+        </p>
       </section>
 
       <PriorityRanking

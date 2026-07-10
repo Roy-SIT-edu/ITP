@@ -7,6 +7,15 @@ from app.services.validation_service import ValidationService
 from app.solver.cp_sat_solver import CpSatTimetableSolver
 
 
+def test_solver_modes_configure_parallelism_and_seed():
+    standard = CpSatTimetableSolver._configured_solver(max_seconds=30, fast_mode=False, reproducible=False)
+    reproducible = CpSatTimetableSolver._configured_solver(max_seconds=30, fast_mode=False, reproducible=True)
+
+    assert standard.parameters.num_search_workers == 8
+    assert reproducible.parameters.num_search_workers == 1
+    assert reproducible.parameters.random_seed == 42
+
+
 def test_feasible_sample_data_returns_solution(db_session):
     result = CpSatTimetableSolver().solve(
         db_session.query(Session).all(),

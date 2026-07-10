@@ -51,6 +51,7 @@ class CpSatTimetableSolver:
         soft_constraint_weights: dict[str, int] | None = None,
         max_seconds: float = 0.0,
         fast_mode: bool = False,
+        reproducible: bool = False,
     ) -> dict:
         if not sessions:
             return {
@@ -78,7 +79,7 @@ class CpSatTimetableSolver:
                 "message": " ".join(built.no_candidate_reasons),
             }
 
-        result = self._solve_built_model(built, max_seconds, fast_mode)
+        result = self._solve_built_model(built, max_seconds, fast_mode, reproducible)
         if result["solver_status"] in {"OPTIMAL", "FEASIBLE"}:
             return result
 
@@ -102,7 +103,7 @@ class CpSatTimetableSolver:
                 soft_constraint_weights,
                 relax_hard_conflicts=True,
             )
-            relaxed_result = self._solve_built_model(relaxed, max_seconds, fast_mode=True)
+            relaxed_result = self._solve_built_model(relaxed, max_seconds, fast_mode=True, reproducible=reproducible)
             if relaxed_result["solver_status"] in {"OPTIMAL", "FEASIBLE"}:
                 return relaxed_result
             return self._greedy_fallback(
@@ -115,14 +116,20 @@ class CpSatTimetableSolver:
 
         return result
 
-    def _solve_built_model(self, built, max_seconds: float, fast_mode: bool) -> dict:
+    @staticmethod
+    def _configured_solver(max_seconds: float, fast_mode: bool, reproducible: bool) -> cp_model.CpSolver:
         solver = cp_model.CpSolver()
         if max_seconds > 0:
             solver.parameters.max_time_in_seconds = max_seconds
         if fast_mode:
             solver.parameters.stop_after_first_solution = True
-        # Multiple workers usually improves feasibility search on timetable grids.
-        solver.parameters.num_search_workers = 8
+        solver.parameters.num_search_workers = 1 if reproducible else 8
+        if reproducible:
+            solver.parameters.random_seed = 42
+        return solver
+
+    def _solve_built_model(self, built, max_seconds: float, fast_mode: bool, reproducible: bool) -> dict:
+        solver = self._configured_solver(max_seconds, fast_mode, reproducible)
         status = solver.Solve(built.model)
         status_name = solver.StatusName(status)
 

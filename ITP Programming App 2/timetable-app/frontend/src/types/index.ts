@@ -381,5 +381,5 @@ export type Dashboard = {
     error_count: number;
     warning_count: number;
   };
-  latest_schedule: ScheduleRun | null;
+  latest_schedule: (ScheduleRun & { scheduled_count: number }) | null;
 };

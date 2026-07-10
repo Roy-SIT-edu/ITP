@@ -96,14 +96,100 @@ function splitDisplayValues(value: string) {
     .filter(Boolean);
 }
 
-function ListCell({ empty = "-", value }: { empty?: string; value: string }) {
+function CompactValueList({ fullText, label, values }: { fullText: string; label: string; values: string[] }) {
+  const [open, setOpen] = useState(false);
+  const preview = values[0];
+  const remaining = values.length - 1;
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open]);
+
+  return (
+    <>
+      <button
+        aria-haspopup="dialog"
+        className="database-value-trigger"
+        onClick={() => setOpen(true)}
+        title={`View all ${values.length} ${label.toLowerCase()}`}
+        type="button"
+      >
+        <span className="database-value-preview">{preview}</span>
+        <span className="database-value-count">+{remaining}</span>
+      </button>
+      {open && (
+        <div className="modal-backdrop" onClick={() => setOpen(false)} role="presentation">
+          <section
+            aria-label={`${label} for this record`}
+            aria-modal="true"
+            className="modal-content database-value-modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <div className="modal-header">
+              <div>
+                <h2>{label}</h2>
+                <span className="muted">{values.length} values</span>
+              </div>
+              <button
+                aria-label={`Close ${label.toLowerCase()}`}
+                className="button secondary slim"
+                onClick={() => setOpen(false)}
+                type="button"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="modal-body database-value-modal-body">
+              <span className="database-value-list" role="list">
+                {values.map((item, index) => (
+                  <span key={`${item}-${index}`} role="listitem">
+                    {item}
+                  </span>
+                ))}
+              </span>
+            </div>
+            <div className="modal-footer">
+              <button className="button secondary" onClick={() => setOpen(false)} type="button">
+                Close
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+      <span className="sr-only">{fullText}</span>
+    </>
+  );
+}
+
+function ListCell({ empty = "-", label, value }: { empty?: string; label: string; value: string }) {
   const values = splitDisplayValues(value);
   if (values.length === 0) return <span>{empty}</span>;
+  if (values.length > 4) return <CompactValueList fullText={value} label={label} values={values} />;
   return (
     <span className="lab-cell-list">
       {values.map((item) => (
         <span key={item}>{item}</span>
       ))}
+    </span>
+  );
+}
+
+function DatabaseCellValue({ label, value }: { label: string; value: DatabaseRow[string] }) {
+  const text = displayValue(value);
+  if (!text) return <span className="database-cell-empty">-</span>;
+
+  const values = splitDisplayValues(text);
+  if (values.length > 4) return <CompactValueList fullText={text} label={label} values={values} />;
+
+  return (
+    <span className="database-cell-text" title={text}>
+      {text}
     </span>
   );
 }
@@ -557,9 +643,11 @@ export default function DatabasePage({ dataType }: Props) {
                   </td>
                   {columns.map((column) => (
                     <td key={column.key}>
-                      {editing && !column.read_only
-                        ? fieldInput(column, draft[column.key], "edit")
-                        : displayValue(row[column.key])}
+                      {editing && !column.read_only ? (
+                        fieldInput(column, draft[column.key], "edit")
+                      ) : (
+                        <DatabaseCellValue label={column.label} value={row[column.key]} />
+                      )}
                     </td>
                   ))}
                 </tr>
@@ -689,7 +777,10 @@ export default function DatabasePage({ dataType }: Props) {
                   <td>{displayValue(row.year) || "-"}</td>
                   <td>{textValue(row, "module_code") || "-"}</td>
                   <td>
-                    <ListCell value={textValue(row, "student_group_codes") || textValue(row, "student_group")} />
+                    <ListCell
+                      label="Student groups"
+                      value={textValue(row, "student_group_codes") || textValue(row, "student_group")}
+                    />
                   </td>
                   <td>{displayValue(row.group_size) || "-"}</td>
                   <td>{textValue(row, "fixed_day") || "-"}</td>
@@ -701,10 +792,10 @@ export default function DatabasePage({ dataType }: Props) {
                     <strong>{labVenue(row)}</strong>
                   </td>
                   <td>
-                    <ListCell value={textValue(row, "required_room_codes")} />
+                    <ListCell label="Venue addresses" value={textValue(row, "required_room_codes")} />
                   </td>
                   <td>
-                    <ListCell value={textValue(row, "staff_names")} />
+                    <ListCell label="Staff" value={textValue(row, "staff_names")} />
                   </td>
                   <td>{textValue(row, "notes") || textValue(row, "setup_turnaround_note") || "-"}</td>
                 </tr>

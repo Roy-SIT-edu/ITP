@@ -629,6 +629,26 @@ export default function TimetableReviewPage() {
               {runs.length > comparisons.length && <span className="muted">{runs.length} total runs available.</span>}
             </div>
           </details>
+          <section className="status-card review-report-cta">
+            <div className="review-report-copy">
+              <div className="review-report-icon">
+                <FileText size={20} />
+              </div>
+              <div>
+                <div className="status-card-title">Timetable Run Report</div>
+                <p>Open the full scheduling breakdown, resource workload, conflicts, and session appendix.</p>
+              </div>
+            </div>
+            <a
+              className="button"
+              href={`#run-report/${schedule.schedule_run.id}`}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              <FileText size={17} />
+              View Full Report
+            </a>
+          </section>
           <section className="status-card data-section">
             <div className="section-heading">
               <div>
@@ -645,7 +665,7 @@ export default function TimetableReviewPage() {
                 value={filters.source}
                 onChange={(value) => setFilters({ ...filters, source: value })}
               />
-              <label className="review-search-filter">
+              <label className="review-filter-field review-search-filter">
                 <span>Search</span>
                 <input
                   placeholder="Module, requirement, staff, room, group"
@@ -654,7 +674,7 @@ export default function TimetableReviewPage() {
                   onChange={(event) => setFilters({ ...filters, query: event.target.value })}
                 />
               </label>
-              <label>
+              <label className="review-filter-field review-filter-field--issue">
                 <span>Issue Status</span>
                 <select
                   value={filters.issue}
@@ -668,42 +688,52 @@ export default function TimetableReviewPage() {
                 </select>
               </label>
               <FilterSelect
+                className="review-filter-field review-filter-field--class-type"
                 label="Class Type"
                 value={filters.classType}
                 values={unique(rows, "class_type")}
                 onChange={(value) => setFilters({ ...filters, classType: value })}
               />
               <FilterSelect
+                className="review-filter-field review-filter-field--programme"
                 label="Programme"
                 value={filters.programme}
                 values={unique(rows, "programme")}
                 onChange={(value) => setFilters({ ...filters, programme: value })}
               />
               <FilterSelect
+                className="review-filter-field review-filter-field--group"
                 label="Group"
                 value={filters.group}
                 values={unique(rows, "student_group_code")}
                 onChange={(value) => setFilters({ ...filters, group: value })}
               />
               <FilterSelect
+                className="review-filter-field review-filter-field--staff"
                 label="Staff"
                 value={filters.staff}
                 values={uniqueStaff(rows)}
                 onChange={(value) => setFilters({ ...filters, staff: value })}
               />
               <FilterSelect
+                className="review-filter-field review-filter-field--room"
                 label="Room"
                 value={filters.room}
                 values={unique(rows, "room")}
                 onChange={(value) => setFilters({ ...filters, room: value })}
               />
               <FilterSelect
+                className="review-filter-field review-filter-field--day"
                 label="Day"
                 value={filters.day}
                 values={unique(rows, "day")}
                 onChange={(value) => setFilters({ ...filters, day: value })}
               />
-              <button className="button secondary slim" onClick={() => setFilters(emptyFilters)}>
+              <button
+                className="button secondary slim review-filter-clear"
+                onClick={() => setFilters(emptyFilters)}
+                type="button"
+              >
                 Clear
               </button>
               <div className="review-filter-summary">
@@ -921,26 +951,6 @@ export default function TimetableReviewPage() {
               />
             )}
           </section>
-          <section className="status-card review-report-cta">
-            <div className="review-report-copy">
-              <div className="review-report-icon">
-                <FileText size={20} />
-              </div>
-              <div>
-                <div className="status-card-title">Timetable Run Report</div>
-                <p>Open the full scheduling breakdown, resource workload, conflicts, and session appendix.</p>
-              </div>
-            </div>
-            <a
-              className="button"
-              href={`#run-report/${schedule.schedule_run.id}`}
-              rel="noopener noreferrer"
-              target="_blank"
-            >
-              <FileText size={17} />
-              View Full Report
-            </a>
-          </section>
         </>
       )}
     </div>
@@ -980,18 +990,20 @@ function SourceFilterTabs({
 }
 
 function FilterSelect({
+  className,
   label,
   value,
   values,
   onChange,
 }: {
+  className?: string;
   label: string;
   value: string;
   values: string[];
   onChange: (value: string) => void;
 }) {
   return (
-    <label>
+    <label className={className}>
       <span>{label}</span>
       <select value={value} onChange={(event) => onChange(event.target.value)}>
         <option value="">All</option>

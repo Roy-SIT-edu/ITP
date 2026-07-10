@@ -9,6 +9,7 @@ from app.main import app
 from app.models.programme import Programme
 from app.models.room import Room
 from app.models.schedule_run import ScheduleRun
+from app.models.scheduled_session import ScheduledSession
 from app.models.session import Session
 from app.models.staff import Staff
 from app.models.student_group import StudentGroup
@@ -480,3 +481,22 @@ def test_schedule_generation_still_reads_core_data_after_split(tmp_path):
     finally:
         db.close()
         dispose_engines(engines)
+
+
+def test_dashboard_reports_latest_scheduled_coverage(tmp_path):
+    db, engine = _route_db(tmp_path)
+    client = _client_for(db)
+    try:
+        generation = client.post("/api/schedules/generate?mode=reproducible")
+        assert generation.status_code == 200
+
+        response = client.get("/api/dashboard")
+        assert response.status_code == 200
+        payload = response.json()
+        run_id = payload["latest_schedule"]["id"]
+        expected = db.query(ScheduledSession).filter_by(schedule_run_id=run_id).count()
+        assert payload["latest_schedule"]["scheduled_count"] == expected
+    finally:
+        app.dependency_overrides.clear()
+        db.close()
+        engine.dispose()

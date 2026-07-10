@@ -1,6 +1,7 @@
 import { ArrowDown, ArrowUp, ChevronDown, Play, RefreshCw, Save, Search } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import StatusBadge from "./StatusBadge";
+import { generationModeLabel, type GenerationMode } from "../generationMode";
 import type { ScheduleGenerateResult, SessionRow, SoftConstraintPriority } from "../types";
 
 export type RankedSoftPriority = SoftConstraintPriority & {
@@ -79,6 +80,7 @@ export function GenerationActionPanel({
   dirty,
   generating,
   generationResult,
+  generationMode,
   saving,
   onGenerate,
 }: {
@@ -86,6 +88,7 @@ export function GenerationActionPanel({
   dirty: boolean;
   generating: boolean;
   generationResult: ScheduleGenerateResult | null;
+  generationMode: GenerationMode;
   saving: boolean;
   onGenerate: () => void;
 }) {
@@ -94,8 +97,8 @@ export function GenerationActionPanel({
       <div className="generation-copy">
         <div className="status-card-title">Run Timetable Generation</div>
         <div className="status-row">
-          <StatusBadge label="Ready" tone="good" />
-          <span>Ready to generate.</span>
+          <StatusBadge label={generationModeLabel(generationMode)} tone="info" />
+          <span>Ready to generate in {generationModeLabel(generationMode).toLowerCase()} mode.</span>
         </div>
       </div>
       <div className="generation-actions">

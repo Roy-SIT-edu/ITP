@@ -1,5 +1,7 @@
 """API routes for generating and reading timetable schedules."""
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -37,8 +39,11 @@ class QuickFixInput(BaseModel):
 
 
 @router.post("/generate")
-def generate_schedule(db: DbSession = Depends(get_db)):
-    result = ScheduleService().generate(db)
+def generate_schedule(
+    mode: Literal["standard", "reproducible"] = Query(default="standard"),
+    db: DbSession = Depends(get_db),
+):
+    result = ScheduleService().generate(db, reproducible=mode == "reproducible")
     return result
 
 

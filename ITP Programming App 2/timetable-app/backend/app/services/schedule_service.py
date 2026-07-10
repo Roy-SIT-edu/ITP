@@ -35,6 +35,7 @@ class ScheduleService:
         db: DbSession,
         timeout: float = DEFAULT_GENERATION_TIMEOUT_SECONDS,
         fast_mode: bool = False,
+        reproducible: bool = False,
     ) -> dict:
         active_lab_requirement_ids = self.lab_requirement_service.sync_active_to_sessions(db)
         db.commit()
@@ -54,7 +55,15 @@ class ScheduleService:
         rooms = db.query(Room).order_by(Room.room_code).all()
         soft_weights = self.priority_service.weights(db)
 
-        result = self.solver.solve(sessions, time_slots, rooms, soft_constraint_weights=soft_weights, max_seconds=timeout, fast_mode=fast_mode)
+        result = self.solver.solve(
+            sessions,
+            time_slots,
+            rooms,
+            soft_constraint_weights=soft_weights,
+            max_seconds=timeout,
+            fast_mode=fast_mode,
+            reproducible=reproducible,
+        )
         run = db.query(ScheduleRun).filter_by(id=run_id).one()
         run.solver_status = result["solver_status"]
         run.soft_score = result["soft_score"]
