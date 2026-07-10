@@ -45,10 +45,7 @@ export default function SettingsPage() {
     }
   }, [load, priorities.length]);
 
-  const rankedPriorities = useMemo(
-    () => rankSoftPriorities(priorities, dirty),
-    [dirty, priorities],
-  );
+  const rankedPriorities = useMemo(() => rankSoftPriorities(priorities, dirty), [dirty, priorities]);
 
   const movePriority = (index: number, direction: -1 | 1) => {
     setPriorities((current) => moveSoftPriority(current, index, direction));
@@ -170,7 +167,8 @@ export default function SettingsPage() {
           </button>
         </div>
         <p className="generation-mode-note">
-          Reproducible mode may take longer on large timetables. Changes apply to the next generation run.
+          Reproducible mode usually takes 1–3 minutes on a large timetable and now has a five-minute solver budget. The
+          Generate Timetable page shows live elapsed and estimated remaining time.
         </p>
       </section>
 

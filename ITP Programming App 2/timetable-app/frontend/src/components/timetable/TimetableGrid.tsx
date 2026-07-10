@@ -548,88 +548,64 @@ function SelectedSessionEditor({
   return (
     <section className="schedule-edit-panel selected-session-panel">
       <div className="schedule-edit-heading">
-        <div>
-          <strong>Selected Session</strong>
-          <span>Inspect or modify session details.</span>
-        </div>
+        <strong>Selected Session</strong>
         <small>{isLabRequirement(row) ? `Lab requirement ${row.requirement_id}` : row.requirement_id}</small>
       </div>
       <div className="selected-session-body">
-        <div className="selected-session-main">
-          {isLabRequirement(row) && <span className="lab-source-badge">Built-in lab requirement</span>}
-          <strong>{row.module_code ?? row.requirement_id}</strong>
-          <span>
-            {row.programme ?? "No programme"} | {row.class_type ?? "Class"} | {row.student_group_code ?? "No group"}
-          </span>
-          <small>{row.week_pattern ?? "Weeks not set"}</small>
-        </div>
+        <div className="selected-session-overview">
+          <div className="selected-session-main">
+            {isLabRequirement(row) && <span className="lab-source-badge">Built-in lab requirement</span>}
+            <strong>{row.module_code ?? row.requirement_id}</strong>
+            <span>
+              {row.programme ?? "No programme"} | {row.class_type ?? "Class"} | {row.student_group_code ?? "No group"}
+            </span>
+            <small>{row.week_pattern ?? "Weeks not set"}</small>
+          </div>
 
-        <div className="selected-session-facts">
-          <span>
-            <strong>Current slot</strong>
-            {row.day}, {row.start_time}-{row.end_time}
-          </span>
-          <span>
-            <strong>Room</strong>
-            {row.room}
-          </span>
-          <span>
-            <strong>Session ID</strong>
-            {row.session_id}
-          </span>
+          <div className="selected-session-facts">
+            <span>
+              <strong>Current slot</strong>
+              {row.day}, {row.start_time}-{row.end_time}
+            </span>
+            <span>
+              <strong>Room</strong>
+              {row.room}
+            </span>
+            <span>
+              <strong>Session ID</strong>
+              {row.session_id}
+            </span>
+          </div>
         </div>
 
         {scheduleRunId && sessionData && (
           <div className="move-controls">
             <div className="move-controls-header">
               <div>
-                <strong>Edit & Move</strong>
-                <span>Update requirements and placement</span>
+                <strong>Edit Session</strong>
+                <span>Requirements and placement</span>
               </div>
-              <button
-                className={`button slim ${isPlacing ? "primary" : "secondary"}`}
-                onClick={() => {
-                  onSelectSession?.(row.session_id);
-                  setIsPlacing(!isPlacing);
-                }}
-                type="button"
-              >
-                {isPlacing ? "Cancel Selection" : "Pick Time"}
-              </button>
+              <div className="selected-session-editor-actions">
+                <button
+                  className={`button slim ${isPlacing ? "primary" : "secondary"}`}
+                  onClick={() => {
+                    onSelectSession?.(row.session_id);
+                    setIsPlacing(!isPlacing);
+                  }}
+                  type="button"
+                >
+                  {isPlacing ? "Cancel Selection" : "Pick Time"}
+                </button>
+                <button className="button primary slim" disabled={isSaving} onClick={handleSaveAll}>
+                  {isSaving ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
             </div>
 
-            {errorDetails && (
-              <div className="notice bad" style={{ margin: "0 16px 16px" }}>
-                {errorDetails}
-              </div>
-            )}
+            {errorDetails && <div className="notice bad selected-session-error">{errorDetails}</div>}
 
-            <div
-              className="move-control-fields"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "12px",
-                borderBottom: "1px solid var(--color-border)",
-                paddingBottom: "16px",
-                marginBottom: "16px",
-              }}
-            >
-              <label className="move-field" style={{ gridColumn: "1 / -1" }}>
-                <span
-                  style={{
-                    fontWeight: 600,
-                    color: "var(--color-primary)",
-                    textTransform: "uppercase",
-                    fontSize: "11px",
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  Module Details
-                </span>
-              </label>
-
-              <label className="move-field">
+            <div className="selected-session-editor-grid">
+              <label className="move-field selected-session-field-wide">
                 <span>Staff</span>
                 <select
                   value={sessionData.staff_id ?? ""}
@@ -694,26 +670,6 @@ function SelectedSessionEditor({
                   <option value="Science Lab">Science Lab</option>
                 </select>
               </label>
-            </div>
-
-            <div
-              className="move-control-fields"
-              style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}
-            >
-              <label className="move-field" style={{ gridColumn: "1 / -1" }}>
-                <span
-                  style={{
-                    fontWeight: 600,
-                    color: "var(--color-primary)",
-                    textTransform: "uppercase",
-                    fontSize: "11px",
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  Placement
-                </span>
-              </label>
-
               <label className="move-field">
                 <span>Day</span>
                 <select value={draft.day} onChange={(e) => updateMove({ day: e.target.value })}>
@@ -736,7 +692,7 @@ function SelectedSessionEditor({
                 </select>
               </label>
 
-              <label className="move-field" style={{ gridColumn: "1 / -1" }}>
+              <label className="move-field">
                 <span>Room</span>
                 <input
                   list={`room-options-${row.session_id}`}
@@ -754,15 +710,6 @@ function SelectedSessionEditor({
                 </option>
               ))}
             </datalist>
-
-            <button
-              className="button primary"
-              disabled={isSaving}
-              onClick={handleSaveAll}
-              style={{ marginTop: "16px", width: "100%", justifyContent: "center" }}
-            >
-              {isSaving ? "Saving Changes..." : "Save All Changes"}
-            </button>
           </div>
         )}
       </div>

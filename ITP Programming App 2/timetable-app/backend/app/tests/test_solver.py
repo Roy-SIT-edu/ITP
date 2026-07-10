@@ -3,6 +3,7 @@
 from app.models.room import Room
 from app.models.session import Session
 from app.models.time_slot import TimeSlot
+from app.services.schedule_service import generation_timeout_seconds
 from app.services.validation_service import ValidationService
 from app.solver.cp_sat_solver import CpSatTimetableSolver
 
@@ -14,6 +15,11 @@ def test_solver_modes_configure_parallelism_and_seed():
     assert standard.parameters.num_search_workers == 8
     assert reproducible.parameters.num_search_workers == 1
     assert reproducible.parameters.random_seed == 42
+
+
+def test_reproducible_mode_gets_a_longer_solver_budget():
+    assert generation_timeout_seconds(False) == 30
+    assert generation_timeout_seconds(True) == 300
 
 
 def test_feasible_sample_data_returns_solution(db_session):

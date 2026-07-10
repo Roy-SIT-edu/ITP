@@ -489,6 +489,8 @@ def test_dashboard_reports_latest_scheduled_coverage(tmp_path):
     try:
         generation = client.post("/api/schedules/generate?mode=reproducible")
         assert generation.status_code == 200
+        assert generation.json()["generation_mode"] == "reproducible"
+        assert generation.json()["solver_timeout_seconds"] == 300
 
         response = client.get("/api/dashboard")
         assert response.status_code == 200

@@ -1,7 +1,7 @@
-import { ArrowDown, ArrowUp, ChevronDown, Play, RefreshCw, Save, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, Clock3, Play, RefreshCw, Save, Search } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import StatusBadge from "./StatusBadge";
-import { generationModeLabel, type GenerationMode } from "../generationMode";
+import { formatGenerationDuration, generationModeLabel, type GenerationMode } from "../generationMode";
 import type { ScheduleGenerateResult, SessionRow, SoftConstraintPriority } from "../types";
 
 export type RankedSoftPriority = SoftConstraintPriority & {
@@ -77,7 +77,10 @@ export function GenerationReadinessPanel({
 
 export function GenerationActionPanel({
   canGenerate,
+  completing,
   dirty,
+  elapsedSeconds,
+  estimatedSeconds,
   generating,
   generationResult,
   generationMode,
@@ -85,29 +88,68 @@ export function GenerationActionPanel({
   onGenerate,
 }: {
   canGenerate: boolean;
+  completing: boolean;
   dirty: boolean;
+  elapsedSeconds: number;
+  estimatedSeconds: number;
   generating: boolean;
   generationResult: ScheduleGenerateResult | null;
   generationMode: GenerationMode;
   saving: boolean;
   onGenerate: () => void;
 }) {
+  const estimatedProgress =
+    estimatedSeconds > 0 ? Math.min(90, Math.max(4, Math.round((elapsedSeconds / estimatedSeconds) * 90))) : 0;
+  const progress = completing ? 100 : generating && estimatedSeconds > 0 ? estimatedProgress : 0;
+  const estimatedRemaining = Math.max(0, estimatedSeconds - elapsedSeconds);
+  const stalled = generating && !completing && estimatedRemaining === 0;
+
   return (
     <section className="status-card generation-panel">
       <div className="generation-copy">
         <div className="status-card-title">Run Timetable Generation</div>
         <div className="status-row">
           <StatusBadge label={generationModeLabel(generationMode)} tone="info" />
-          <span>Ready to generate in {generationModeLabel(generationMode).toLowerCase()} mode.</span>
         </div>
       </div>
       <div className="generation-actions">
         <button className="button large" disabled={!canGenerate || generating || saving} onClick={onGenerate}>
-          {generating ? <RefreshCw className="spin" size={18} /> : <Play size={18} />}
-          {generating ? "Running Solver" : "Generate Timetable"}
+          {generating ? <RefreshCw className={completing ? "" : "spin"} size={18} /> : <Play size={18} />}
+          {completing ? "Finalising" : generating ? "Running Solver" : "Generate Timetable"}
         </button>
         {dirty && <span className="muted">Unsaved ranking will be saved first.</span>}
       </div>
+      {generating && estimatedSeconds > 0 && (
+        <div className="solver-progress" aria-live="polite">
+          <div className="solver-progress-heading">
+            <span>
+              <Clock3 size={16} />
+              <strong>{formatGenerationDuration(elapsedSeconds)}</strong> elapsed
+            </span>
+            <span>
+              {completing
+                ? "Schedule generated"
+                : estimatedRemaining > 0
+                  ? `About ${formatGenerationDuration(estimatedRemaining)} remaining`
+                  : "Still solving"}
+            </span>
+          </div>
+          <div
+            aria-label="Estimated timetable generation progress"
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={progress}
+            className="solver-progress-track"
+            role="progressbar"
+          >
+            <span
+              className={`solver-progress-fill ${stalled ? "stalled" : ""} ${completing ? "completing" : ""}`}
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <p>Estimated progress {progress}%</p>
+        </div>
+      )}
       {generationResult && (
         <div className="result-strip">
           {generationResult.quality && (
@@ -121,6 +163,11 @@ export function GenerationActionPanel({
           <span>
             Solver <strong>{generationResult.solver_status}</strong>
           </span>
+          {typeof generationResult.generation_seconds === "number" && (
+            <span>
+              Runtime <strong>{formatGenerationDuration(generationResult.generation_seconds)}</strong>
+            </span>
+          )}
           <span>
             Hard <strong>{generationResult.hard_violation_count}</strong>
           </span>

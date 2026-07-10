@@ -6,6 +6,8 @@ stores post-generation constraint checks for review/export screens.
 
 from __future__ import annotations
 
+from time import perf_counter
+
 from app.models.room import Room
 from app.models.schedule_run import ScheduleRun
 from app.models.scheduled_session import ScheduledSession
@@ -20,6 +22,11 @@ from app.solver.cp_sat_solver import CpSatTimetableSolver
 from sqlalchemy.orm import Session as DbSession
 
 DEFAULT_GENERATION_TIMEOUT_SECONDS = 30.0
+REPRODUCIBLE_GENERATION_TIMEOUT_SECONDS = 300.0
+
+
+def generation_timeout_seconds(reproducible: bool) -> float:
+    return REPRODUCIBLE_GENERATION_TIMEOUT_SECONDS if reproducible else DEFAULT_GENERATION_TIMEOUT_SECONDS
 
 
 class ScheduleService:
@@ -33,10 +40,12 @@ class ScheduleService:
     def generate(
         self,
         db: DbSession,
-        timeout: float = DEFAULT_GENERATION_TIMEOUT_SECONDS,
+        timeout: float | None = None,
         fast_mode: bool = False,
         reproducible: bool = False,
     ) -> dict:
+        started_at = perf_counter()
+        effective_timeout = timeout if timeout is not None else generation_timeout_seconds(reproducible)
         active_lab_requirement_ids = self.lab_requirement_service.sync_active_to_sessions(db)
         db.commit()
 
@@ -60,7 +69,7 @@ class ScheduleService:
             time_slots,
             rooms,
             soft_constraint_weights=soft_weights,
-            max_seconds=timeout,
+            max_seconds=effective_timeout,
             fast_mode=fast_mode,
             reproducible=reproducible,
         )
@@ -86,6 +95,9 @@ class ScheduleService:
                     raw_soft_score=0,
                     affected_session_count=0,
                 ),
+                "generation_mode": "reproducible" if reproducible else "standard",
+                "generation_seconds": round(perf_counter() - started_at, 1),
+                "solver_timeout_seconds": effective_timeout,
                 "message": run.message,
             }
 
@@ -123,5 +135,8 @@ class ScheduleService:
                 raw_soft_score=run.soft_score,
                 affected_session_count=affected_session_count(check["violations"]),
             ),
+            "generation_mode": "reproducible" if reproducible else "standard",
+            "generation_seconds": round(perf_counter() - started_at, 1),
+            "solver_timeout_seconds": effective_timeout,
             "message": run.message,
         }

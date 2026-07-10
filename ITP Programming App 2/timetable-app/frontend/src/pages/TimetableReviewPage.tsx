@@ -3,7 +3,17 @@
  * Displays the latest generated timetable and any stored constraint violations.
  */
 
-import { ChevronDown, FileText, Filter, RefreshCw, Zap } from "lucide-react";
+import {
+  BookOpenCheck,
+  ChevronDown,
+  FileText,
+  Filter,
+  History,
+  RefreshCw,
+  ShieldAlert,
+  Sparkles,
+  Zap,
+} from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   compareSchedules,
@@ -23,6 +33,7 @@ import StatusBadge from "../components/StatusBadge";
 import TimetableGrid from "../components/TimetableGrid";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
 import { intervalsOverlap, timeToMinutes } from "../components/timetable/timetableUtils";
+import { conflictPresentation, uniqueConflictTypes } from "../conflictPresentation";
 import { useSessionState } from "../sessionState";
 import type {
   ConstraintViolation,
@@ -89,6 +100,7 @@ export default function TimetableReviewPage() {
   const [error, setError] = useSessionState<string | null>("review.error", null);
   const [activeSessionId, setActiveSessionId] = useSessionState<number | null>("review.activeSessionId", null);
   const [movingConflict, setMovingConflict] = useState(false);
+  const [versionsOpen, setVersionsOpen] = useState(false);
   const [conflictTab, setConflictTab] = useSessionState<"modules" | "issues">("review.conflictTab", "modules");
   const [conflictSeverityFilter, setConflictSeverityFilter] = useSessionState<ConflictSeverityFilter>(
     "review.conflictSeverityFilter",
@@ -461,6 +473,12 @@ export default function TimetableReviewPage() {
     return ids;
   }, [visibleViolations]);
 
+  const allConflictSessionCount = useMemo(() => {
+    const ids = new Set<number>();
+    violations.forEach((violation) => violation.affected_session_ids.forEach((id) => ids.add(id)));
+    return ids.size;
+  }, [violations]);
+
   const conflictSessions = useMemo(() => {
     const sessions = rows.filter((r) => conflictSessionIds.has(r.session_id));
     return sessions.sort((a, b) => {
@@ -534,120 +552,119 @@ export default function TimetableReviewPage() {
 
       {schedule && (
         <>
-          <section className="status-card review-summary">
-            <div className="section-heading">
-              <div>
-                <div className="status-card-title">Current Schedule</div>
-                <p>Run {schedule.schedule_run.id}</p>
-              </div>
-              <div className="status-row compact">
+          <section className="status-card review-command-card">
+            <div className="review-command-bar">
+              <div className="review-run-identity">
+                <span>Current schedule</span>
+                <strong>Run {schedule.schedule_run.id}</strong>
                 <StatusBadge
                   label={schedule.schedule_run.solver_status ?? schedule.schedule_run.status}
                   tone={schedule.schedule_run.hard_violation_count > 0 ? "bad" : "good"}
                 />
+              </div>
+              <div className="review-command-metrics">
                 {currentQuality && (
                   <div className="optimised-score-control">
                     <StatusBadge
-                      label={`Optimised score: ${currentQuality.score}/100 ${currentQuality.label}`}
+                      label={`${currentQuality.score}/100 ${currentQuality.label}`}
                       tone={currentQuality.tone}
                     />
                     <OptimisedScoreInfo quality={currentQuality} />
                   </div>
                 )}
-                <span>{filteredRows.length} sessions shown</span>
-                <span>{labRowCount} lab requirement sessions</span>
-                <span>{violations.length} issues</span>
-                {currentQuality && <span>{currentQuality.soft_warning_count} soft warnings</span>}
+                <span>{filteredRows.length} sessions</span>
+                {labRowCount > 0 && <span>{labRowCount} labs</span>}
+                <span className={hardConflictCount > 0 ? "review-metric-bad" : undefined}>
+                  {hardConflictCount > 0 ? `${hardConflictCount} blocking` : `${softConflictCount} optional`}
+                </span>
+              </div>
+              <div className="review-command-actions">
+                <button
+                  aria-expanded={versionsOpen}
+                  className={`button secondary slim review-version-toggle ${versionsOpen ? "open" : ""}`}
+                  onClick={() => setVersionsOpen((current) => !current)}
+                  type="button"
+                >
+                  <History size={15} />
+                  Versions
+                  <span>{comparisons.length}</span>
+                  <ChevronDown size={14} />
+                </button>
+                <a
+                  className="button slim"
+                  href={`#run-report/${schedule.schedule_run.id}`}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  <FileText size={15} />
+                  Full Report
+                </a>
               </div>
             </div>
-          </section>
-          <details className="status-card compact-disclosure">
-            <summary className="compact-summary">
-              <div>
-                <div className="status-card-title">Schedule Versions</div>
-                <p>Compare recent generated runs</p>
-              </div>
-              <span className="preference-toggle">
-                View
-                <ChevronDown size={16} />
-              </span>
-            </summary>
-            <div className="disclosure-content">
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Run</th>
-                      <th>Status</th>
-                      <th>Sessions</th>
-                      <th>Hard</th>
-                      <th>Soft Warnings</th>
-                      <th>Optimised Score</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {comparisons.map((run) => (
-                      <tr key={run.id}>
-                        <td>#{run.id}</td>
-                        <td>{run.solver_status ?? run.status}</td>
-                        <td>{run.scheduled_count}</td>
-                        <td>{run.stored_hard_issues}</td>
-                        <td>{run.quality?.soft_warning_count ?? run.stored_soft_issues}</td>
-                        <td>
-                          <StatusBadge
-                            label={`${run.quality?.score ?? run.quality_score}/100 ${run.quality?.label ?? ""}`.trim()}
-                            tone={run.quality?.tone ?? "neutral"}
-                          />
-                        </td>
-                        <td>
-                          <div className="table-actions">
-                            <button className="button secondary slim" type="button" onClick={() => openRun(run.id)}>
-                              Review
-                            </button>
-                            <a
-                              className="button secondary slim"
-                              href={`#run-report/${run.id}`}
-                              rel="noopener noreferrer"
-                              target="_blank"
-                            >
-                              <FileText size={14} />
-                              View Report
-                            </a>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {comparisons.length === 0 && (
+            {versionsOpen && (
+              <div className="review-versions-panel">
+                <div className="review-versions-heading">
+                  <div>
+                    <strong>Schedule Versions</strong>
+                    <span>Compare recent generated runs</span>
+                  </div>
+                  {runs.length > comparisons.length && <span>{runs.length} total runs</span>}
+                </div>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
                       <tr>
-                        <td colSpan={7}>No schedule versions yet.</td>
+                        <th>Run</th>
+                        <th>Status</th>
+                        <th>Sessions</th>
+                        <th>Hard</th>
+                        <th>Soft Warnings</th>
+                        <th>Optimised Score</th>
+                        <th>Action</th>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {comparisons.map((run) => (
+                        <tr key={run.id}>
+                          <td>#{run.id}</td>
+                          <td>{run.solver_status ?? run.status}</td>
+                          <td>{run.scheduled_count}</td>
+                          <td>{run.stored_hard_issues}</td>
+                          <td>{run.quality?.soft_warning_count ?? run.stored_soft_issues}</td>
+                          <td>
+                            <StatusBadge
+                              label={`${run.quality?.score ?? run.quality_score}/100 ${run.quality?.label ?? ""}`.trim()}
+                              tone={run.quality?.tone ?? "neutral"}
+                            />
+                          </td>
+                          <td>
+                            <div className="table-actions">
+                              <button className="button secondary slim" type="button" onClick={() => openRun(run.id)}>
+                                Review
+                              </button>
+                              <a
+                                className="button secondary slim"
+                                href={`#run-report/${run.id}`}
+                                rel="noopener noreferrer"
+                                target="_blank"
+                              >
+                                <FileText size={14} />
+                                View Report
+                              </a>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {comparisons.length === 0 && (
+                        <tr>
+                          <td colSpan={7}>No schedule versions yet.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              {runs.length > comparisons.length && <span className="muted">{runs.length} total runs available.</span>}
-            </div>
-          </details>
-          <section className="status-card review-report-cta">
-            <div className="review-report-copy">
-              <div className="review-report-icon">
-                <FileText size={20} />
-              </div>
-              <div>
-                <div className="status-card-title">Timetable Run Report</div>
-                <p>Open the full scheduling breakdown, resource workload, conflicts, and session appendix.</p>
-              </div>
-            </div>
-            <a
-              className="button"
-              href={`#run-report/${schedule.schedule_run.id}`}
-              rel="noopener noreferrer"
-              target="_blank"
-            >
-              <FileText size={17} />
-              View Full Report
-            </a>
+            )}
           </section>
           <section className="status-card data-section">
             <div className="section-heading">
@@ -771,18 +788,20 @@ export default function TimetableReviewPage() {
           <section className="status-card data-section">
             <div className="section-heading">
               <div>
-                <div className="status-card-title">Conflicts</div>
+                <div className="status-card-title">Schedule Health</div>
                 <p>
-                  {violations.length} issue{violations.length !== 1 ? "s" : ""} found —{" "}
+                  {violations.length} issue{violations.length !== 1 ? "s" : ""} across {allConflictSessionCount}{" "}
+                  affected class{allConflictSessionCount === 1 ? "" : "es"}.{" "}
                   {hardConflictCount > 0 ? (
-                    <strong style={{ color: "#dc2626" }}>
-                      ⚠️ {hardConflictCount} Hard Conflict{hardConflictCount === 1 ? "" : "s"} remaining. Fix them to
-                      unlock export.
-                    </strong>
+                    <strong className="conflict-summary-hard">Resolve blocking issues before export.</strong>
                   ) : violations.length > 0 ? (
-                    <span style={{ color: "#f97316" }}>Soft warnings remain optional. Export is unlocked.</span>
+                    <span className="conflict-summary-soft">
+                      Only optional improvements remain. Export is available.
+                    </span>
                   ) : (
-                    <span className="muted">🎉 All hard conflicts resolved! Timetable is ready for export.</span>
+                    <span className="conflict-summary-clear">
+                      No conflicts found. The timetable is ready for export.
+                    </span>
                   )}
                 </p>
               </div>
@@ -792,34 +811,14 @@ export default function TimetableReviewPage() {
                     className={`button slim ${conflictTab === "modules" ? "" : "secondary"}`}
                     onClick={() => setConflictTab("modules")}
                   >
-                    Modules to Reassign
+                    Affected Classes
                   </button>
                   <button
                     className={`button slim ${conflictTab === "issues" ? "" : "secondary"}`}
                     onClick={() => setConflictTab("issues")}
                   >
-                    Raw Issues
+                    Issue Details
                   </button>
-                </div>
-                <div className="conflict-severity-filter" aria-label="Filter conflicts by severity">
-                  {[
-                    { key: "all" as const, label: "All", count: violations.length },
-                    { key: "hard" as const, label: "Hard", count: hardConflictCount },
-                    { key: "soft" as const, label: "Soft", count: softConflictCount },
-                  ].map((option) => (
-                    <button
-                      aria-pressed={conflictSeverityFilter === option.key}
-                      className={`conflict-severity-button ${option.key} ${
-                        conflictSeverityFilter === option.key ? "active" : ""
-                      }`}
-                      key={option.key}
-                      onClick={() => setConflictSeverityFilter(option.key)}
-                      type="button"
-                    >
-                      <span>{option.label}</span>
-                      <strong>{option.count}</strong>
-                    </button>
-                  ))}
                 </div>
                 {activeSessionId && (
                   <button className="button secondary slim" onClick={() => setActiveSessionId(null)}>
@@ -827,6 +826,47 @@ export default function TimetableReviewPage() {
                   </button>
                 )}
               </div>
+            </div>
+            <div className="conflict-overview" aria-label="Conflict summary and filters">
+              <button
+                aria-pressed={conflictSeverityFilter === "all"}
+                className={`conflict-overview-card all ${conflictSeverityFilter === "all" ? "active" : ""}`}
+                onClick={() => setConflictSeverityFilter("all")}
+                type="button"
+              >
+                <BookOpenCheck size={20} />
+                <span>
+                  <strong>{allConflictSessionCount}</strong>
+                  <small>Affected classes</small>
+                  <em>{violations.length} recorded issues</em>
+                </span>
+              </button>
+              <button
+                aria-pressed={conflictSeverityFilter === "hard"}
+                className={`conflict-overview-card hard ${conflictSeverityFilter === "hard" ? "active" : ""}`}
+                onClick={() => setConflictSeverityFilter("hard")}
+                type="button"
+              >
+                <ShieldAlert size={20} />
+                <span>
+                  <strong>{hardConflictCount}</strong>
+                  <small>Blocking issues</small>
+                  <em>{hardConflictCount > 0 ? "Must fix before export" : "Nothing blocking export"}</em>
+                </span>
+              </button>
+              <button
+                aria-pressed={conflictSeverityFilter === "soft"}
+                className={`conflict-overview-card soft ${conflictSeverityFilter === "soft" ? "active" : ""}`}
+                onClick={() => setConflictSeverityFilter("soft")}
+                type="button"
+              >
+                <Sparkles size={20} />
+                <span>
+                  <strong>{softConflictCount}</strong>
+                  <small>Optional improvements</small>
+                  <em>Improve quality when practical</em>
+                </span>
+              </button>
             </div>
             {movingConflict && (
               <InlineActivity
@@ -847,12 +887,12 @@ export default function TimetableReviewPage() {
                 <table>
                   <thead>
                     <tr>
-                      <th>Module / Requirement</th>
+                      <th>Class</th>
                       <th>Group</th>
                       <th>Staff</th>
                       <th>Current Time</th>
                       <th>Room</th>
-                      <th>Issues</th>
+                      <th>Why Flagged</th>
                       <th>Action</th>
                     </tr>
                   </thead>
@@ -862,11 +902,11 @@ export default function TimetableReviewPage() {
                         <tr className={`conflict-group-row ${group.key}`}>
                           <td colSpan={7}>
                             <div>
-                              <strong>{group.label}</strong>
+                              <strong>{group.key === "hard" ? "Needs attention" : "Optional improvements"}</strong>
                               <span>
-                                {group.rows.length} module{group.rows.length === 1 ? "" : "s"} | {group.issueCount}{" "}
+                                {group.rows.length} class{group.rows.length === 1 ? "" : "es"} · {group.issueCount}{" "}
                                 issue
-                                {group.issueCount === 1 ? "" : "s"} | {group.hint}
+                                {group.issueCount === 1 ? "" : "s"} · {group.hint}
                               </span>
                             </div>
                           </td>
@@ -890,7 +930,10 @@ export default function TimetableReviewPage() {
                                 onClick={() => setActiveSessionId(row.session_id)}
                                 style={{ cursor: "pointer" }}
                               >
-                                <td>{row.programme || `Req-${row.session_id}`}</td>
+                                <td>
+                                  <strong>{row.module_code || row.requirement_id || `Class ${row.session_id}`}</strong>
+                                  {row.programme && <small className="conflict-class-programme">{row.programme}</small>}
+                                </td>
                                 <td>{row.student_group_code}</td>
                                 <td>{row.staff_name}</td>
                                 <td>
@@ -898,7 +941,20 @@ export default function TimetableReviewPage() {
                                 </td>
                                 <td>{row.room}</td>
                                 <td>
-                                  {rowViolations.length} {group.key} issue{rowViolations.length === 1 ? "" : "s"}
+                                  <div className="conflict-reason-list">
+                                    {uniqueConflictTypes(rowViolations).map((violation) => {
+                                      const presentation = conflictPresentation(violation);
+                                      return (
+                                        <span
+                                          className={`conflict-reason-chip ${violation.severity.toLowerCase()}`}
+                                          key={violation.constraint_code}
+                                          title={presentation.explanation}
+                                        >
+                                          {presentation.label}
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
                                 </td>
                                 <td>
                                   <button

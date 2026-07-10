@@ -4,6 +4,7 @@
 
 import { ChevronDown, Zap } from "lucide-react";
 import { Fragment, type ReactNode } from "react";
+import { conflictPresentation } from "../conflictPresentation";
 import type { ConstraintViolation } from "../types";
 import StatusBadge from "./StatusBadge";
 
@@ -52,10 +53,10 @@ export default function ConflictTable({
       <table>
         <thead>
           <tr>
-            <th>Severity</th>
-            <th>Code</th>
-            <th>Message</th>
-            <th>Sessions</th>
+            <th>Impact</th>
+            <th>Issue Type</th>
+            <th>What Happened</th>
+            <th>Classes</th>
             {hasQuickFix && <th>Action</th>}
           </tr>
         </thead>
@@ -86,9 +87,15 @@ export default function ConflictTable({
                       onClick={() => onSelectConflict?.(item)}
                     >
                       <td>
-                        <StatusBadge label={item.severity} tone={item.severity === "HARD" ? "bad" : "warn"} />
+                        <StatusBadge
+                          label={item.severity === "HARD" ? "Blocks export" : "Optional"}
+                          tone={item.severity === "HARD" ? "bad" : "warn"}
+                        />
                       </td>
-                      <td>{item.constraint_code}</td>
+                      <td>
+                        <strong>{conflictPresentation(item).label}</strong>
+                        <small className="conflict-code">{item.constraint_code}</small>
+                      </td>
                       <td>{item.message}</td>
                       <td>{item.affected_session_ids.join(", ")}</td>
                       {hasQuickFix && (

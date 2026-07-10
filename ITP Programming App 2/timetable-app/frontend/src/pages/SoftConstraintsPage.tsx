@@ -5,18 +5,16 @@
 
 import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import {
-  generateSchedule,
-  getSoftConstraintPriorities,
-  updateSoftConstraintPriorities,
-} from "../api/client";
+import { generateSchedule, getSoftConstraintPriorities, updateSoftConstraintPriorities } from "../api/client";
 import { GenerationActionPanel } from "../components/SoftConstraintWorkflow";
 import InlineActivity from "../components/InlineActivity";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
-import { getGenerationMode } from "../generationMode";
+import { estimateGenerationSeconds, getGenerationMode, rememberGenerationSeconds } from "../generationMode";
 import { useSessionState } from "../sessionState";
 import { rankSoftPriorities } from "../softPriorities";
 import type { ScheduleGenerateResult, SoftConstraintPriority } from "../types";
+
+const COMPLETION_ANIMATION_MS = 650;
 
 export default function SoftConstraintsPage() {
   const [priorities, setPriorities] = useSessionState<SoftConstraintPriority[]>("soft.priorities", []);
@@ -29,6 +27,10 @@ export default function SoftConstraintsPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generationCompleting, setGenerationCompleting] = useState(false);
+  const [generationStartedAt, setGenerationStartedAt] = useState<number | null>(null);
+  const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
+  const [generationEstimatedSeconds, setGenerationEstimatedSeconds] = useState(0);
   const [dirty, setDirty] = useSessionState("soft.dirty", false);
   const generationMode = getGenerationMode();
 
@@ -53,6 +55,14 @@ export default function SoftConstraintsPage() {
       void load();
     }
   }, [dirty, load, priorities.length]);
+
+  useEffect(() => {
+    if (generationStartedAt === null) return;
+    const updateElapsed = () => setGenerationElapsedSeconds((Date.now() - generationStartedAt) / 1000);
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(timer);
+  }, [generationStartedAt]);
 
   const isBusy = loading || saving || generating;
   const canGenerate = !loading;
@@ -79,6 +89,7 @@ export default function SoftConstraintsPage() {
     if (!canGenerate) return;
     setGenerating(true);
     setGenerationResult(null);
+    setGenerationCompleting(false);
     setError(null);
     setSuccess(null);
 
@@ -87,13 +98,25 @@ export default function SoftConstraintsPage() {
         const saved = await savePriorities();
         if (!saved) return;
       }
+      const startedAt = Date.now();
+      setGenerationElapsedSeconds(0);
+      setGenerationEstimatedSeconds(estimateGenerationSeconds(generationMode));
+      setGenerationStartedAt(startedAt);
       const result = await generateSchedule(generationMode);
+      const completedSeconds = result.generation_seconds ?? (Date.now() - startedAt) / 1000;
+      setGenerationStartedAt(null);
+      setGenerationElapsedSeconds(completedSeconds);
+      rememberGenerationSeconds(generationMode, completedSeconds);
+      setGenerationCompleting(true);
+      await new Promise((resolve) => window.setTimeout(resolve, COMPLETION_ANIMATION_MS));
       setGenerationResult(result);
       setSuccess(result.message);
       notifyWorkflowProgressChange();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed");
     } finally {
+      setGenerationStartedAt(null);
+      setGenerationCompleting(false);
       setGenerating(false);
     }
   };
@@ -129,20 +152,15 @@ export default function SoftConstraintsPage() {
           steps={["Ordering preferences", "Updating weights", "Preparing solver"]}
         />
       )}
-      {generating && (
-        <InlineActivity
-          kind="generate"
-          title="Generating timetable"
-          steps={["Applying hard constraints", "Scoring soft preferences", "Selecting timetable placements"]}
-        />
-      )}
-
       <GenerationActionPanel
         canGenerate={canGenerate}
         dirty={dirty}
+        completing={generationCompleting}
         generating={generating}
         generationResult={generationResult}
         generationMode={generationMode}
+        elapsedSeconds={generationElapsedSeconds}
+        estimatedSeconds={generationEstimatedSeconds}
         saving={saving}
         onGenerate={handleGenerate}
       />

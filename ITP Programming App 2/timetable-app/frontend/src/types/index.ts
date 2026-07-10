@@ -127,6 +127,9 @@ export type ScheduleGenerateResult = {
   soft_warning_count?: number;
   soft_score: number;
   quality?: ScheduleQuality;
+  generation_mode?: "standard" | "reproducible";
+  generation_seconds?: number;
+  solver_timeout_seconds?: number;
   message: string;
 };
 
