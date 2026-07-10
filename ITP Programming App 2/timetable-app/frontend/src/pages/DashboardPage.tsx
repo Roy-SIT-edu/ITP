@@ -16,6 +16,7 @@ import {
 import { useEffect, useState } from "react";
 import { exportUrl, getAvailability, getConstraintInsights, getDashboard } from "../api/client";
 import type { Availability, ConstraintInsights, Dashboard } from "../types";
+import OptimisedScoreInfo from "../components/OptimisedScoreInfo";
 import StatusBadge from "../components/StatusBadge";
 
 export default function DashboardPage() {
@@ -40,6 +41,7 @@ export default function DashboardPage() {
   if (!dashboard) return <div className="empty-state">Loading dashboard.</div>;
 
   const latest = dashboard.latest_schedule;
+  const quality = latest?.quality;
   const hardConflicts = latest?.hard_violation_count ?? 0;
   const exportReady = Boolean(latest) && hardConflicts === 0;
   const kpis = [
@@ -90,10 +92,12 @@ export default function DashboardPage() {
       tone: (latest?.hard_violation_count ?? 0) > 0 ? "error" : "success",
     },
     {
-      label: "Soft score",
-      value: latest?.soft_score ?? 0,
+      label: "Optimised score",
+      value: quality ? `${quality.score}/100` : "None",
       icon: Sparkles,
       tone: "purple",
+      badge: quality ? <StatusBadge label={quality.label} tone={quality.tone} /> : undefined,
+      helper: quality ? <OptimisedScoreInfo quality={quality} /> : undefined,
     },
   ];
 

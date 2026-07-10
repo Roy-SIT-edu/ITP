@@ -256,11 +256,12 @@ export default function TimetablePlanner({
                 const isSelected = event.slotKeys.some((key) => key === selectedSlotKey);
                 if (event.kind === "cluster") {
                   const firstKey = event.slotKeys[0] ?? getFirstOverlapKey(event.rows[0], slots);
+                  const labCount = event.rows.filter(isLabRequirement).length;
                   return (
                     <button
-                      className={`calendar-event calendar-event-group ${hasConflict ? "conflict-current" : ""} ${
-                        isSelected ? "selected" : ""
-                      }`}
+                      className={`calendar-event calendar-event-group ${labCount ? "lab-requirement" : ""} ${
+                        hasConflict ? "conflict-current" : ""
+                      } ${isSelected ? "selected" : ""}`}
                       disabled={!onSelectSlot}
                       key={event.id}
                       onClick={() => {
@@ -275,6 +276,7 @@ export default function TimetablePlanner({
                       type="button"
                     >
                       <strong>{event.rows.length} sessions</strong>
+                      {labCount > 0 && <span className="calendar-event-source">{labCount} lab</span>}
                       <span>
                         {formatTime(minutesToTime(event.start), showAmPm)} -{" "}
                         {formatTime(minutesToTime(event.end), showAmPm)}
@@ -294,9 +296,9 @@ export default function TimetablePlanner({
                 const slotRows = grouped.get(firstKey) ?? [event.row];
                 return (
                   <button
-                    className={`calendar-event ${event.density} ${hasConflict ? "conflict-current" : ""} ${
-                      isSelected ? "selected" : ""
-                    }`}
+                    className={`calendar-event ${event.density} ${isLabRequirement(event.row) ? "lab-requirement" : ""} ${
+                      hasConflict ? "conflict-current" : ""
+                    } ${isSelected ? "selected" : ""}`}
                     disabled={!onSelectSlot}
                     key={event.row.scheduled_session_id}
                     onClick={() => onSelectSlot?.(firstKey, slotRows)}
@@ -307,6 +309,7 @@ export default function TimetablePlanner({
                     <strong>
                       {event.row.module_code ?? event.row.requirement_id ?? `Session ${event.row.session_id}`}
                     </strong>
+                    {isLabRequirement(event.row) && <span className="calendar-event-source">Lab</span>}
                     {showClassTitle && (
                       <span className="calendar-event-class">
                         {[event.row.student_group_code, event.row.class_type].filter(Boolean).join(" - ") || "Class"}
@@ -495,9 +498,14 @@ function uniqueSlotKeys(rows: ScheduledRow[], slots: PlannerSlot[]) {
 
 function eventTitle(row: ScheduledRow, showAmPm: boolean) {
   const label = row.module_code ?? row.requirement_id ?? `Session ${row.session_id}`;
+  const source = isLabRequirement(row) ? " | Lab requirement" : "";
   const group = row.student_group_code ? ` | ${row.student_group_code}` : "";
   const room = row.delivery_mode === "Online" ? "Online" : row.room;
-  return `${label}${group} | ${formatTime(row.start_time, showAmPm)} - ${formatTime(row.end_time, showAmPm)} | ${room}`;
+  return `${label}${source}${group} | ${formatTime(row.start_time, showAmPm)} - ${formatTime(row.end_time, showAmPm)} | ${room}`;
+}
+
+function isLabRequirement(row: ScheduledRow) {
+  return row.is_lab_requirement === true || (row.requirement_id ?? "").startsWith("LAB-");
 }
 
 function startOfWeek(date: Date) {

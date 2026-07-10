@@ -18,6 +18,7 @@ import type {
   ScheduleGenerateResult,
   ScheduleRun,
   ScheduleResponse,
+  ScheduleReport,
   SessionRow,
   SoftConstraintPriority,
   TimeSlot,
@@ -220,6 +221,14 @@ export function getSchedule(id: number) {
 
 export function getScheduleExplanations(scheduleRunId: number) {
   return request<ScheduleExplanation[]>(`/api/schedules/${scheduleRunId}/explanations`);
+}
+
+export function getScheduleReport(scheduleRunId: number) {
+  return request<ScheduleReport>(`/api/schedules/${scheduleRunId}/report`);
+}
+
+export function scheduleReportPdfUrl(scheduleRunId: number) {
+  return `${API_BASE}/api/schedules/${scheduleRunId}/report.pdf`;
 }
 
 export function moveScheduledSession(

@@ -81,6 +81,7 @@ export type ScheduleRun = {
   hard_violation_count: number;
   soft_score: number;
   message: string | null;
+  quality?: ScheduleQuality;
 };
 
 export type ScheduleComparison = ScheduleRun & {
@@ -88,6 +89,21 @@ export type ScheduleComparison = ScheduleRun & {
   stored_hard_issues: number;
   stored_soft_issues: number;
   quality_score: number;
+  quality: ScheduleQuality;
+};
+
+export type ScheduleQuality = {
+  score: number;
+  label: string;
+  tone: "neutral" | "good" | "warn" | "bad" | "info";
+  summary: string;
+  hard_issue_count: number;
+  soft_warning_count: number;
+  affected_session_count: number;
+  affected_session_percent: number;
+  soft_pressure_per_session: number;
+  raw_soft_score: number;
+  export_ready: boolean;
 };
 
 export type ScheduleExplanation = {
@@ -108,8 +124,108 @@ export type ScheduleGenerateResult = {
   schedule_run_id: number;
   solver_status: string;
   hard_violation_count: number;
+  soft_warning_count?: number;
   soft_score: number;
+  quality?: ScheduleQuality;
   message: string;
+};
+
+export type ReportBreakdownItem = {
+  label: string;
+  count: number;
+  percent: number;
+};
+
+export type ReportWorkloadItem = {
+  label: string;
+  session_count: number;
+  hours: number;
+};
+
+export type ReportSession = {
+  scheduled_session_id: number;
+  session_id: number;
+  requirement_id: string | null;
+  programme: string | null;
+  module_code: string | null;
+  class_type: string | null;
+  student_group_code: string | null;
+  staff_names: string[];
+  room: string | null;
+  day: string;
+  start_time: string;
+  end_time: string;
+  duration_minutes: number;
+  week_pattern: string | null;
+  custom_weeks: string | null;
+  start_week: number | null;
+  end_week: number | null;
+  delivery_mode: string | null;
+  campus_mode: string | null;
+  scheduling_type: string | null;
+  exact_class_size: number | null;
+  source_file: string | null;
+  is_lab_requirement: boolean;
+  lab_requirement_id: number | null;
+  hard_issue_count: number;
+  soft_issue_count: number;
+  issue_count: number;
+  issue_codes: string[];
+};
+
+export type ReportConflict = ConstraintViolation & {
+  affected_sessions: Array<{
+    session_id: number;
+    requirement_id: string | null;
+    module_code: string | null;
+    student_group_code: string | null;
+    placement: string;
+  }>;
+};
+
+export type ScheduleReport = {
+  report_generated_at: string;
+  run: ScheduleRun;
+  quality: ScheduleQuality;
+  quality_breakdown: {
+    starting_score: number;
+    hard_conflict_deduction: number;
+    soft_warning_deduction: number;
+    affected_session_deduction: number;
+    preference_pressure_deduction: number;
+    hard_conflict_cap_applied: boolean;
+  };
+  summary: {
+    scheduled_count: number;
+    uploaded_session_count: number;
+    lab_session_count: number;
+    programme_count: number;
+    module_count: number;
+    student_group_count: number;
+    staff_count: number;
+    room_count: number;
+    total_scheduled_hours: number;
+    hard_conflict_count: number;
+    soft_warning_count: number;
+    affected_session_count: number;
+  };
+  breakdowns: {
+    by_source: ReportBreakdownItem[];
+    by_programme: ReportBreakdownItem[];
+    by_class_type: ReportBreakdownItem[];
+    by_day: ReportBreakdownItem[];
+    by_delivery_mode: ReportBreakdownItem[];
+    room_workload: ReportWorkloadItem[];
+    staff_workload: ReportWorkloadItem[];
+  };
+  conflicts: {
+    hard_count: number;
+    soft_count: number;
+    affected_session_count: number;
+    by_constraint: Array<{ severity: "HARD" | "SOFT"; constraint_code: string; count: number }>;
+    items: ReportConflict[];
+  };
+  sessions: ReportSession[];
 };
 
 export type SoftConstraintPriority = {
@@ -154,6 +270,9 @@ export type ScheduledRow = {
   custom_weeks: string | null;
   delivery_mode: string | null;
   campus_mode: string | null;
+  source_file?: string | null;
+  is_lab_requirement?: boolean;
+  lab_requirement_id?: number | null;
 };
 
 export type Room = {
@@ -227,6 +346,8 @@ export type SessionRow = {
   remarks: string | null;
   source_file: string | null;
   source_row_no: number | null;
+  is_lab_requirement?: boolean;
+  lab_requirement_id?: number | null;
 };
 
 export type AvailabilityEntry = {

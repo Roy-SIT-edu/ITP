@@ -3,6 +3,7 @@
 from app.models.module import Module
 from app.models.session import Session
 from app.models.session_staff import SessionStaff
+from app.models.student_group import StudentGroup
 from app.services.import_service import ImportService
 from app.services.validation_service import ValidationService
 from app.tests.conftest import new_template_row, valid_row, write_template, write_two_tab_template
@@ -111,6 +112,26 @@ def test_two_tab_template_imports_with_defaults_and_generated_group(db_session, 
     assert session.end_week == 13
     assert session.campus_mode == "Physical"
     assert session.staff.staff_id == "S001"
+
+
+def test_two_tab_template_derives_class_size_from_short_group_code(db_session, tmp_path):
+    group = db_session.query(StudentGroup).filter_by(group_code="DSC Y2 P1").one()
+    group.size = 47
+    db_session.commit()
+    row = new_template_row(**{"Student Group Code": "P1"})
+    row.pop("Session Count")
+    row.pop("Exact Class Size")
+    row.pop("Campus Mode", None)
+    path = write_two_tab_template(tmp_path / "new-shape.xlsx", [row])
+
+    summary = ImportService().import_input_template(db_session, path)
+    session = db_session.query(Session).filter_by(requirement_id="REQ-NEW-001").one()
+
+    assert summary["rows_imported"] == 1
+    assert summary["rows_failed"] == 0
+    assert session.student_group.group_code == "DSC Y2 P1"
+    assert session.exact_class_size == 47
+    assert session.campus_mode == "Physical"
 
 
 def test_two_tab_optional_fields_create_fixed_custom_session(db_session, tmp_path):

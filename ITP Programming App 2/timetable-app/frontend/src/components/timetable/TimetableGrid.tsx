@@ -250,6 +250,7 @@ export default function TimetableGrid({
           <thead>
             <tr>
               <th>Programme</th>
+              <th>Source</th>
               <th>Module</th>
               <th>Type</th>
               <th>Group</th>
@@ -267,6 +268,13 @@ export default function TimetableGrid({
             {visibleRows.map((row) => (
               <tr key={`${row.requirement_id}-${row.day}-${row.start_time}-${row.room}`}>
                 <td>{row.programme}</td>
+                <td>
+                  {isLabRequirement(row) ? (
+                    <span className="lab-source-badge">Lab requirement</span>
+                  ) : (
+                    <span className="source-badge">Uploaded</span>
+                  )}
+                </td>
                 <td>{row.module_code}</td>
                 <td>{row.class_type}</td>
                 <td>{row.student_group_code}</td>
@@ -390,11 +398,14 @@ function SlotSessionList({
             .sort((left, right) => (left.module_code ?? "").localeCompare(right.module_code ?? ""))
             .map((row) => (
               <button
-                className={`slot-session-card ${selectedSessionId === row.session_id ? "selected" : ""}`}
+                className={`slot-session-card ${isLabRequirement(row) ? "lab-requirement" : ""} ${
+                  selectedSessionId === row.session_id ? "selected" : ""
+                }`}
                 key={row.session_id}
                 onClick={() => onSelect(row.session_id)}
                 type="button"
               >
+                {isLabRequirement(row) && <span className="lab-source-badge">Lab requirement</span>}
                 <strong>{row.module_code ?? row.requirement_id}</strong>
                 <span>
                   {row.programme ?? "No programme"} | {row.class_type ?? "Class"} |{" "}
@@ -422,6 +433,10 @@ function slotRowsLabel(rows: ScheduledRow[]) {
     rows[0].end_time,
   );
   return `${day}, ${start}-${end}`;
+}
+
+function isLabRequirement(row: ScheduledRow) {
+  return row.is_lab_requirement === true || (row.requirement_id ?? "").startsWith("LAB-");
 }
 
 function SelectedSessionEditor({
@@ -537,10 +552,11 @@ function SelectedSessionEditor({
           <strong>Selected Session</strong>
           <span>Inspect or modify session details.</span>
         </div>
-        <small>{row.requirement_id}</small>
+        <small>{isLabRequirement(row) ? `Lab requirement ${row.requirement_id}` : row.requirement_id}</small>
       </div>
       <div className="selected-session-body">
         <div className="selected-session-main">
+          {isLabRequirement(row) && <span className="lab-source-badge">Built-in lab requirement</span>}
           <strong>{row.module_code ?? row.requirement_id}</strong>
           <span>
             {row.programme ?? "No programme"} | {row.class_type ?? "Class"} | {row.student_group_code ?? "No group"}

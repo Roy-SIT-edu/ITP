@@ -21,6 +21,7 @@ from app.models.student_group import StudentGroup
 from app.models.time_slot import TimeSlot
 from app.schemas.session import SessionInput
 from app.services.requirement_input_service import RequirementInputService, RequirementInputValidationError
+from app.services.schedule_quality_service import schedule_quality_from_violations
 from app.services.schedule_state_service import clear_schedule_state
 from app.services.serializers import (
     group_to_dict,
@@ -92,6 +93,18 @@ def get_session(session_id: int, db: DbSession = Depends(get_db)):
 def dashboard(db: DbSession = Depends(get_db)):
     latest_run = db.query(ScheduleRun).order_by(ScheduleRun.id.desc()).first()
     validation = ValidationService().validate_latest(db)
+    latest_schedule = None
+    if latest_run:
+        scheduled_count = db.query(ScheduledSession).filter_by(schedule_run_id=latest_run.id).count()
+        violations = db.query(ConstraintViolation).filter_by(schedule_run_id=latest_run.id).all()
+        latest_schedule = {
+            **schedule_run_to_dict(latest_run),
+            "quality": schedule_quality_from_violations(
+                scheduled_count=scheduled_count,
+                raw_soft_score=latest_run.soft_score or 0,
+                violations=violations,
+            ),
+        }
     return {
         "total_sessions": db.query(Session).count(),
         "imported_rows": db.query(Session).filter(Session.is_lab_requirement.is_(False)).count(),
@@ -100,7 +113,7 @@ def dashboard(db: DbSession = Depends(get_db)):
             "error_count": validation["error_count"],
             "warning_count": validation["warning_count"],
         },
-        "latest_schedule": schedule_run_to_dict(latest_run) if latest_run else None,
+        "latest_schedule": latest_schedule,
     }
 
 

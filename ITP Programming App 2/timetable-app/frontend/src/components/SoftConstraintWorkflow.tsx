@@ -107,6 +107,11 @@ export function GenerationActionPanel({
       </div>
       {generationResult && (
         <div className="result-strip">
+          {generationResult.quality && (
+            <span title={generationResult.quality.summary}>
+              Quality <strong>{generationResult.quality.score}/100</strong> {generationResult.quality.label}
+            </span>
+          )}
           <span>
             Run <strong>{generationResult.schedule_run_id}</strong>
           </span>
@@ -117,7 +122,8 @@ export function GenerationActionPanel({
             Hard <strong>{generationResult.hard_violation_count}</strong>
           </span>
           <span>
-            Soft <strong>{generationResult.soft_score}</strong>
+            Soft Warnings{" "}
+            <strong>{generationResult.quality?.soft_warning_count ?? generationResult.soft_warning_count ?? 0}</strong>
           </span>
         </div>
       )}

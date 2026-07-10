@@ -1,6 +1,7 @@
 """API routes for generating and reading timetable schedules."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DbSession
 
@@ -9,12 +10,13 @@ from app.models.constraint_violation import ConstraintViolation
 from app.models.room import Room
 from app.models.schedule_run import ScheduleRun
 from app.models.scheduled_session import ScheduledSession
-from app.models.session import Session
 from app.models.time_slot import TimeSlot
 from app.services.compatibility import is_online_mode, parse_day_list
 from app.services.constraint_service import ConstraintService
 from app.services.export_service import ExportService
 from app.services.quick_fix_service import QuickFixService
+from app.services.schedule_quality_service import schedule_quality_from_violations
+from app.services.schedule_report_service import ScheduleReportService
 from app.services.schedule_service import ScheduleService
 from app.services.serializers import schedule_run_to_dict, violation_to_dict
 from app.services.soft_constraint_priority_service import SoftConstraintPriorityService
@@ -56,13 +58,19 @@ def compare_schedules(ids: list[int] | None = Query(default=None), db: DbSession
         violations = db.query(ConstraintViolation).filter_by(schedule_run_id=run.id).all()
         hard = sum(1 for item in violations if (item.severity or "").upper() == "HARD")
         soft = sum(1 for item in violations if (item.severity or "").upper() == "SOFT")
+        quality = schedule_quality_from_violations(
+            scheduled_count=scheduled_count,
+            raw_soft_score=run.soft_score or 0,
+            violations=violations,
+        )
         rows.append(
             {
                 **schedule_run_to_dict(run),
                 "scheduled_count": scheduled_count,
                 "stored_hard_issues": hard,
                 "stored_soft_issues": soft,
-                "quality_score": max(0, 100 - (hard * 20) - int(run.soft_score or 0)),
+                "quality_score": quality["score"],
+                "quality": quality,
             }
         )
     return rows
@@ -74,7 +82,7 @@ def latest_schedule(db: DbSession = Depends(get_db)):
     if not run:
         raise HTTPException(status_code=404, detail={"message": "No schedule runs found"})
     return {
-        "schedule_run": schedule_run_to_dict(run),
+        "schedule_run": _schedule_run_with_quality(db, run),
         "scheduled_sessions": ExportService().schedule_rows(db, run.id),
     }
 
@@ -85,7 +93,7 @@ def schedule(schedule_run_id: int, db: DbSession = Depends(get_db)):
     if not run:
         raise HTTPException(status_code=404, detail={"message": "Schedule run not found"})
     return {
-        "schedule_run": schedule_run_to_dict(run),
+        "schedule_run": _schedule_run_with_quality(db, run),
         "scheduled_sessions": ExportService().schedule_rows(db, run.id),
     }
 
@@ -148,7 +156,7 @@ def move_scheduled_session(schedule_run_id: int, session_id: int, data: ManualMo
     db.commit()
     return {
         "message": "Scheduled session moved.",
-        "schedule_run": schedule_run_to_dict(run) if run else None,
+        "schedule_run": _schedule_run_with_quality(db, run) if run else None,
         "violations": check["violations"],
     }
 
@@ -174,9 +182,31 @@ def recheck_schedule(schedule_run_id: int, db: DbSession = Depends(get_db)):
     db.commit()
     return {
         "message": "Schedule rechecked.",
-        "schedule_run": schedule_run_to_dict(run),
+        "schedule_run": _schedule_run_with_quality(db, run),
         "violations": check["violations"],
     }
+
+
+@router.get("/{schedule_run_id}/report")
+def schedule_report(schedule_run_id: int, db: DbSession = Depends(get_db)):
+    try:
+        return ScheduleReportService().build(db, schedule_run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail={"message": str(exc)}) from exc
+
+
+@router.get("/{schedule_run_id}/report.pdf")
+def schedule_report_pdf(schedule_run_id: int, db: DbSession = Depends(get_db)):
+    service = ScheduleReportService()
+    try:
+        report = service.build(db, schedule_run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail={"message": str(exc)}) from exc
+    return StreamingResponse(
+        service.pdf_buffer(report),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=timetable_run_{schedule_run_id}_admin_report.pdf"},
+    )
 
 
 @router.get("/{schedule_run_id}/explanations")
@@ -234,6 +264,19 @@ def schedule_violations(schedule_run_id: int, db: DbSession = Depends(get_db)):
         .order_by(ConstraintViolation.severity, ConstraintViolation.constraint_code)
         .all()
     ]
+
+
+def _schedule_run_with_quality(db: DbSession, run: ScheduleRun) -> dict:
+    scheduled_count = db.query(ScheduledSession).filter_by(schedule_run_id=run.id).count()
+    violations = db.query(ConstraintViolation).filter_by(schedule_run_id=run.id).all()
+    return {
+        **schedule_run_to_dict(run),
+        "quality": schedule_quality_from_violations(
+            scheduled_count=scheduled_count,
+            raw_soft_score=run.soft_score or 0,
+            violations=violations,
+        ),
+    }
 
 
 def _hard_violations_for_session(violations: list[dict], session_id: int) -> list[dict]:

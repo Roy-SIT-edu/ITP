@@ -6,6 +6,7 @@ from app.models.scheduled_session import ScheduledSession
 from app.models.session import Session
 from app.models.time_slot import TimeSlot
 from app.services.constraint_service import ConstraintService
+from app.services.schedule_quality_service import schedule_quality_summary
 
 
 def _slot(db_session):
@@ -89,3 +90,26 @@ def test_online_session_in_physical_room_detected(db_session):
     violations = ConstraintService().check_schedule(db_session, run.id)
 
     assert any(item["constraint_code"] == "DELIVERY_ROOM_MISMATCH" for item in violations)
+
+
+def test_schedule_quality_is_bounded_and_blocks_on_hard_issues():
+    clean = schedule_quality_summary(
+        scheduled_count=40,
+        hard_issue_count=0,
+        soft_warning_count=0,
+        raw_soft_score=0,
+        affected_session_count=0,
+    )
+    blocked = schedule_quality_summary(
+        scheduled_count=40,
+        hard_issue_count=2,
+        soft_warning_count=4,
+        raw_soft_score=9000,
+        affected_session_count=8,
+    )
+
+    assert clean["score"] == 100
+    assert clean["label"] == "Excellent"
+    assert blocked["score"] < 50
+    assert blocked["label"] == "Blocked"
+    assert blocked["export_ready"] is False

@@ -474,6 +474,8 @@ def test_schedule_generation_still_reads_core_data_after_split(tmp_path):
         result = ScheduleService().generate(db)
         assert result["solver_status"] == "INFEASIBLE"
         assert result["message"] == "No sessions are available to schedule."
+        assert result["soft_score"] == 0
+        assert result["quality"]["label"] == "No Schedule"
         assert db.query(ScheduleRun).count() == 1
     finally:
         db.close()

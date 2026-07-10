@@ -93,6 +93,9 @@ class ExportService:
                     "custom_weeks": session.custom_weeks,
                     "delivery_mode": session.delivery_mode,
                     "campus_mode": session.campus_mode,
+                    "source_file": session.source_file,
+                    "is_lab_requirement": session.is_lab_requirement,
+                    "lab_requirement_id": session.lab_requirement_id,
                 }
             )
         return rows

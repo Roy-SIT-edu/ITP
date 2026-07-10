@@ -6,6 +6,7 @@ the references exist and the row can be scheduled against current rooms/slots.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -40,7 +41,7 @@ from app.services.compatibility import (
     venue_room_compatible,
     weeks_conflict,
 )
-from app.services.student_group_service import student_group_code
+from app.services.student_group_service import student_group_code, student_group_partition
 from sqlalchemy import func
 from sqlalchemy.orm import Session as DbSession
 
@@ -208,7 +209,11 @@ class RequirementInputService:
             allow_reference_upsert,
         )
         year = self._positive_int(self._value(row, "Year"))
-        exact_class_size = self._required_positive_int(row, source_row_no, "Exact Class Size", errors)
+        raw_class_size = self._value(row, "Exact Class Size")
+        has_uploaded_class_size = clean_text(raw_class_size) is not None
+        exact_class_size = self._positive_int(raw_class_size)
+        if has_uploaded_class_size and exact_class_size is None:
+            errors.append(self._issue(source_row_no, "Exact Class Size", "Exact Class Size must be numeric and greater than 0."))
         group = self._lookup_or_create_group(
             db,
             clean_text(self._value(row, "Student Group Code")),
@@ -220,6 +225,8 @@ class RequirementInputService:
             errors,
             allow_reference_upsert,
         )
+        if exact_class_size is None and not has_uploaded_class_size:
+            exact_class_size = self._class_size_from_group(group, source_row_no, errors)
         staff_assignments = self._staff_assignments(db, row, source_row_no, errors)
         staff = staff_assignments[0]["staff"] if staff_assignments else None
 
@@ -407,12 +414,12 @@ class RequirementInputService:
         errors: list[dict],
         allow_reference_upsert: bool,
     ) -> StudentGroup | None:
-        if not programme or not year or not class_size:
+        if not programme or not year:
             return None
-        group_code = group_code or self._generated_group_code(programme.code, year, class_size, requirement_id)
+        group_code = self._resolved_group_code(group_code, programme.code, year, class_size, requirement_id)
         group = db.query(StudentGroup).filter(func.lower(StudentGroup.group_code) == group_code.lower()).first()
         if not group:
-            if not allow_reference_upsert:
+            if not allow_reference_upsert or class_size is None:
                 errors.append(
                     self._issue(
                         source_row_no, "Student Group Code", f"Student group '{group_code}' does not exist in Database > Student Groups."
@@ -431,6 +438,43 @@ class RequirementInputService:
 
     def _generated_group_code(self, programme_code: str, year: int, class_size: int, requirement_id: str | None) -> str:
         return student_group_code(programme_code, year, 1)
+
+    def _resolved_group_code(
+        self,
+        group_code: str | None,
+        programme_code: str,
+        year: int,
+        class_size: int | None,
+        requirement_id: str | None,
+    ) -> str:
+        if not group_code:
+            return self._generated_group_code(programme_code, year, class_size or 0, requirement_id)
+        if re.fullmatch(r"p\s*\d+", group_code.strip(), re.IGNORECASE):
+            partition = student_group_partition(group_code)
+            if partition:
+                return student_group_code(programme_code, year, partition)
+        return group_code
+
+    def _class_size_from_group(self, group: StudentGroup | None, source_row_no: int, errors: list[dict]) -> int | None:
+        if not group:
+            errors.append(
+                self._issue(
+                    source_row_no,
+                    "Exact Class Size",
+                    "Exact Class Size is required when no student group size can be derived.",
+                )
+            )
+            return None
+        size = self._positive_int(group.size)
+        if size is None:
+            errors.append(
+                self._issue(
+                    source_row_no,
+                    "Exact Class Size",
+                    f"Student group '{group.group_code}' needs a numeric size in Database > Student Groups.",
+                )
+            )
+        return size
 
     def _staff_assignments(
         self,

@@ -13,6 +13,7 @@ from app.models.session import Session
 from app.models.time_slot import TimeSlot
 from app.services.constraint_service import ConstraintService
 from app.services.lab_requirement_service import LabRequirementService
+from app.services.schedule_quality_service import affected_session_count, schedule_quality_summary
 from app.services.soft_constraint_priority_service import SoftConstraintPriorityService
 from app.services.validation_service import ValidationService
 from app.solver.cp_sat_solver import CpSatTimetableSolver
@@ -67,7 +68,15 @@ class ScheduleService:
                 "schedule_run_id": run_id,
                 "solver_status": run.solver_status,
                 "hard_violation_count": 0,
+                "soft_warning_count": 0,
                 "soft_score": 0,
+                "quality": schedule_quality_summary(
+                    scheduled_count=0,
+                    hard_issue_count=0,
+                    soft_warning_count=0,
+                    raw_soft_score=0,
+                    affected_session_count=0,
+                ),
                 "message": run.message,
             }
 
@@ -96,6 +105,14 @@ class ScheduleService:
             "schedule_run_id": run_id,
             "solver_status": run.solver_status,
             "hard_violation_count": run.hard_violation_count,
+            "soft_warning_count": check["soft_warning_count"],
             "soft_score": run.soft_score,
+            "quality": schedule_quality_summary(
+                scheduled_count=len(result["assignments"]),
+                hard_issue_count=run.hard_violation_count,
+                soft_warning_count=check["soft_warning_count"],
+                raw_soft_score=run.soft_score,
+                affected_session_count=affected_session_count(check["violations"]),
+            ),
             "message": run.message,
         }

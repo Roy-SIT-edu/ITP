@@ -86,12 +86,10 @@ REQUIRED_TEMPLATE_COLUMNS = [
     "Year",
     "Module Code",
     "Class Type",
-    "Session Count",
     "Duration Hours",
     "Sessions Per Week",
     "Delivery Mode",
     "Venue Type Required",
-    "Exact Class Size",
     "Staff 1 ID",
 ]
 
@@ -270,7 +268,7 @@ class ImportService:
                     {
                         "row": 0,
                         "field": "Workbook",
-                        "message": "No usable timetable rows found. Add rows to Input_Template with Requirement ID, Module Code, Class Type, Staff 1 ID, class size, and duration.",
+                        "message": "No usable timetable rows found. Add rows to Input_Template with Requirement ID, Module Code, Class Type, Staff 1 ID, student group, and duration.",
                     }
                 ],
                 "preview_rows": preview_rows,
@@ -341,7 +339,7 @@ class ImportService:
                     {
                         "row": 0,
                         "field": "Workbook",
-                        "message": "No usable timetable rows found. Add rows to Input_Template with Requirement ID, Module Code, Class Type, Staff 1 ID, class size, and duration.",
+                        "message": "No usable timetable rows found. Add rows to Input_Template with Requirement ID, Module Code, Class Type, Staff 1 ID, student group, and duration.",
                     }
                 ],
                 "preview_rows": preview_rows,

@@ -3,14 +3,13 @@
  * Displays the latest generated timetable and any stored constraint violations.
  */
 
-import { ChevronDown, Filter, RefreshCw, Zap } from "lucide-react";
+import { ChevronDown, FileText, Filter, RefreshCw, Zap } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   compareSchedules,
   getLatestSchedule,
   getRooms,
   getSchedule,
-  getScheduleExplanations,
   getScheduleRuns,
   getTimeSlots,
   getViolations,
@@ -19,6 +18,7 @@ import {
 } from "../api/client";
 import ConflictTable from "../components/ConflictTable";
 import InlineActivity from "../components/InlineActivity";
+import OptimisedScoreInfo from "../components/OptimisedScoreInfo";
 import StatusBadge from "../components/StatusBadge";
 import TimetableGrid from "../components/TimetableGrid";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
@@ -29,7 +29,6 @@ import type {
   QuickFixSuggestion,
   Room,
   ScheduleComparison,
-  ScheduleExplanation,
   ScheduleResponse,
   ScheduleRun,
   ScheduledRow,
@@ -37,6 +36,10 @@ import type {
 } from "../types";
 
 type Filters = {
+  source: string;
+  query: string;
+  issue: string;
+  classType: string;
   programme: string;
   group: string;
   staff: string;
@@ -58,8 +61,13 @@ type QuickFixTarget = {
 };
 
 type ConflictSeverityFilter = "all" | "hard" | "soft";
+type RowIssueState = { hard: boolean; soft: boolean };
 
 const emptyFilters: Filters = {
+  source: "",
+  query: "",
+  issue: "",
+  classType: "",
   programme: "",
   group: "",
   staff: "",
@@ -72,7 +80,6 @@ export default function TimetableReviewPage() {
   const [violations, setViolations] = useSessionState<ConstraintViolation[]>("review.violations", []);
   const [runs, setRuns] = useSessionState<ScheduleRun[]>("review.runs", []);
   const [comparisons, setComparisons] = useSessionState<ScheduleComparison[]>("review.comparisons", []);
-  const [explanations, setExplanations] = useSessionState<ScheduleExplanation[]>("review.explanations", []);
   const [rooms, setRooms] = useSessionState<Room[]>("review.rooms", []);
   const [timeSlots, setTimeSlots] = useSessionState<TimeSlot[]>("review.timeSlots", []);
   const [filters, setFilters] = useSessionState<Filters>("review.filters", emptyFilters);
@@ -99,20 +106,16 @@ export default function TimetableReviewPage() {
     try {
       const latest = await getLatestSchedule();
       setSchedule(latest);
-      const [nextViolations, nextRuns, nextComparisons, nextExplanations, nextRooms, nextTimeSlots] = await Promise.all(
-        [
-          getViolations(latest.schedule_run.id),
-          getScheduleRuns(),
-          compareSchedules(),
-          getScheduleExplanations(latest.schedule_run.id),
-          getRooms(),
-          getTimeSlots(),
-        ],
-      );
+      const [nextViolations, nextRuns, nextComparisons, nextRooms, nextTimeSlots] = await Promise.all([
+        getViolations(latest.schedule_run.id),
+        getScheduleRuns(),
+        compareSchedules(),
+        getRooms(),
+        getTimeSlots(),
+      ]);
       setViolations(nextViolations);
       setRuns(nextRuns);
       setComparisons(nextComparisons);
-      setExplanations(nextExplanations);
       setRooms(nextRooms);
       setTimeSlots(nextTimeSlots);
     } catch (err) {
@@ -122,7 +125,7 @@ export default function TimetableReviewPage() {
     } finally {
       setLoading(false);
     }
-  }, [setComparisons, setError, setExplanations, setRooms, setRuns, setSchedule, setTimeSlots, setViolations]);
+  }, [setComparisons, setError, setRooms, setRuns, setSchedule, setTimeSlots, setViolations]);
 
   useEffect(() => {
     void load();
@@ -137,17 +140,30 @@ export default function TimetableReviewPage() {
   }, [schedule?.schedule_run.id]);
 
   const rows = useMemo(() => schedule?.scheduled_sessions ?? [], [schedule]);
+  const labRowCount = useMemo(() => rows.filter(isLabRequirement).length, [rows]);
+  const uploadedRowCount = rows.length - labRowCount;
+  const sourceCounts = useMemo(
+    () => ({ all: rows.length, uploaded: uploadedRowCount, lab: labRowCount }),
+    [labRowCount, rows.length, uploadedRowCount],
+  );
+  const issueBySessionId = useMemo(() => issueStateBySessionId(violations), [violations]);
+  const issueCounts = useMemo(() => countIssueStates(rows, issueBySessionId), [issueBySessionId, rows]);
+  const activeFilterCount = useMemo(() => Object.values(filters).filter(Boolean).length, [filters]);
   const filteredRows = useMemo(
     () =>
       rows.filter(
         (row) =>
+          matchesSource(row, filters.source) &&
+          matchesSearch(row, filters.query) &&
+          matchesIssue(row, filters.issue, issueBySessionId) &&
+          matches(row.class_type, filters.classType) &&
           matches(row.programme, filters.programme) &&
           matches(row.student_group_code, filters.group) &&
-          matches(row.co_teacher_names || row.staff_name, filters.staff) &&
+          matchesStaff(row, filters.staff) &&
           matches(row.room, filters.room) &&
           matches(row.day, filters.day),
       ),
-    [filters, rows],
+    [filters, issueBySessionId, rows],
   );
 
   const conflictSlotKeys = useMemo(() => {
@@ -171,10 +187,12 @@ export default function TimetableReviewPage() {
     const available = new Set<string>();
     const softAvailable = new Set<string>();
     const blocked = new Set<string>();
-    if (!activeSessionId) return { availableSlotKeys: available, softAvailableSlotKeys: softAvailable, blockedSlotKeys: blocked };
+    if (!activeSessionId)
+      return { availableSlotKeys: available, softAvailableSlotKeys: softAvailable, blockedSlotKeys: blocked };
 
     const targetRow = rows.find((r) => r.session_id === activeSessionId);
-    if (!targetRow) return { availableSlotKeys: available, softAvailableSlotKeys: softAvailable, blockedSlotKeys: blocked };
+    if (!targetRow)
+      return { availableSlotKeys: available, softAvailableSlotKeys: softAvailable, blockedSlotKeys: blocked };
 
     const draft = moveDrafts[activeSessionId];
     const targetRoom = draft?.room_code || targetRow.room;
@@ -207,7 +225,6 @@ export default function TimetableReviewPage() {
       const nextSchedule = await getSchedule(id);
       setSchedule(nextSchedule);
       setViolations(await getViolations(id));
-      setExplanations(await getScheduleExplanations(id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not open schedule run");
     }
@@ -232,7 +249,6 @@ export default function TimetableReviewPage() {
       const refreshed = await getSchedule(schedule.schedule_run.id);
       setSchedule(refreshed);
       setViolations(await getViolations(schedule.schedule_run.id));
-      setExplanations(await getScheduleExplanations(schedule.schedule_run.id));
       setComparisons(await compareSchedules());
       setMoveDrafts((current) => {
         const next = { ...current };
@@ -277,7 +293,6 @@ export default function TimetableReviewPage() {
       setSchedule(refreshed);
       const newViolations = await getViolations(schedule.schedule_run.id);
       setViolations(newViolations);
-      setExplanations(await getScheduleExplanations(schedule.schedule_run.id));
       setComparisons(await compareSchedules());
       setMoveDrafts((current) => {
         const next = { ...current };
@@ -342,15 +357,13 @@ export default function TimetableReviewPage() {
         end_time: suggestion.end_time,
         room_code: suggestion.room_code,
       });
-      const [refreshed, nextViolations, nextExplanations, nextComparisons] = await Promise.all([
+      const [refreshed, nextViolations, nextComparisons] = await Promise.all([
         getSchedule(schedule.schedule_run.id),
         getViolations(schedule.schedule_run.id),
-        getScheduleExplanations(schedule.schedule_run.id),
         compareSchedules(),
       ]);
       setSchedule(refreshed);
       setViolations(nextViolations);
-      setExplanations(nextExplanations);
       setComparisons(nextComparisons);
       setActiveSessionId(null);
       setQuickFixOpenKey(null);
@@ -398,7 +411,10 @@ export default function TimetableReviewPage() {
               const applyKey = `${key}-${index}`;
               const applying = applyingQuickFix === applyKey;
               return (
-                <article className="quick-fix-card" key={`${suggestion.type}-${suggestion.room_code}-${suggestion.new_time}`}>
+                <article
+                  className="quick-fix-card"
+                  key={`${suggestion.type}-${suggestion.room_code}-${suggestion.new_time}`}
+                >
                   <div>
                     <span>{quickFixTypeLabel(suggestion.type)}</span>
                     <strong>{suggestion.description}</strong>
@@ -429,6 +445,7 @@ export default function TimetableReviewPage() {
     () => violations.filter((violation) => violation.severity === "SOFT").length,
     [violations],
   );
+  const currentQuality = schedule?.schedule_run.quality;
 
   const visibleViolations = useMemo(() => {
     if (conflictSeverityFilter === "hard") return violations.filter((violation) => violation.severity === "HARD");
@@ -447,8 +464,12 @@ export default function TimetableReviewPage() {
   const conflictSessions = useMemo(() => {
     const sessions = rows.filter((r) => conflictSessionIds.has(r.session_id));
     return sessions.sort((a, b) => {
-      const aHasHard = visibleViolations.some((v) => v.severity === "HARD" && v.affected_session_ids.includes(a.session_id));
-      const bHasHard = visibleViolations.some((v) => v.severity === "HARD" && v.affected_session_ids.includes(b.session_id));
+      const aHasHard = visibleViolations.some(
+        (v) => v.severity === "HARD" && v.affected_session_ids.includes(a.session_id),
+      );
+      const bHasHard = visibleViolations.some(
+        (v) => v.severity === "HARD" && v.affected_session_ids.includes(b.session_id),
+      );
       if (aHasHard && !bHasHard) return -1;
       if (!aHasHard && bHasHard) return 1;
       return 0;
@@ -459,7 +480,9 @@ export default function TimetableReviewPage() {
     const hardRows: ScheduledRow[] = [];
     const softRows: ScheduledRow[] = [];
     conflictSessions.forEach((row) => {
-      const rowViolations = visibleViolations.filter((violation) => violation.affected_session_ids.includes(row.session_id));
+      const rowViolations = visibleViolations.filter((violation) =>
+        violation.affected_session_ids.includes(row.session_id),
+      );
       if (rowViolations.some((violation) => violation.severity === "HARD")) {
         hardRows.push(row);
         return;
@@ -522,8 +545,19 @@ export default function TimetableReviewPage() {
                   label={schedule.schedule_run.solver_status ?? schedule.schedule_run.status}
                   tone={schedule.schedule_run.hard_violation_count > 0 ? "bad" : "good"}
                 />
+                {currentQuality && (
+                  <div className="optimised-score-control">
+                    <StatusBadge
+                      label={`Optimised score: ${currentQuality.score}/100 ${currentQuality.label}`}
+                      tone={currentQuality.tone}
+                    />
+                    <OptimisedScoreInfo quality={currentQuality} />
+                  </div>
+                )}
                 <span>{filteredRows.length} sessions shown</span>
+                <span>{labRowCount} lab requirement sessions</span>
                 <span>{violations.length} issues</span>
+                {currentQuality && <span>{currentQuality.soft_warning_count} soft warnings</span>}
               </div>
             </div>
           </section>
@@ -547,8 +581,8 @@ export default function TimetableReviewPage() {
                       <th>Status</th>
                       <th>Sessions</th>
                       <th>Hard</th>
-                      <th>Soft</th>
-                      <th>Quality</th>
+                      <th>Soft Warnings</th>
+                      <th>Optimised Score</th>
                       <th>Action</th>
                     </tr>
                   </thead>
@@ -559,12 +593,28 @@ export default function TimetableReviewPage() {
                         <td>{run.solver_status ?? run.status}</td>
                         <td>{run.scheduled_count}</td>
                         <td>{run.stored_hard_issues}</td>
-                        <td>{run.soft_score}</td>
-                        <td>{run.quality_score}</td>
+                        <td>{run.quality?.soft_warning_count ?? run.stored_soft_issues}</td>
                         <td>
-                          <button className="button secondary slim" type="button" onClick={() => openRun(run.id)}>
-                            Open
-                          </button>
+                          <StatusBadge
+                            label={`${run.quality?.score ?? run.quality_score}/100 ${run.quality?.label ?? ""}`.trim()}
+                            tone={run.quality?.tone ?? "neutral"}
+                          />
+                        </td>
+                        <td>
+                          <div className="table-actions">
+                            <button className="button secondary slim" type="button" onClick={() => openRun(run.id)}>
+                              Review
+                            </button>
+                            <a
+                              className="button secondary slim"
+                              href={`#run-report/${run.id}`}
+                              rel="noopener noreferrer"
+                              target="_blank"
+                            >
+                              <FileText size={14} />
+                              View Report
+                            </a>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -586,8 +636,43 @@ export default function TimetableReviewPage() {
                 <p>Filter, review, and manually adjust scheduled sessions</p>
               </div>
             </div>
-            <div className="filter-bar">
-              <Filter size={18} />
+            <div className="filter-bar review-filter-bar">
+              <div className="review-filter-icon">
+                <Filter size={18} />
+              </div>
+              <SourceFilterTabs
+                counts={sourceCounts}
+                value={filters.source}
+                onChange={(value) => setFilters({ ...filters, source: value })}
+              />
+              <label className="review-search-filter">
+                <span>Search</span>
+                <input
+                  placeholder="Module, requirement, staff, room, group"
+                  type="search"
+                  value={filters.query}
+                  onChange={(event) => setFilters({ ...filters, query: event.target.value })}
+                />
+              </label>
+              <label>
+                <span>Issue Status</span>
+                <select
+                  value={filters.issue}
+                  onChange={(event) => setFilters({ ...filters, issue: event.target.value })}
+                >
+                  <option value="">All ({rows.length})</option>
+                  <option value="any">Has issues ({issueCounts.any})</option>
+                  <option value="hard">Hard conflicts ({issueCounts.hard})</option>
+                  <option value="soft">Soft warnings ({issueCounts.soft})</option>
+                  <option value="clean">Clean ({issueCounts.clean})</option>
+                </select>
+              </label>
+              <FilterSelect
+                label="Class Type"
+                value={filters.classType}
+                values={unique(rows, "class_type")}
+                onChange={(value) => setFilters({ ...filters, classType: value })}
+              />
               <FilterSelect
                 label="Programme"
                 value={filters.programme}
@@ -621,6 +706,16 @@ export default function TimetableReviewPage() {
               <button className="button secondary slim" onClick={() => setFilters(emptyFilters)}>
                 Clear
               </button>
+              <div className="review-filter-summary">
+                Showing <strong>{filteredRows.length}</strong> of <strong>{rows.length}</strong> sessions
+                {activeFilterCount > 0 ? (
+                  <span>
+                    {activeFilterCount} active filter{activeFilterCount === 1 ? "" : "s"}
+                  </span>
+                ) : (
+                  <span>No active filters</span>
+                )}
+              </div>
             </div>
             <TimetableGrid
               rows={filteredRows}
@@ -651,7 +746,8 @@ export default function TimetableReviewPage() {
                   {violations.length} issue{violations.length !== 1 ? "s" : ""} found —{" "}
                   {hardConflictCount > 0 ? (
                     <strong style={{ color: "#dc2626" }}>
-                      ⚠️ {hardConflictCount} Hard Conflict{hardConflictCount === 1 ? "" : "s"} remaining. Fix them to unlock export.
+                      ⚠️ {hardConflictCount} Hard Conflict{hardConflictCount === 1 ? "" : "s"} remaining. Fix them to
+                      unlock export.
                     </strong>
                   ) : violations.length > 0 ? (
                     <span style={{ color: "#f97316" }}>Soft warnings remain optional. Export is unlocked.</span>
@@ -712,8 +808,8 @@ export default function TimetableReviewPage() {
             {activeSessionId && (
               <div className="conflict-resolution-banner">
                 Showing conflicts for Session <strong>{activeSessionId}</strong> — click a{" "}
-                <span className="green-label">green slot</span> or{" "}
-                <span className="amber-label">amber slot</span> on the timetable to move it.
+                <span className="green-label">green slot</span> or <span className="amber-label">amber slot</span> on
+                the timetable to move it.
               </div>
             )}
             {conflictTab === "modules" ? (
@@ -738,19 +834,24 @@ export default function TimetableReviewPage() {
                             <div>
                               <strong>{group.label}</strong>
                               <span>
-                                {group.rows.length} module{group.rows.length === 1 ? "" : "s"} | {group.issueCount} issue
+                                {group.rows.length} module{group.rows.length === 1 ? "" : "s"} | {group.issueCount}{" "}
+                                issue
                                 {group.issueCount === 1 ? "" : "s"} | {group.hint}
                               </span>
                             </div>
                           </td>
                         </tr>
                         {group.rows.map((row) => {
-                          const rowViolations = visibleViolations.filter((v) => v.affected_session_ids.includes(row.session_id));
+                          const rowViolations = visibleViolations.filter((v) =>
+                            v.affected_session_ids.includes(row.session_id),
+                          );
                           const isActive = activeSessionId === row.session_id;
                           const hasHard = rowViolations.some((v) => v.severity === "HARD");
                           const quickFixKey = `session-${row.session_id}`;
                           const quickFixOpen = quickFixOpenKey === quickFixKey;
-                          const resolvingClass = applyingQuickFix?.startsWith(`${quickFixKey}-`) ? "quick-fix-resolving" : "";
+                          const resolvingClass = applyingQuickFix?.startsWith(`${quickFixKey}-`)
+                            ? "quick-fix-resolving"
+                            : "";
                           const urgencyClass = hasHard ? "conflict-hard-row" : "conflict-soft-row";
                           return (
                             <Fragment key={row.session_id}>
@@ -810,9 +911,7 @@ export default function TimetableReviewPage() {
                   quickFixOpenKey?.startsWith("conflict-") ? Number(quickFixOpenKey.replace("conflict-", "")) : null
                 }
                 resolvingConflictId={
-                  applyingQuickFix?.startsWith("conflict-")
-                    ? Number(applyingQuickFix.split("-")[1])
-                    : null
+                  applyingQuickFix?.startsWith("conflict-") ? Number(applyingQuickFix.split("-")[1]) : null
                 }
                 onSelectConflict={(v) => setActiveSessionId(v?.affected_session_ids[0] ?? null)}
                 onToggleQuickFix={(violation) =>
@@ -822,32 +921,60 @@ export default function TimetableReviewPage() {
               />
             )}
           </section>
-          <section className="status-card review-explanation-card">
-            <div className="section-heading">
+          <section className="status-card review-report-cta">
+            <div className="review-report-copy">
+              <div className="review-report-icon">
+                <FileText size={20} />
+              </div>
               <div>
-                <div className="status-card-title">Why This Schedule?</div>
-                <p>Placement explanations for scheduled sessions</p>
+                <div className="status-card-title">Timetable Run Report</div>
+                <p>Open the full scheduling breakdown, resource workload, conflicts, and session appendix.</p>
               </div>
             </div>
-            <div className="explanation-grid compact">
-              {explanations.slice(0, 4).map((item) => (
-                <article className="explanation-card" key={item.session_id}>
-                  <strong>{item.module_code ?? item.requirement_id}</strong>
-                  <span>{item.placement}</span>
-                  <ul>
-                    {item.reasons.slice(0, 3).map((reason) => (
-                      <li key={reason}>{reason}</li>
-                    ))}
-                  </ul>
-                </article>
-              ))}
-              {explanations.length === 0 && (
-                <div className="empty-state">No schedule explanations are available yet.</div>
-              )}
-            </div>
+            <a
+              className="button"
+              href={`#run-report/${schedule.schedule_run.id}`}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              <FileText size={17} />
+              View Full Report
+            </a>
           </section>
         </>
       )}
+    </div>
+  );
+}
+
+function SourceFilterTabs({
+  counts,
+  value,
+  onChange,
+}: {
+  counts: { all: number; uploaded: number; lab: number };
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const options = [
+    { key: "", label: "All", count: counts.all },
+    { key: "uploaded", label: "Uploaded", count: counts.uploaded },
+    { key: "lab", label: "Lab requirements", count: counts.lab },
+  ];
+  return (
+    <div className="review-source-tabs" aria-label="Source filter" role="group">
+      {options.map((option) => (
+        <button
+          aria-pressed={value === option.key}
+          className={`review-source-tab ${value === option.key ? "active" : ""}`}
+          key={option.key || "all"}
+          onClick={() => onChange(option.key)}
+          type="button"
+        >
+          <span>{option.label}</span>
+          <strong>{option.count}</strong>
+        </button>
+      ))}
     </div>
   );
 }
@@ -890,14 +1017,7 @@ function unique(rows: ScheduledRow[], key: keyof ScheduledRow) {
 }
 
 function uniqueStaff(rows: ScheduledRow[]) {
-  return Array.from(
-    new Set(
-      rows
-        .map((row) => row.co_teacher_names || row.staff_name)
-        .filter(Boolean)
-        .map(String),
-    ),
-  ).sort();
+  return Array.from(new Set(rows.flatMap(staffLabels).filter(Boolean).map(String))).sort();
 }
 
 function countUniqueGroupIssues(rows: ScheduledRow[], violations: ConstraintViolation[]) {
@@ -959,6 +1079,10 @@ function splitTokens(value: string | null | undefined) {
   return value ? value.split(",").map((item) => item.trim()) : [];
 }
 
+function staffLabels(row: ScheduledRow) {
+  return [row.staff_name, row.co_teacher_names].flatMap(splitTokens).filter(Boolean);
+}
+
 function weekPatternsOverlap(left: string | null, right: string | null) {
   const leftPattern = normalizeToken(left || "Weekly");
   const rightPattern = normalizeToken(right || "Weekly");
@@ -977,4 +1101,89 @@ function quickFixTypeLabel(type: QuickFixSuggestion["type"]) {
 
 function matches(value: string | null, filter: string) {
   return !filter || value === filter;
+}
+
+function isLabRequirement(row: ScheduledRow) {
+  return row.is_lab_requirement === true || (row.requirement_id ?? "").startsWith("LAB-");
+}
+
+function matchesSource(row: ScheduledRow, filter: string) {
+  if (filter === "lab") return isLabRequirement(row);
+  if (filter === "uploaded") return !isLabRequirement(row);
+  return true;
+}
+
+function matchesSearch(row: ScheduledRow, query: string) {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  const haystack = [
+    row.requirement_id,
+    row.programme,
+    row.module_code,
+    row.class_type,
+    row.student_group_code,
+    row.staff_name,
+    row.staff_id,
+    row.co_teacher_names,
+    row.co_teacher_ids,
+    row.room,
+    row.day,
+    row.start_time,
+    row.end_time,
+    row.week_pattern,
+    row.custom_weeks,
+    row.delivery_mode,
+    row.campus_mode,
+    row.source_file,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return terms.every((term) => haystack.includes(term));
+}
+
+function matchesStaff(row: ScheduledRow, filter: string) {
+  if (!filter) return true;
+  return staffLabels(row).some((label) => label === filter);
+}
+
+function matchesIssue(row: ScheduledRow, filter: string, issueBySessionId: Map<number, RowIssueState>) {
+  if (!filter) return true;
+  const issue = issueBySessionId.get(row.session_id);
+  const hasHard = issue?.hard === true;
+  const hasSoft = issue?.soft === true;
+  if (filter === "hard") return hasHard;
+  if (filter === "soft") return hasSoft;
+  if (filter === "any") return hasHard || hasSoft;
+  if (filter === "clean") return !hasHard && !hasSoft;
+  return true;
+}
+
+function issueStateBySessionId(violations: ConstraintViolation[]) {
+  const states = new Map<number, RowIssueState>();
+  for (const violation of violations) {
+    for (const sessionId of violation.affected_session_ids) {
+      const current = states.get(sessionId) ?? { hard: false, soft: false };
+      if (violation.severity === "HARD") current.hard = true;
+      if (violation.severity === "SOFT") current.soft = true;
+      states.set(sessionId, current);
+    }
+  }
+  return states;
+}
+
+function countIssueStates(rows: ScheduledRow[], issueBySessionId: Map<number, RowIssueState>) {
+  return rows.reduce(
+    (counts, row) => {
+      const issue = issueBySessionId.get(row.session_id);
+      const hasHard = issue?.hard === true;
+      const hasSoft = issue?.soft === true;
+      if (hasHard) counts.hard += 1;
+      if (hasSoft) counts.soft += 1;
+      if (hasHard || hasSoft) counts.any += 1;
+      else counts.clean += 1;
+      return counts;
+    },
+    { any: 0, hard: 0, soft: 0, clean: 0 },
+  );
 }
