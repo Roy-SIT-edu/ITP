@@ -42,6 +42,8 @@ The quicklaunch script creates `backend\venv` when missing, synchronizes backend
 
 Backend startup can take longer on the first run or inside a synced folder. The launcher waits up to two minutes and prints the startup error automatically if the process exits or remains unavailable. Full output is retained in `backend\quicklaunch-backend-<port>.err.log` and `backend\quicklaunch-backend-<port>.out.log`.
 
+SQLite `.db`, `-wal`, and `-shm` files are local runtime data and must not be committed or copied independently. Before startup, the launcher checks every split database. If corruption is detected, it preserves the complete database set under `backend\database-backups\corrupt-<timestamp>\` and rebuilds clean databases from the available seed data.
+
 ### Manual Start
 
 Backend:
