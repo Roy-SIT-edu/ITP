@@ -1,12 +1,12 @@
 # Timetable Scheduling System
 
-Working full-stack prototype for importing academic timetable requirements, validating them, generating a CP-SAT schedule, reviewing conflicts, and exporting the result.
+Full-stack academic timetable scheduler for importing and editing requirements, validating scheduling inputs, generating an OR-Tools CP-SAT timetable, resolving conflicts, comparing runs, and exporting approved schedules.
 
 ## Stack
 
-- Backend: FastAPI, SQLAlchemy, SQLite, pandas/openpyxl, Google OR-Tools CP-SAT
-- Frontend: React, TypeScript, Vite
-- Database: local SQLite file at `backend/timetable.db`
+- Backend: FastAPI, SQLAlchemy, split SQLite storage, pandas/openpyxl, ReportLab, Google OR-Tools CP-SAT
+- Frontend: React 19, TypeScript, Vite
+- Storage: model-specific SQLite files under `backend/data/`, routed through one SQLAlchemy session
 
 ## Run Locally
 
@@ -29,10 +29,18 @@ Or run:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\quicklaunch.ps1
 ```
 
-The quicklaunch script creates `backend\venv` when missing, installs backend packages from `backend\requirements.txt`, installs frontend packages with `npm ci`, starts both servers, avoids ports already used by other processes, and opens the app in your browser. If the default ports are busy, it automatically tries the next available ports starting from:
+To start and verify both services without opening a browser:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\quicklaunch.ps1 -NoBrowser
+```
+
+The quicklaunch script creates `backend\venv` when missing, synchronizes backend packages whenever `backend\requirements.txt` changes, installs frontend packages with `npm ci`, starts both servers, avoids ports already used by other processes, and opens the app in your browser. If the default ports are busy, it automatically tries the next available ports starting from:
 
 - Backend: http://127.0.0.1:8001
 - Frontend: http://127.0.0.1:5174
+
+Backend startup can take longer on the first run or inside a synced folder. The launcher waits up to two minutes and prints the startup error automatically if the process exits or remains unavailable. Full output is retained in `backend\quicklaunch-backend-<port>.err.log` and `backend\quicklaunch-backend-<port>.out.log`.
 
 ### Manual Start
 
@@ -76,52 +84,76 @@ $env:VITE_PROXY_TARGET="http://127.0.0.1:8001"
 npm run dev -- --host 127.0.0.1 --port 5174
 ```
 
+## Current Capabilities
+
+- Import timetable workbooks with preview, editable rows, validation summaries, and bundled demo samples.
+- Manage rooms, staff, programmes, modules, student groups, and lab requirements through tables or XLSX uploads.
+- Create, update, and remove individual scheduling requirements in the app.
+- Rank or disable soft constraints before generation.
+- Generate in fast `Standard` mode or deterministic `Reproducible` mode.
+- Track elapsed time, estimated remaining time, and learned runtime estimates from recent runs.
+- Review schedules by timetable, affected module, or raw issue, with separate hard-conflict and soft-warning filters.
+- Apply validated quick-fix suggestions or manually change a session's staff, delivery details, day, time, and room.
+- Compare schedule versions and open a full run report covering quality, workloads, conflicts, and session details.
+- Export CSV or XLSX once all hard conflicts are resolved; soft warnings remain optional quality guidance.
+
 ## Workflow
 
-1. Upload `System_Ready_Timetable_Input_Template.xlsx`.
-2. Rows are imported into relational SQL tables.
-3. Validation checks required fields and scheduling consistency.
-4. CP-SAT assigns each session to one room and one time slot.
-5. Constraint checker verifies hard clashes and soft warnings.
-6. React review page displays the timetable, filters, and conflicts.
-7. Export generated timetable as CSV or XLSX.
+1. Maintain reference data and lab requirements in the Database section.
+2. Upload `System_Ready_Timetable_Input_Template.xlsx`, load a demo, or enter requirements manually.
+3. Preview and correct imported rows, then run input and scheduling-consistency validation.
+4. Rank the soft constraints and choose Standard or Reproducible generation in Settings.
+5. Generate a timetable while the page displays elapsed and estimated remaining time.
+6. Review hard conflicts and soft warnings, then use Quick Fix or edit placements directly.
+7. Recheck the run, compare versions, and inspect the full HTML or PDF run report.
+8. Export the approved timetable as CSV or XLSX after all hard conflicts are cleared.
 
-If no upload is available, the backend seeds demo data for DSC, ASE, MDME, rooms, time slots, and sample sessions.
+On a new data directory, the backend seeds reference data and default time slots. Demo requirement sets can be selected from the upload screen.
 
 ## API Endpoints
 
 - `GET /health`
 - `POST /api/upload/input-template`
+- `POST /api/upload/input-template/preview`
+- `POST /api/upload/input-template/edited`
+- `GET /api/upload/demo-samples`
+- `POST /api/upload/demo-samples/{sample_id}/load`
 - `GET /api/validation/latest`
-- `GET /api/programmes`
-- `GET /api/modules`
-- `GET /api/student-groups`
-- `GET /api/staff`
-- `GET /api/rooms`
-- `GET /api/timeslots`
-- `GET /api/sessions`
+- `GET|POST|PUT|DELETE /api/sessions`
 - `GET /api/dashboard`
-- `POST /api/schedules/generate`
+- `GET /api/availability`
+- `GET /api/constraint-insights`
+- `GET|PUT /api/soft-constraints`
+- `GET|POST|PUT|DELETE /api/database/{data_type}`
+- `POST /api/database/{data_type}/upload`
+- `POST /api/schedules/generate?mode=standard|reproducible`
+- `GET /api/schedules`
+- `GET /api/schedules/compare`
 - `GET /api/schedules/latest`
 - `GET /api/schedules/{schedule_run_id}`
+- `PUT /api/schedules/{schedule_run_id}/sessions/{session_id}`
+- `POST /api/schedules/{schedule_run_id}/suggest-fixes`
+- `POST /api/schedules/{schedule_run_id}/recheck`
 - `GET /api/schedules/{schedule_run_id}/violations`
+- `GET /api/schedules/{schedule_run_id}/report`
+- `GET /api/schedules/{schedule_run_id}/report.pdf`
 - `GET /api/export/{schedule_run_id}/csv`
 - `GET /api/export/{schedule_run_id}/xlsx`
 
+Interactive API documentation is available at the backend `/docs` URL.
+
 ## Database Schema
 
-Core tables:
+The app uses SQLAlchemy binds to keep related models in separate files while exposing one application session:
 
-- `programmes`: programme code, name, years
-- `modules`: module code, host key, title, term
-- `student_groups`: group code, programme, year, size
-- `staff`: staff name, staff ID, host key
-- `rooms`: room code, type, capacity, virtual flag, campus mode
-- `time_slots`: day, start, end, duration, week pattern
-- `sessions`: imported timetable requirement rows
-- `schedule_runs`: generation metadata and solver status
-- `scheduled_sessions`: generated room/time assignments
-- `constraint_violations`: hard and soft constraint reports
+- `rooms.db`: room capacity, venue type, campus, and virtual/physical metadata
+- `staff.db`: staff identifiers and host metadata
+- `programmes.db`, `modules.db`, `student_groups.db`: academic reference data
+- `time_slots.db`: day, time, duration, and weekly/odd/even patterns
+- `requirements.db`: imported sessions, co-teachers, and lab requirements
+- `schedule_state.db`: runs, assignments, violations, and soft-constraint priorities
+
+The old `backend/timetable.db` is treated only as a legacy migration source when split databases are empty.
 
 ## Solver Explanation
 
@@ -151,6 +183,15 @@ Soft penalties:
 
 Post-solve soft warnings include long tutor gaps, short campus days, long consecutive student days, and online/F2F adjacent switches.
 
+### Generation Modes
+
+- `Standard`: eight search workers with a 30-second solver budget. It prioritises speed, so equivalent inputs may produce slightly different valid timetables.
+- `Reproducible`: one search worker, a fixed random seed, and a 300-second solver budget for repeatable results from the same inputs.
+
+The generation page begins with a default estimate of 25 seconds for Standard or 120 seconds for Reproducible mode, then averages the last five completed runs per mode. Estimated progress is capped below completion while the solver is running, remains stationary when the request appears stalled, and animates to 100% only after the backend returns.
+
+If the strict model is infeasible, the solver can run its relaxed recovery path so conflicts remain visible and actionable in the review workflow. Hard conflicts block export; soft warnings affect schedule quality but do not block export.
+
 ## Tests
 
 ```powershell
@@ -162,7 +203,7 @@ pytest
 pip check
 ```
 
-Coverage includes import validation, hard constraint detection, solver feasibility, infeasible capacity, and invalid fixed-time handling.
+Coverage includes workbook preview/import validation, split database routing and migration, lab requirements, co-teacher clashes, generation modes, hard and soft constraints, quick fixes, manual schedule updates, reports, exports, and infeasible solver cases.
 
 Frontend checks:
 
@@ -178,16 +219,16 @@ npm run build
 
 - Authentication and roles are intentionally not included.
 - Uploaded imports replace existing sessions and generated runs.
-- Staff 2 is parsed only as source data context; MVP scheduling uses Staff 1.
-- Custom week patterns are stored but scheduled using available default slots.
-- Advanced common/shared module merging is reserved for later input files.
-- Room master imports from raw reference files are not yet wired in.
+- Generation runs in a synchronous API request; the progress bar estimates solver progress rather than receiving live CP-SAT callbacks.
+- Generation mode and runtime history are stored per browser using local storage.
+- Shared-session metadata is imported, but automatic merging of independently entered common-module rows remains limited.
+- The application is designed for local single-user operation with SQLite rather than concurrent production deployment.
 
 ## Suggested Next Improvements
 
-- Add room/staff/module master import from the supporting files.
-- Model shared sessions and combined programme sessions explicitly.
+- Add authentication, roles, and audit attribution.
+- Move solver execution to a background job with server-reported progress and cancellation.
+- Model shared sessions and combined programme sessions more explicitly.
 - Add unavailable staff/room constraints.
-- Improve custom week overlap logic.
 - Add export compatibility with the downstream system template.
 - Add audit history for multiple import batches.

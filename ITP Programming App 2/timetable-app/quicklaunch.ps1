@@ -1,3 +1,5 @@
+param([switch]$NoBrowser)
+
 $ErrorActionPreference = "Stop"
 
 $ProcessPath = [Environment]::GetEnvironmentVariable("Path", "Process")
@@ -226,11 +228,43 @@ function Get-FrontendPort {
     throw "No available frontend port found from $FrontendStartPort to $($FrontendStartPort + 30)."
 }
 
+function Show-StartupLogs {
+    param(
+        [string]$Name,
+        [string]$StdoutPath,
+        [string]$StderrPath
+    )
+
+    $logsShown = $false
+    foreach ($log in @(
+        @{ Label = "error log"; Path = $StderrPath },
+        @{ Label = "output log"; Path = $StdoutPath }
+    )) {
+        if ($log.Path -and (Test-Path $log.Path) -and (Get-Item $log.Path).Length -gt 0) {
+            Write-Host ""
+            Write-Host "Last lines from the $Name $($log.Label):" -ForegroundColor Yellow
+            Get-Content -LiteralPath $log.Path -Tail 35 | ForEach-Object { Write-Host $_ }
+            $logsShown = $true
+        }
+    }
+
+    if (-not $logsShown) {
+        Write-Host "No startup output was written. Verify that the runtime is not blocked by antivirus or OneDrive." -ForegroundColor Yellow
+    }
+    Write-Host ""
+    Write-Host "Full logs:"
+    Write-Host "  $StderrPath"
+    Write-Host "  $StdoutPath"
+}
+
 function Wait-For {
     param(
         [scriptblock]$Check,
         [int]$Seconds,
-        [string]$Name
+        [string]$Name,
+        [System.Diagnostics.Process]$Process,
+        [string]$StdoutPath,
+        [string]$StderrPath
     )
 
     $deadline = (Get-Date).AddSeconds($Seconds)
@@ -238,14 +272,25 @@ function Wait-For {
         if (& $Check) {
             return
         }
+
+        if ($Process) {
+            $Process.Refresh()
+            if ($Process.HasExited) {
+                Show-StartupLogs -Name $Name -StdoutPath $StdoutPath -StderrPath $StderrPath
+                throw "$Name stopped during startup with exit code $($Process.ExitCode)."
+            }
+        }
         Start-Sleep -Milliseconds 500
     }
 
-    throw "$Name did not become ready within $Seconds seconds."
+    Show-StartupLogs -Name $Name -StdoutPath $StdoutPath -StderrPath $StderrPath
+    throw "$Name is still not ready after $Seconds seconds. Its process is still running; check the logs above for a slow or blocked startup."
 }
 
 function Ensure-BackendEnvironment {
     $python = Join-Path $BackendDir "venv\Scripts\python.exe"
+    $requirements = Join-Path $BackendDir "requirements.txt"
+    $requirementsStamp = Join-Path $BackendDir "venv\.requirements.sha256"
 
     if (-not (Test-Path $python)) {
         $systemPython = Get-SystemPython
@@ -253,6 +298,9 @@ function Ensure-BackendEnvironment {
         Push-Location $BackendDir
         try {
             & $systemPython.Exe @($systemPython.PrefixArgs + @("-m", "venv", "venv"))
+            if ($LASTEXITCODE -ne 0) {
+                throw "Python could not create the backend virtual environment (exit code $LASTEXITCODE)."
+            }
         }
         finally {
             Pop-Location
@@ -261,15 +309,27 @@ function Ensure-BackendEnvironment {
 
     $previousErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    & $python -c "import fastapi, uvicorn, sqlalchemy, pandas, openpyxl, ortools" *> $null
+    & $python -c "import fastapi, uvicorn, sqlalchemy, pandas, openpyxl, ortools, multipart, reportlab, httpx" *> $null
     $dependencyProbeExitCode = $LASTEXITCODE
     $ErrorActionPreference = $previousErrorActionPreference
 
-    if ($dependencyProbeExitCode -ne 0) {
-        Write-Host "Installing backend dependencies..."
+    $requirementsHash = (Get-FileHash -LiteralPath $requirements -Algorithm SHA256).Hash
+    $installedHash = if (Test-Path $requirementsStamp) {
+        (Get-Content -LiteralPath $requirementsStamp -Raw).Trim()
+    }
+    else {
+        ""
+    }
+
+    if ($dependencyProbeExitCode -ne 0 -or $installedHash -ne $requirementsHash) {
+        Write-Host "Synchronizing backend dependencies..."
         Push-Location $BackendDir
         try {
             & $python -m pip install -r requirements.txt | Out-Host
+            if ($LASTEXITCODE -ne 0) {
+                throw "Backend dependency installation failed (exit code $LASTEXITCODE). Check the pip error above."
+            }
+            Set-Content -LiteralPath $requirementsStamp -Value $requirementsHash -Encoding ASCII
         }
         finally {
             Pop-Location
@@ -316,21 +376,20 @@ function Start-Backend {
     Write-Host "Starting backend at $BackendUrl..."
     $stdout = Join-Path $BackendDir "quicklaunch-backend-$BackendPort.out.log"
     $stderr = Join-Path $BackendDir "quicklaunch-backend-$BackendPort.err.log"
-    Start-Process `
+    $process = Start-Process `
         -FilePath $Python `
         -ArgumentList @(
             "-m", "uvicorn", "app.main:app",
-            "--reload",
-            "--reload-dir", "app",
             "--host", $HostName,
             "--port", "$BackendPort"
         ) `
         -WorkingDirectory $BackendDir `
         -RedirectStandardOutput $stdout `
         -RedirectStandardError $stderr `
-        -WindowStyle Hidden
+        -WindowStyle Hidden `
+        -PassThru
 
-    Wait-For -Check { Test-Backend } -Seconds 45 -Name "Backend"
+    Wait-For -Check { Test-Backend } -Seconds 120 -Name "Backend" -Process $process -StdoutPath $stdout -StderrPath $stderr
 }
 
 function Start-Frontend {
@@ -348,15 +407,16 @@ function Start-Frontend {
     $stderr = Join-Path $FrontendDir "quicklaunch-frontend-$FrontendPort.err.log"
     $command = "`$env:VITE_PROXY_TARGET = '$BackendUrl'; & npm.cmd run dev -- --host $HostName --port $FrontendPort --strictPort"
 
-    Start-Process `
+    $process = Start-Process `
         -FilePath "powershell.exe" `
         -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $command) `
         -WorkingDirectory $FrontendDir `
         -RedirectStandardOutput $stdout `
         -RedirectStandardError $stderr `
-        -WindowStyle Hidden
+        -WindowStyle Hidden `
+        -PassThru
 
-    Wait-For -Check { Test-FrontendAt $FrontendUrl } -Seconds 45 -Name "Frontend"
+    Wait-For -Check { Test-FrontendAt $FrontendUrl } -Seconds 90 -Name "Frontend" -Process $process -StdoutPath $stdout -StderrPath $stderr
 }
 
 $backendPython = Ensure-BackendEnvironment
@@ -368,5 +428,10 @@ $FrontendUrl = "http://${HostName}:$FrontendPort"
 Start-Backend -Python $backendPython
 Start-Frontend
 
-Write-Host "Opening $FrontendUrl"
-Start-Process $FrontendUrl
+if (-not $NoBrowser) {
+    Write-Host "Opening $FrontendUrl"
+    Start-Process $FrontendUrl
+}
+else {
+    Write-Host "Timetable app is ready at $FrontendUrl"
+}
