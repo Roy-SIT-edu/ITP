@@ -276,8 +276,10 @@ function Wait-For {
         if ($Process) {
             $Process.Refresh()
             if ($Process.HasExited) {
+                $Process.WaitForExit()
+                $exitCode = if ($null -ne $Process.ExitCode) { $Process.ExitCode } else { "unknown" }
                 Show-StartupLogs -Name $Name -StdoutPath $StdoutPath -StderrPath $StderrPath
-                throw "$Name stopped during startup with exit code $($Process.ExitCode)."
+                throw "$Name stopped during startup with exit code $exitCode."
             }
         }
         Start-Sleep -Milliseconds 500
@@ -337,6 +339,82 @@ function Ensure-BackendEnvironment {
     }
 
     return $python
+}
+
+function Repair-CorruptBackendDatabases {
+    param([string]$Python)
+
+    for ($port = $BackendStartPort; $port -le $BackendStartPort + 30; $port++) {
+        if (Test-BackendAt "http://${HostName}:$port") {
+            return
+        }
+    }
+
+    $dataDir = Join-Path $BackendDir "data"
+    $databaseFiles = @(Get-ChildItem -LiteralPath $dataDir -Filter "*.db" -File -ErrorAction SilentlyContinue)
+    if ($databaseFiles.Count -eq 0) {
+        return
+    }
+
+    $integrityProbe = @'
+import sqlite3
+import sys
+from pathlib import Path
+
+bad = []
+for path in sorted(Path(sys.argv[2]).glob("*.db")):
+    try:
+        connection = sqlite3.connect(path)
+        try:
+            result = connection.execute("PRAGMA integrity_check").fetchone()
+        finally:
+            connection.close()
+        if not result or result[0].lower() != "ok":
+            bad.append(f"{path.name}: {result[0] if result else 'no result'}")
+    except sqlite3.DatabaseError as exc:
+        message = str(exc)
+        if "malformed" in message.lower() or "not a database" in message.lower():
+            bad.append(f"{path.name}: {message}")
+    except OSError:
+        # A running process, antivirus, or sync client may temporarily hold a
+        # file. Access problems are not evidence that its contents are corrupt.
+        continue
+
+if bad:
+    print("\n".join(bad))
+    raise SystemExit(2)
+'@
+    $integrityProbeEncoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($integrityProbe))
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $probeOutput = @(& $Python -c "import base64,sys;exec(base64.b64decode(sys.argv[1]))" $integrityProbeEncoded $dataDir 2>&1)
+    $probeExitCode = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorActionPreference
+    if ($probeExitCode -eq 0) {
+        return
+    }
+    if ($probeExitCode -ne 2) {
+        $details = ($probeOutput | Out-String).Trim()
+        throw "Unable to verify the backend databases (exit code $probeExitCode). No data was changed.`n$details"
+    }
+
+    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $backupDir = Join-Path $BackendDir "database-backups\corrupt-$timestamp"
+    New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+
+    $databaseArtifacts = @(Get-ChildItem -LiteralPath $dataDir -File | Where-Object {
+        $_.Name -match "\.db($|-shm$|-wal$|-journal$)"
+    })
+    foreach ($artifact in $databaseArtifacts) {
+        Move-Item -LiteralPath $artifact.FullName -Destination $backupDir
+    }
+
+    Write-Host "Corrupt SQLite data was detected:" -ForegroundColor Yellow
+    $probeOutput | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
+    Write-Host "The complete database set was preserved at:" -ForegroundColor Yellow
+    Write-Host "  $backupDir" -ForegroundColor Yellow
+    Write-Host "Starting with a clean database set..." -ForegroundColor Yellow
 }
 
 function Ensure-FrontendEnvironment {
@@ -420,6 +498,7 @@ function Start-Frontend {
 }
 
 $backendPython = Ensure-BackendEnvironment
+Repair-CorruptBackendDatabases -Python $backendPython
 Ensure-FrontendEnvironment
 $BackendPort = Get-BackendPort
 $FrontendPort = Get-FrontendPort
