@@ -47,6 +47,18 @@ def generate_schedule(
     return result
 
 
+@router.post("/{schedule_run_id}/auto-deconflict")
+def auto_deconflict_schedule(
+    schedule_run_id: int,
+    db: DbSession = Depends(get_db),
+):
+    try:
+        # Pass timeout=0.0 to allow the solver to run until optimality without timing out
+        return ScheduleService().auto_deconflict(db, schedule_run_id, timeout=0.0)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.get("")
 def schedule_runs(db: DbSession = Depends(get_db)):
     runs = db.query(ScheduleRun).order_by(ScheduleRun.id.desc()).limit(20).all()

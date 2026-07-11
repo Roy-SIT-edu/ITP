@@ -6,6 +6,7 @@
 import {
   BookOpenCheck,
   ChevronDown,
+  Clock3,
   FileText,
   Filter,
   History,
@@ -25,6 +26,7 @@ import {
   getViolations,
   moveScheduledSession,
   suggestScheduleFixes,
+  autoDeconflict,
 } from "../api/client";
 import ConflictTable from "../components/ConflictTable";
 import InlineActivity from "../components/InlineActivity";
@@ -45,6 +47,7 @@ import type {
   ScheduledRow,
   TimeSlot,
 } from "../types";
+import { formatGenerationDuration } from "../generationMode";
 
 type Filters = {
   source: string;
@@ -111,6 +114,9 @@ export default function TimetableReviewPage() {
   const [quickFixErrors, setQuickFixErrors] = useState<Record<string, string>>({});
   const [quickFixLoading, setQuickFixLoading] = useState<string | null>(null);
   const [applyingQuickFix, setApplyingQuickFix] = useState<string | null>(null);
+  const [deconflicting, setDeconflicting] = useState(false);
+  const [deconflictStartedAt, setDeconflictStartedAt] = useState<number | null>(null);
+  const [deconflictElapsedSeconds, setDeconflictElapsedSeconds] = useState(0);
 
   const load = useCallback(async () => {
     setError(null);
@@ -150,6 +156,14 @@ export default function TimetableReviewPage() {
     setQuickFixLoading(null);
     setApplyingQuickFix(null);
   }, [schedule?.schedule_run.id]);
+
+  useEffect(() => {
+    if (deconflictStartedAt === null) return;
+    const updateElapsed = () => setDeconflictElapsedSeconds((Date.now() - deconflictStartedAt) / 1000);
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(timer);
+  }, [deconflictStartedAt]);
 
   const rows = useMemo(() => schedule?.scheduled_sessions ?? [], [schedule]);
   const labRowCount = useMemo(() => rows.filter(isLabRequirement).length, [rows]);
@@ -395,6 +409,23 @@ export default function TimetableReviewPage() {
     }
   };
 
+  const handleAutoDeconflict = async () => {
+    if (!schedule) return;
+    setDeconflicting(true);
+    setDeconflictStartedAt(Date.now());
+    setDeconflictElapsedSeconds(0);
+    setError(null);
+    try {
+      await autoDeconflict(schedule.schedule_run.id);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Auto deconflict failed");
+    } finally {
+      setDeconflicting(false);
+      setDeconflictStartedAt(null);
+    }
+  };
+
   const renderQuickFixTray = (key: string) => {
     const suggestions = quickFixSuggestions[key] ?? [];
     const loading = quickFixLoading === key;
@@ -542,12 +573,51 @@ export default function TimetableReviewPage() {
       </div>
       {error && <div className="notice bad">{error}</div>}
 
-      {loading ? (
+      {loading && !deconflicting ? (
         <InlineActivity
           kind="review"
           title="Preparing timetable review"
           steps={["Loading latest run", "Reading conflicts", "Building timetable view"]}
         />
+      ) : null}
+
+      {deconflicting ? (
+        <section className="status-card generation-panel review-deconflict-panel" style={{ marginTop: "1rem" }}>
+          <div className="generation-copy">
+            <div className="status-card-title">Auto-Deconflicting Schedule</div>
+            <p className="muted" style={{ margin: "4px 0 0" }}>Running parallel solver to resolve hard conflicts while preserving valid placements...</p>
+          </div>
+          <div className="solver-progress" aria-live="polite">
+            <div className="solver-progress-heading">
+              <span>
+                <Clock3 size={16} />
+                <strong>{formatGenerationDuration(deconflictElapsedSeconds)}</strong> elapsed
+              </span>
+              <span>
+                {(() => {
+                  const estimatedRemaining = Math.max(0, 30 - deconflictElapsedSeconds);
+                  return estimatedRemaining > 0
+                    ? `About ${formatGenerationDuration(estimatedRemaining)} remaining`
+                    : "Still solving";
+                })()}
+              </span>
+            </div>
+            <div
+              aria-label="Estimated auto deconflict progress"
+              aria-valuemax={100}
+              aria-valuemin={0}
+              aria-valuenow={deconflictElapsedSeconds > 0 ? Math.min(90, Math.max(4, Math.round((deconflictElapsedSeconds / 30) * 90))) : 0}
+              className="solver-progress-track"
+              role="progressbar"
+            >
+              <span
+                className={`solver-progress-fill ${deconflictElapsedSeconds >= 30 ? "stalled" : ""}`}
+                style={{ width: `${deconflictElapsedSeconds > 0 ? Math.min(90, Math.max(4, Math.round((deconflictElapsedSeconds / 30) * 90))) : 0}%` }}
+              />
+            </div>
+            <p>Estimated progress {deconflictElapsedSeconds > 0 ? Math.min(90, Math.max(4, Math.round((deconflictElapsedSeconds / 30) * 90))) : 0}%</p>
+          </div>
+        </section>
       ) : null}
 
       {schedule && (
@@ -589,6 +659,15 @@ export default function TimetableReviewPage() {
                   Versions
                   <span>{comparisons.length}</span>
                   <ChevronDown size={14} />
+                </button>
+                <button
+                  className="button secondary slim"
+                  disabled={loading || hardConflictCount === 0 || deconflicting}
+                  onClick={handleAutoDeconflict}
+                  type="button"
+                >
+                  <Sparkles size={15} />
+                  Auto Deconflict
                 </button>
                 <a
                   className="button slim"

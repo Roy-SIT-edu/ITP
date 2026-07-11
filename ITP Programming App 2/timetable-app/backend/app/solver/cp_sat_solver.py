@@ -52,6 +52,7 @@ class CpSatTimetableSolver:
         max_seconds: float = 0.0,
         fast_mode: bool = False,
         reproducible: bool = False,
+        hints: list[dict] | None = None,
     ) -> dict:
         if not sessions:
             return {
@@ -61,7 +62,7 @@ class CpSatTimetableSolver:
                 "message": "No sessions are available to schedule.",
             }
 
-        if self._has_known_fixed_hard_clash(sessions):
+        if not hints and self._has_known_fixed_hard_clash(sessions):
             return self._greedy_fallback(
                 sessions,
                 time_slots,
@@ -70,6 +71,30 @@ class CpSatTimetableSolver:
                 "Fixed hard clashes are present; generated a reviewable timetable with conflict checks.",
             )
 
+        if hints:
+            # Auto Deconflict mode: go straight to the relaxed model.
+            # The relaxed model penalizes hard conflicts (100k) and changes (10), so it will
+            # aggressively deconflict the schedule without getting stuck in INFEASIBLE/UNKNOWN traps.
+            relaxed = self.model_builder.build(
+                sessions,
+                time_slots,
+                rooms,
+                soft_constraint_weights,
+                relax_hard_conflicts=True,
+                hints=hints,
+            )
+            relaxed_result = self._solve_built_model(relaxed, max_seconds, fast_mode=fast_mode, reproducible=reproducible)
+            if relaxed_result["solver_status"] in {"OPTIMAL", "FEASIBLE"}:
+                return relaxed_result
+            return self._greedy_fallback(
+                sessions,
+                time_slots,
+                rooms,
+                soft_constraint_weights,
+                "Solver timed out; generated a reviewable timetable with conflict checks.",
+            )
+
+        # Fresh Generation mode: start with the strict model to ensure 0 hard conflicts
         built = self.model_builder.build(sessions, time_slots, rooms, soft_constraint_weights)
         if built.no_candidate_reasons:
             return {
@@ -83,9 +108,7 @@ class CpSatTimetableSolver:
         if result["solver_status"] in {"OPTIMAL", "FEASIBLE"}:
             return result
 
-        # Keep the review workflow usable for genuinely over-constrained input or timeouts:
-        # if strict room/staff/group clash prevention is impossible or takes too long, rebuild with
-        # heavy clash penalties so the timetable can still be inspected.
+        # If strict model times out, fallback to greedy
         if result["solver_status"] == "UNKNOWN":
             return self._greedy_fallback(
                 sessions,
@@ -95,6 +118,7 @@ class CpSatTimetableSolver:
                 "Solver timed out; generated a reviewable timetable with conflict checks.",
             )
 
+        # If strict model is INFEASIBLE, fallback to relaxed
         if result["solver_status"] == "INFEASIBLE":
             relaxed = self.model_builder.build(
                 sessions,

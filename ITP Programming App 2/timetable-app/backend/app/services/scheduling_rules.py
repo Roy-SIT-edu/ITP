@@ -25,7 +25,7 @@ from app.services.compatibility import (
 )
 
 
-def candidate_slot_allowed(session: Session, slot: TimeSlot) -> bool:
+def candidate_slot_allowed(session: Session, slot: TimeSlot, relax_fixed: bool = False) -> bool:
     """Return whether a saved requirement can be assigned to a time slot."""
 
     if session.duration_minutes and slot.duration_minutes != session.duration_minutes:
@@ -47,7 +47,7 @@ def candidate_slot_allowed(session: Session, slot: TimeSlot) -> bool:
     elif session_week in {"weekly", "odd", "even"} and session_week != slot_week:
         return False
 
-    if normalize_token(session.scheduling_type) == "fixed":
+    if not relax_fixed and normalize_token(session.scheduling_type) == "fixed":
         if session.fixed_day and slot.day != session.fixed_day:
             return False
         if session.fixed_start_time and slot.start_time != session.fixed_start_time:
@@ -61,9 +61,11 @@ def candidate_slot_allowed(session: Session, slot: TimeSlot) -> bool:
     return True
 
 
-def candidate_room_allowed(session: Session, room: Room) -> bool:
+def candidate_room_allowed(session: Session, room: Room, relax_fixed: bool = False) -> bool:
     """Return whether a saved requirement can be assigned to a room."""
 
+    if not relax_fixed:
+        pass  # Room constraints for fixed sessions are handled by required_room_codes below
     required_codes = required_room_codes(session)
     if required_codes:
         if room.room_code.lower() not in {code.lower() for code in required_codes}:

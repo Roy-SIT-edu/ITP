@@ -267,6 +267,12 @@ export function recheckSchedule(scheduleRunId: number) {
   );
 }
 
+export function autoDeconflict(scheduleRunId: number) {
+  return request<ScheduleGenerateResult>(`/api/schedules/${scheduleRunId}/auto-deconflict`, {
+    method: "POST",
+  });
+}
+
 export function getViolations(scheduleRunId: number) {
   return request<ConstraintViolation[]>(`/api/schedules/${scheduleRunId}/violations`);
 }

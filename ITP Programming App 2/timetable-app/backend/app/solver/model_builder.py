@@ -58,10 +58,12 @@ class TimetableModelBuilder:
         rooms: list[Room],
         soft_constraint_weights: dict[str, int] | None = None,
         relax_hard_conflicts: bool = False,
+        hints: list[dict] | None = None,
     ) -> BuiltModel:
         model = cp_model.CpModel()
         variables: dict[tuple[int, int, int], cp_model.IntVar] = {}
         assignments: list[dict] = []
+        soft_penalties = []
         no_candidate_reasons: list[str] = []
         weights = soft_constraint_weights or {}
         group_ids_by_code = {
@@ -70,13 +72,18 @@ class TimetableModelBuilder:
             if group.student_group is not None and group.student_group_id is not None
         }
 
+        hint_map = {}
+        if hints:
+            for h in hints:
+                hint_map[h["session_id"]] = (h["time_slot_id"], h["room_id"])
+
         for session in sessions:
             session_vars = []
             for slot in time_slots:
-                if not candidate_slot_allowed(session, slot):
+                if not candidate_slot_allowed(session, slot, relax_fixed=relax_hard_conflicts):
                     continue
                 for room in rooms:
-                    if not candidate_room_allowed(session, room):
+                    if not candidate_room_allowed(session, room, relax_fixed=relax_hard_conflicts):
                         continue
                     key = (session.id, slot.id, room.id)
                     # x_session_slot_room is true when the solver chooses this exact assignment.
@@ -90,6 +97,15 @@ class TimetableModelBuilder:
                     }
                     assignments.append(assignment)
                     session_vars.append(variable)
+                    
+
+                    if session.id in hint_map:
+                        if hint_map[session.id] == (slot.id, room.id):
+                            model.AddHint(variable, 1)
+                            # Light penalty if this previously assigned slot/room is NOT chosen
+                            soft_penalties.append(variable.Not() * 10)
+                        else:
+                            model.AddHint(variable, 0)
             if not session_vars:
                 label = session.requirement_id or (session.module.module_code if session.module else f"session {session.id}")
                 no_candidate_reasons.append(f"No feasible time slot and room combination is available for {label}.")
@@ -98,32 +114,30 @@ class TimetableModelBuilder:
             # Every requirement must be scheduled exactly once.
             model.Add(sum(session_vars) == 1)
 
-        soft_penalties = []
-        if not no_candidate_reasons:
-            self._add_no_overlap_constraints(
-                model,
-                assignments,
-                lambda item: item["room"].id,
-                soft_penalties,
-                "ROOM",
-                relax_hard_conflicts,
-            )
-            self._add_staff_no_overlap_constraints(model, assignments, soft_penalties, relax_hard_conflicts)
-            self._add_no_overlap_constraints(
-                model,
-                assignments,
-                lambda item: self._group_resource_ids(item["session"], group_ids_by_code),
-                soft_penalties,
-                "GROUP",
-                relax_hard_conflicts,
-            )
+        self._add_no_overlap_constraints(
+            model,
+            assignments,
+            lambda item: item["room"].id,
+            soft_penalties,
+            "ROOM",
+            relax_hard_conflicts,
+        )
+        self._add_staff_no_overlap_constraints(model, assignments, soft_penalties, relax_hard_conflicts)
+        self._add_no_overlap_constraints(
+            model,
+            assignments,
+            lambda item: self._group_resource_ids(item["session"], group_ids_by_code),
+            soft_penalties,
+            "GROUP",
+            relax_hard_conflicts,
+        )
 
         for assignment in assignments:
             penalty = self._single_assignment_soft_penalty(assignment, weights)
             if penalty > 0:
                 soft_penalties.append(assignment["variable"] * penalty)
         # Pairwise soft preferences can dwarf the hard model on broad imports; final checks still score them after solving.
-        if not no_candidate_reasons and not relax_hard_conflicts and len(assignments) <= PAIRWISE_SOFT_PENALTY_ASSIGNMENT_LIMIT:
+        if not relax_hard_conflicts and len(assignments) <= PAIRWISE_SOFT_PENALTY_ASSIGNMENT_LIMIT:
             soft_penalties.extend(self._pair_soft_penalties(model, assignments, weights))
         if soft_penalties:
             model.Minimize(sum(soft_penalties))
