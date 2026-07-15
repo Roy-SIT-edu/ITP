@@ -151,10 +151,7 @@ export default function RunReportPage() {
               <ReportFact label="Modules" value={summary.module_count} />
               <ReportFact label="Student groups" value={summary.student_group_count} />
               <ReportFact label="Uploaded sessions" value={summary.uploaded_session_count} />
-              <ReportFact label="Final lab sessions" value={summary.lab_session_count} />
-              <ReportFact label="Original lab bookings" value={summary.original_lab_session_count} />
-              <ReportFact label="Lab overlap pairs" value={summary.lab_overlap_pair_count} />
-              <ReportFact label="Labs excluded from final" value={summary.excluded_lab_session_count} />
+              <ReportFact label="Lab sessions" value={summary.lab_session_count} />
             </dl>
             <div className="report-score-panel">
               <div className="report-score-heading">
@@ -281,61 +278,6 @@ export default function RunReportPage() {
           ) : (
             <div className="report-clean-state">
               <CheckCircle2 size={20} /> No conflicts or warnings were recorded.
-            </div>
-          )}
-        </ReportSection>
-
-        <ReportSection
-          title="Fixed lab overlap resolution"
-          subtitle={`${report.lab_overlap_resolution.detected_pair_count} original overlap pairs resolved by excluding ${report.lab_overlap_resolution.excluded_session_count} lab sessions from the final timetable`}
-        >
-          <p className="report-section-note">
-            These exclusions apply only to this run&apos;s final timetable and exports. The lab requirements and their
-            original run assignments remain in the database for audit and future runs.
-          </p>
-          {report.lab_overlap_resolution.overlaps.length > 0 ? (
-            <div className="report-table-wrap report-conflict-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Placement</th>
-                    <th>Shared resources</th>
-                    <th>First lab</th>
-                    <th>Second lab</th>
-                    <th>Excluded from final</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.lab_overlap_resolution.overlaps.map((overlap) => (
-                    <tr key={`${overlap.left.session_id}-${overlap.right.session_id}`}>
-                      <td>
-                        <strong>{overlap.left.day}</strong>
-                        <span>
-                          {overlap.left.start_time}-{overlap.left.end_time} ({overlap.left.week_pattern})
-                        </span>
-                      </td>
-                      <td>{labOverlapResources(overlap.resources)}</td>
-                      <td>{labOverlapSessionLabel(overlap.left)}</td>
-                      <td>{labOverlapSessionLabel(overlap.right)}</td>
-                      <td>
-                        {overlap.excluded_session_ids.length > 0
-                          ? [overlap.left, overlap.right]
-                              .filter((session) => overlap.excluded_session_ids.includes(session.session_id))
-                              .map(
-                                (session) =>
-                                  session.requirement_id ?? session.module_code ?? `Session ${session.session_id}`,
-                              )
-                              .join(", ")
-                          : "Not resolved in final"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="report-clean-state">
-              <CheckCircle2 size={20} /> No fixed lab-to-lab resource overlaps were detected.
             </div>
           )}
         </ReportSection>
@@ -575,22 +517,6 @@ function formatCode(value: string) {
     .split("_")
     .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
     .join(" ");
-}
-
-function labOverlapResources(resources: ScheduleReport["lab_overlap_resolution"]["overlaps"][number]["resources"]) {
-  return [
-    resources.rooms.length > 0 ? `Room: ${resources.rooms.join(", ")}` : null,
-    resources.staff.length > 0 ? `Staff: ${resources.staff.join(", ")}` : null,
-    resources.student_groups.length > 0 ? `Student group: ${resources.student_groups.join(", ")}` : null,
-  ]
-    .filter(Boolean)
-    .join("; ");
-}
-
-function labOverlapSessionLabel(session: ScheduleReport["lab_overlap_resolution"]["overlaps"][number]["left"]) {
-  const identity = session.requirement_id ?? session.module_code ?? `Session ${session.session_id}`;
-  const context = [session.programme, session.student_group_code, session.room].filter(Boolean).join(" / ");
-  return context ? `${identity} — ${context}` : identity;
 }
 
 function weekLabel(session: ReportSession) {

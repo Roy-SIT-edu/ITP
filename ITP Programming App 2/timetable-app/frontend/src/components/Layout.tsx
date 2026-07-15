@@ -6,16 +6,18 @@
 
 import {
   CalendarClock,
+  ChevronDown,
   Database,
   Download,
   FileUp,
   Gauge,
-  ShieldCheck,
+  Settings as SettingsIcon,
   SlidersHorizontal,
   TableProperties,
 } from "lucide-react";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
+import { useSessionState } from "../sessionState";
 import WorkflowProgress from "./WorkflowProgress";
 
 type Props = {
@@ -29,17 +31,21 @@ const databaseItems = [
   { id: "database-staff", label: "Staff" },
   { id: "database-programmes", label: "Programmes" },
   { id: "database-modules", label: "Modules" },
+  { id: "database-student-groups", label: "Student Groups" },
+  { id: "database-lab-requirements", label: "Lab Requirements" },
 ];
 
 const workflowItems = [
   { id: "upload", label: "Import Data", icon: FileUp },
-  { id: "validation", label: "Validate Data", icon: ShieldCheck },
-  { id: "soft-constraints", label: "Priorities & Generate", icon: SlidersHorizontal },
+  { id: "soft-constraints", label: "Generate Timetable", icon: SlidersHorizontal },
   { id: "review", label: "Review Timetable", icon: TableProperties },
   { id: "export", label: "Export Timetable", icon: Download },
 ];
 
 export default function Layout({ route, onNavigate, children }: Props) {
+  const [workflowOpen, setWorkflowOpen] = useSessionState("sidebar.workflowOpen", true);
+  const [referenceOpen, setReferenceOpen] = useSessionState("sidebar.referenceOpen", false);
+
   useEffect(() => {
     const nav = document.querySelector(".workflow-stepper");
     if (!(nav instanceof HTMLElement)) return;
@@ -49,6 +55,15 @@ export default function Layout({ route, onNavigate, children }: Props) {
       active.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
     }
   }, [route]);
+
+  useEffect(() => {
+    if (workflowItems.some((item) => item.id === route)) {
+      setWorkflowOpen(true);
+    }
+    if (databaseItems.some((item) => item.id === route)) {
+      setReferenceOpen(true);
+    }
+  }, [route, setReferenceOpen, setWorkflowOpen]);
 
   return (
     <div className="app-shell">
@@ -69,36 +84,66 @@ export default function Layout({ route, onNavigate, children }: Props) {
             <Gauge size={18} />
             <span>Overview</span>
           </a>
+          <a
+            className={route === "settings" ? "sidebar-link active" : "sidebar-link"}
+            href="#settings"
+            onClick={() => onNavigate("settings")}
+          >
+            <SettingsIcon size={18} />
+            <span>Settings</span>
+          </a>
           <div className="sidebar-nav-group">
-            <span className="sidebar-nav-label">Workflow</span>
-            {workflowItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <a
-                  className={route === item.id ? "sidebar-link active" : "sidebar-link"}
-                  href={`#${item.id}`}
-                  key={item.id}
-                  onClick={() => onNavigate(item.id)}
-                >
-                  <Icon size={18} />
-                  <span>{item.label}</span>
-                </a>
-              );
-            })}
+            <button
+              aria-controls="sidebar-workflow-links"
+              aria-expanded={workflowOpen}
+              className="sidebar-group-toggle"
+              onClick={() => setWorkflowOpen((current) => !current)}
+              type="button"
+            >
+              <span>Workflow</span>
+              <ChevronDown className={workflowOpen ? "open" : ""} size={15} />
+            </button>
+            <div className="sidebar-group-content" hidden={!workflowOpen} id="sidebar-workflow-links">
+              {workflowItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <a
+                    className={route === item.id ? "sidebar-link active" : "sidebar-link"}
+                    href={`#${item.id}`}
+                    key={item.id}
+                    onClick={() => onNavigate(item.id)}
+                  >
+                    <Icon size={18} />
+                    <span>{item.label}</span>
+                  </a>
+                );
+              })}
+            </div>
           </div>
           <div className="sidebar-nav-group">
-            <span className="sidebar-nav-label">Reference Data</span>
-            {databaseItems.map((child) => (
-              <a
-                className={route === child.id ? "sidebar-link active" : "sidebar-link"}
-                href={`#${child.id}`}
-                key={child.id}
-                onClick={() => onNavigate(child.id)}
-              >
-                <Database size={18} />
-                <span>{child.label}</span>
-              </a>
-            ))}
+            <button
+              aria-controls="sidebar-reference-links"
+              aria-expanded={referenceOpen}
+              className="sidebar-group-toggle"
+              onClick={() => setReferenceOpen((current) => !current)}
+              type="button"
+            >
+              <span>Reference Data</span>
+              <ChevronDown className={referenceOpen ? "open" : ""} size={15} />
+            </button>
+            <div className="sidebar-group-content" hidden={!referenceOpen} id="sidebar-reference-links">
+              {databaseItems.map((child) => (
+                <a
+                  className={route === child.id ? "sidebar-link active" : "sidebar-link"}
+                  href={`#${child.id}`}
+                  key={child.id}
+                  onClick={() => onNavigate(child.id)}
+                >
+                  <Database size={18} />
+                  <span>{child.label}</span>
+                </a>
+              ))}
+            </div>
           </div>
         </nav>
       </aside>

@@ -47,6 +47,10 @@ const emptySession: RequirementFormData = {
   source_row_no: null,
 };
 
+function campusModeForDelivery(deliveryMode: string | null | undefined) {
+  return deliveryMode === "Online" || deliveryMode === "Asynchronous" ? "Virtual" : "Physical";
+}
+
 export default function RequirementsEditor({ refreshSignal = 0, onChanged }: Props) {
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [search, setSearch] = useState("");
@@ -168,12 +172,16 @@ export default function RequirementsEditor({ refreshSignal = 0, onChanged }: Pro
 
     setSaving(true);
     setError(null);
+    const payload = {
+      ...formData,
+      campus_mode: campusModeForDelivery(formData.delivery_mode),
+    };
     try {
       if (editingSession) {
-        await updateSession(editingSession.id, formData);
+        await updateSession(editingSession.id, payload);
         await afterMutation("Requirement updated.");
       } else {
-        await createSession(formData);
+        await createSession(payload);
         await afterMutation("Requirement added.");
       }
       setIsModalOpen(false);
@@ -199,11 +207,11 @@ export default function RequirementsEditor({ refreshSignal = 0, onChanged }: Pro
         ...session,
         preferred_days: values.mode === "soft" ? values.preferred_days : "",
         avoid_days: values.mode === "soft" ? values.avoid_days : "",
-        scheduling_type: "Flexible",
-        fixed_day: "",
-        fixed_start_time: "",
-        fixed_end_time: "",
-        priority: "Normal",
+        scheduling_type: values.mode === "hard" ? "Fixed" : "Flexible",
+        fixed_day: values.mode === "hard" ? values.fixed_day : "",
+        fixed_start_time: values.mode === "hard" ? values.fixed_start_time : "",
+        fixed_end_time: values.mode === "hard" ? values.fixed_end_time : "",
+        priority: values.mode === "hard" ? "Hard" : "Normal",
       };
       await updateSession(session.id, payload);
       await afterMutation("Constraint settings applied.");
@@ -302,7 +310,13 @@ export default function RequirementsEditor({ refreshSignal = 0, onChanged }: Pro
                 <td>{row.duration_minutes ? `${row.duration_minutes}m` : ""}</td>
                 <td>{row.exact_class_size}</td>
                 <td>
-                  <span className="status-badge good">Flexible</span>
+                  {row.scheduling_type === "Fixed" ? (
+                    <span className="status-badge warn">
+                      Fixed: {row.fixed_day} {row.fixed_start_time}
+                    </span>
+                  ) : (
+                    <span className="status-badge good">Flexible</span>
+                  )}
                 </td>
               </tr>
             ))}

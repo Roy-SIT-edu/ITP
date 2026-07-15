@@ -7,7 +7,7 @@ file through SQLAlchemy binds so services can query related models normally.
 from collections.abc import Generator
 from pathlib import Path
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +35,7 @@ TABLE_DATABASE_NAMES = {
     "time_slots": "time_slots",
     "sessions": "requirements",
     "session_staff": "requirements",
+    "lab_requirements": "requirements",
     "schedule_runs": "schedule_state",
     "scheduled_sessions": "schedule_state",
     "constraint_violations": "schedule_state",
@@ -47,10 +48,25 @@ Base = declarative_base()
 
 def _sqlite_engine(path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
-    return create_engine(
+    engine = create_engine(
         f"sqlite:///{path}",
-        connect_args={"check_same_thread": False},
+        connect_args={"check_same_thread": False, "timeout": 30},
     )
+
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(dbapi_connection, connection_record):  # noqa: ARG001
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA busy_timeout=30000")
+        try:
+            cursor.execute("PRAGMA journal_mode=WAL")
+        except Exception:
+            # Existing dev-server processes may still hold rollback-journal locks.
+            # New connections can continue with busy_timeout and WAL will apply
+            # once the database is free.
+            pass
+        cursor.close()
+
+    return engine
 
 
 def _build_engines(data_dir: Path = DATA_DIR) -> dict[str, object]:
@@ -59,6 +75,7 @@ def _build_engines(data_dir: Path = DATA_DIR) -> dict[str, object]:
 
 def _model_database_names():
     from app.models.constraint_violation import ConstraintViolation
+    from app.models.lab_requirement import LabRequirement
     from app.models.module import Module
     from app.models.programme import Programme
     from app.models.room import Room
@@ -80,6 +97,7 @@ def _model_database_names():
         TimeSlot: "time_slots",
         Requirement: "requirements",
         SessionStaff: "requirements",
+        LabRequirement: "requirements",
         ScheduleRun: "schedule_state",
         ScheduledSession: "schedule_state",
         ConstraintViolation: "schedule_state",
@@ -134,15 +152,13 @@ def _ensure_programme_years_column(engine) -> None:
             connection.execute(text("ALTER TABLE programmes ADD COLUMN years INTEGER"))
 
 
-<<<<<<< Updated upstream
-def _ensure_split_schema(engines: dict[str, object]) -> None:
-    _ensure_programme_years_column(engines["programmes"])
-=======
 def _ensure_soft_constraint_active_column(engine) -> None:
     with engine.begin() as connection:
         columns = {row[1] for row in connection.execute(text("PRAGMA table_info(soft_constraint_priorities)")).fetchall()}
         if columns and "is_active" not in columns:
-            connection.execute(text("ALTER TABLE soft_constraint_priorities ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1"))
+            connection.execute(
+                text("ALTER TABLE soft_constraint_priorities ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1")
+            )
 
 
 def _ensure_column(engine, table_name: str, column_name: str, definition: str) -> None:
@@ -169,16 +185,9 @@ def _drop_column_if_exists(engine, table_name: str, column_name: str) -> None:
 def _ensure_split_schema(engines: dict[str, object]) -> None:
     _ensure_programme_years_column(engines["programmes"])
     _ensure_soft_constraint_active_column(engines["schedule_state"])
-    _ensure_column(
-        engines["schedule_state"],
-        "scheduled_sessions",
-        "included_in_final",
-        "BOOLEAN NOT NULL DEFAULT 1",
-    )
     _ensure_session_lab_columns(engines["requirements"])
     _drop_column_if_exists(engines["modules"], "modules", "module_host_key")
     _drop_column_if_exists(engines["staff"], "staff", "staff_host_key")
->>>>>>> Stashed changes
 
 
 def _copy_legacy_rows(target_db: Session, legacy_database_path: Path) -> None:
@@ -186,6 +195,7 @@ def _copy_legacy_rows(target_db: Session, legacy_database_path: Path) -> None:
         return
 
     from app.models.constraint_violation import ConstraintViolation
+    from app.models.lab_requirement import LabRequirement
     from app.models.module import Module
     from app.models.programme import Programme
     from app.models.room import Room
@@ -211,6 +221,7 @@ def _copy_legacy_rows(target_db: Session, legacy_database_path: Path) -> None:
         StudentGroup,
         Requirement,
         SessionStaff,
+        LabRequirement,
         ScheduleRun,
         ScheduledSession,
         ConstraintViolation,
@@ -261,17 +272,19 @@ def create_db_and_seed(
         engines = _ENGINES
         legacy_path = legacy_database_path or LEGACY_DATABASE_PATH
         raw_data_path = DEFAULT_RAW_DATA_PATH
+        seed_lab_requirements = True
     else:
         factory, engines = create_session_factory(data_dir)
         legacy_path = legacy_database_path or LEGACY_DATABASE_PATH
         raw_data_path = data_dir / DEFAULT_RAW_DATA_PATH.name
+        seed_lab_requirements = False
 
     _create_split_tables(engines)
     _ensure_split_schema(engines)
     db = factory()
     try:
         _copy_legacy_rows(db, legacy_path)
-        seed_defaults(db, raw_data_path=raw_data_path)
+        seed_defaults(db, raw_data_path=raw_data_path, seed_lab_requirements=seed_lab_requirements)
     finally:
         db.close()
         if data_dir is not None:

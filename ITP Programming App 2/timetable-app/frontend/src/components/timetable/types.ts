@@ -1,4 +1,4 @@
-export const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+export const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 export type MoveDraft = {
   day: string;

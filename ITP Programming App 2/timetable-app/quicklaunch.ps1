@@ -1,4 +1,15 @@
+param([switch]$NoBrowser)
+
 $ErrorActionPreference = "Stop"
+
+$ProcessPath = [Environment]::GetEnvironmentVariable("Path", "Process")
+if (-not $ProcessPath) {
+    $ProcessPath = [Environment]::GetEnvironmentVariable("PATH", "Process")
+}
+if ($ProcessPath) {
+    [Environment]::SetEnvironmentVariable("PATH", $null, "Process")
+    [Environment]::SetEnvironmentVariable("Path", $ProcessPath, "Process")
+}
 
 $AppRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackendDir = Join-Path $AppRoot "backend"
@@ -23,29 +34,17 @@ function Test-Http {
     }
 }
 
-function Get-RuntimeVersion {
+function Get-MajorVersion {
     param([string]$VersionText)
 
-    if ($VersionText -match "(\d+)\.(\d+)(?:\.(\d+))?") {
-        $patch = if ($Matches[3]) { $Matches[3] } else { "0" }
-        return [version]"$($Matches[1]).$($Matches[2]).$patch"
+    if ($VersionText -match "(\d+)\.") {
+        return [int]$Matches[1]
     }
     return $null
 }
 
-function Test-SupportedPythonVersion {
-    param([version]$Version)
-
-    return $null -ne $Version -and $Version.Major -eq 3 -and $Version -ge [version]"3.10.0" -and $Version -lt [version]"3.15.0"
-}
-
 function Get-SystemPython {
     $candidates = @(
-        @{ Name = "py"; PrefixArgs = @("-3.14") },
-        @{ Name = "py"; PrefixArgs = @("-3.13") },
-        @{ Name = "py"; PrefixArgs = @("-3.12") },
-        @{ Name = "py"; PrefixArgs = @("-3.11") },
-        @{ Name = "py"; PrefixArgs = @("-3.10") },
         @{ Name = "py"; PrefixArgs = @("-3") },
         @{ Name = "python"; PrefixArgs = @() },
         @{ Name = "python3"; PrefixArgs = @() }
@@ -62,23 +61,22 @@ function Get-SystemPython {
             continue
         }
 
-        $runtimeVersion = Get-RuntimeVersion ([string]$version)
-        if (Test-SupportedPythonVersion $runtimeVersion) {
+        $major = Get-MajorVersion ([string]$version)
+        if ($major -ge 3) {
             return @{
                 Exe = $command.Source
                 PrefixArgs = $candidate.PrefixArgs
-                Version = $runtimeVersion
             }
         }
     }
 
-    throw "Supported Python was not found. Install Python 3.10-3.14 from https://www.python.org/downloads/ and enable 'Add python.exe to PATH'."
+    throw "Python 3 was not found. Install Python 3.10+ from https://www.python.org/downloads/ and enable 'Add python.exe to PATH'."
 }
 
 function Assert-NodeRuntime {
     $node = Get-Command "node" -ErrorAction SilentlyContinue
     if (-not $node) {
-        throw "Node.js was not found. Install Node.js 20.19+ or 22.12+ from https://nodejs.org/ and run this launcher again."
+        throw "Node.js was not found. Install Node.js 20+ from https://nodejs.org/ and run this launcher again."
     }
 
     $version = & $node.Source --version 2>&1
@@ -86,13 +84,9 @@ function Assert-NodeRuntime {
         throw "Node.js is installed but did not run correctly: $version"
     }
 
-    $runtimeVersion = Get-RuntimeVersion ([string]$version)
-    $supported = $null -ne $runtimeVersion -and (
-        ($runtimeVersion.Major -eq 20 -and $runtimeVersion -ge [version]"20.19.0") -or
-        $runtimeVersion -ge [version]"22.12.0"
-    )
-    if (-not $supported) {
-        throw "Node.js 20.19+ or 22.12+ is required by Vite 8. Current version: $version"
+    $major = Get-MajorVersion ([string]$version)
+    if ($major -lt 20) {
+        throw "Node.js 20+ is required by the frontend tooling. Current version: $version"
     }
 }
 
@@ -234,11 +228,43 @@ function Get-FrontendPort {
     throw "No available frontend port found from $FrontendStartPort to $($FrontendStartPort + 30)."
 }
 
+function Show-StartupLogs {
+    param(
+        [string]$Name,
+        [string]$StdoutPath,
+        [string]$StderrPath
+    )
+
+    $logsShown = $false
+    foreach ($log in @(
+        @{ Label = "error log"; Path = $StderrPath },
+        @{ Label = "output log"; Path = $StdoutPath }
+    )) {
+        if ($log.Path -and (Test-Path $log.Path) -and (Get-Item $log.Path).Length -gt 0) {
+            Write-Host ""
+            Write-Host "Last lines from the $Name $($log.Label):" -ForegroundColor Yellow
+            Get-Content -LiteralPath $log.Path -Tail 35 | ForEach-Object { Write-Host $_ }
+            $logsShown = $true
+        }
+    }
+
+    if (-not $logsShown) {
+        Write-Host "No startup output was written. Verify that the runtime is not blocked by antivirus or OneDrive." -ForegroundColor Yellow
+    }
+    Write-Host ""
+    Write-Host "Full logs:"
+    Write-Host "  $StderrPath"
+    Write-Host "  $StdoutPath"
+}
+
 function Wait-For {
     param(
         [scriptblock]$Check,
         [int]$Seconds,
-        [string]$Name
+        [string]$Name,
+        [System.Diagnostics.Process]$Process,
+        [string]$StdoutPath,
+        [string]$StderrPath
     )
 
     $deadline = (Get-Date).AddSeconds($Seconds)
@@ -246,45 +272,37 @@ function Wait-For {
         if (& $Check) {
             return
         }
+
+        if ($Process) {
+            $Process.Refresh()
+            if ($Process.HasExited) {
+                $Process.WaitForExit()
+                $exitCode = if ($null -ne $Process.ExitCode) { $Process.ExitCode } else { "unknown" }
+                Show-StartupLogs -Name $Name -StdoutPath $StdoutPath -StderrPath $StderrPath
+                throw "$Name stopped during startup with exit code $exitCode."
+            }
+        }
         Start-Sleep -Milliseconds 500
     }
 
-    throw "$Name did not become ready within $Seconds seconds."
+    Show-StartupLogs -Name $Name -StdoutPath $StdoutPath -StderrPath $StderrPath
+    throw "$Name is still not ready after $Seconds seconds. Its process is still running; check the logs above for a slow or blocked startup."
 }
 
 function Ensure-BackendEnvironment {
-    $venvDir = Join-Path $BackendDir "venv"
     $python = Join-Path $BackendDir "venv\Scripts\python.exe"
-
-    if (Test-Path $python) {
-        $venvVersion = $null
-        $previousErrorActionPreference = $ErrorActionPreference
-        $ErrorActionPreference = "Continue"
-        try {
-            $versionOutput = & $python --version 2>&1
-            if ($LASTEXITCODE -eq 0) {
-                $venvVersion = Get-RuntimeVersion ([string]$versionOutput)
-            }
-        }
-        catch {
-            $venvVersion = $null
-        }
-        finally {
-            $ErrorActionPreference = $previousErrorActionPreference
-        }
-
-        if (-not (Test-SupportedPythonVersion $venvVersion)) {
-            Write-Host "The existing backend virtual environment is invalid or uses unsupported Python. Recreating it..."
-            Remove-Item -LiteralPath $venvDir -Recurse -Force
-        }
-    }
+    $requirements = Join-Path $BackendDir "requirements.txt"
+    $requirementsStamp = Join-Path $BackendDir "venv\.requirements.sha256"
 
     if (-not (Test-Path $python)) {
         $systemPython = Get-SystemPython
-        Write-Host "Creating backend virtual environment with Python $($systemPython.Version)..."
+        Write-Host "Creating backend virtual environment..."
         Push-Location $BackendDir
         try {
             & $systemPython.Exe @($systemPython.PrefixArgs + @("-m", "venv", "venv"))
+            if ($LASTEXITCODE -ne 0) {
+                throw "Python could not create the backend virtual environment (exit code $LASTEXITCODE)."
+            }
         }
         finally {
             Pop-Location
@@ -293,27 +311,27 @@ function Ensure-BackendEnvironment {
 
     $previousErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-<<<<<<< Updated upstream
-    & $python -c "import fastapi, uvicorn, sqlalchemy, pandas, openpyxl, ortools" *> $null
-=======
-    & $python -c "import fastapi, uvicorn, sqlalchemy, pandas, openpyxl, ortools, multipart, reportlab" *> $null
->>>>>>> Stashed changes
+    & $python -c "import fastapi, uvicorn, sqlalchemy, pandas, openpyxl, ortools, multipart, reportlab, httpx" *> $null
     $dependencyProbeExitCode = $LASTEXITCODE
     $ErrorActionPreference = $previousErrorActionPreference
 
-    if ($dependencyProbeExitCode -ne 0) {
-        Write-Host "Installing backend dependencies..."
+    $requirementsHash = (Get-FileHash -LiteralPath $requirements -Algorithm SHA256).Hash
+    $installedHash = if (Test-Path $requirementsStamp) {
+        (Get-Content -LiteralPath $requirementsStamp -Raw).Trim()
+    }
+    else {
+        ""
+    }
+
+    if ($dependencyProbeExitCode -ne 0 -or $installedHash -ne $requirementsHash) {
+        Write-Host "Synchronizing backend dependencies..."
         Push-Location $BackendDir
         try {
-<<<<<<< Updated upstream
             & $python -m pip install -r requirements.txt | Out-Host
-=======
-            & $python -m pip install --require-hashes -r requirements.txt | Out-Host
             if ($LASTEXITCODE -ne 0) {
                 throw "Backend dependency installation failed (exit code $LASTEXITCODE). Check the pip error above."
             }
             Set-Content -LiteralPath $requirementsStamp -Value $requirementsHash -Encoding ASCII
->>>>>>> Stashed changes
         }
         finally {
             Pop-Location
@@ -323,48 +341,102 @@ function Ensure-BackendEnvironment {
     return $python
 }
 
+function Repair-CorruptBackendDatabases {
+    param([string]$Python)
+
+    for ($port = $BackendStartPort; $port -le $BackendStartPort + 30; $port++) {
+        if (Test-BackendAt "http://${HostName}:$port") {
+            return
+        }
+    }
+
+    $dataDir = Join-Path $BackendDir "data"
+    $databaseFiles = @(Get-ChildItem -LiteralPath $dataDir -Filter "*.db" -File -ErrorAction SilentlyContinue)
+    if ($databaseFiles.Count -eq 0) {
+        return
+    }
+
+    $integrityProbe = @'
+import sqlite3
+import sys
+from pathlib import Path
+
+bad = []
+for path in sorted(Path(sys.argv[2]).glob("*.db")):
+    try:
+        connection = sqlite3.connect(path)
+        try:
+            result = connection.execute("PRAGMA integrity_check").fetchone()
+        finally:
+            connection.close()
+        if not result or result[0].lower() != "ok":
+            bad.append(f"{path.name}: {result[0] if result else 'no result'}")
+    except sqlite3.DatabaseError as exc:
+        message = str(exc)
+        if "malformed" in message.lower() or "not a database" in message.lower():
+            bad.append(f"{path.name}: {message}")
+    except OSError:
+        # A running process, antivirus, or sync client may temporarily hold a
+        # file. Access problems are not evidence that its contents are corrupt.
+        continue
+
+if bad:
+    print("\n".join(bad))
+    raise SystemExit(2)
+'@
+    $integrityProbeEncoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($integrityProbe))
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $probeOutput = @(& $Python -c "import base64,sys;exec(base64.b64decode(sys.argv[1]))" $integrityProbeEncoded $dataDir 2>&1)
+    $probeExitCode = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorActionPreference
+    if ($probeExitCode -eq 0) {
+        return
+    }
+    if ($probeExitCode -ne 2) {
+        $details = ($probeOutput | Out-String).Trim()
+        throw "Unable to verify the backend databases (exit code $probeExitCode). No data was changed.`n$details"
+    }
+
+    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $backupDir = Join-Path $BackendDir "database-backups\corrupt-$timestamp"
+    New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+
+    $databaseArtifacts = @(Get-ChildItem -LiteralPath $dataDir -File | Where-Object {
+        $_.Name -match "\.db($|-shm$|-wal$|-journal$)"
+    })
+    foreach ($artifact in $databaseArtifacts) {
+        Move-Item -LiteralPath $artifact.FullName -Destination $backupDir
+    }
+
+    Write-Host "Corrupt SQLite data was detected:" -ForegroundColor Yellow
+    $probeOutput | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
+    Write-Host "The complete database set was preserved at:" -ForegroundColor Yellow
+    Write-Host "  $backupDir" -ForegroundColor Yellow
+    Write-Host "Starting with a clean database set..." -ForegroundColor Yellow
+}
+
 function Ensure-FrontendEnvironment {
     Assert-NodeRuntime
     $npm = Get-NpmCommand
     $nodeModules = Join-Path $FrontendDir "node_modules"
-    $lockFile = Join-Path $FrontendDir "package-lock.json"
-    $lockStamp = Join-Path $nodeModules ".package-lock.sha256"
-    $lockHash = if (Test-Path $lockFile) {
-        (Get-FileHash -LiteralPath $lockFile -Algorithm SHA256).Hash
-    }
-    else {
-        ""
-    }
-    $installedHash = if (Test-Path $lockStamp) {
-        (Get-Content -LiteralPath $lockStamp -Raw).Trim()
-    }
-    else {
-        ""
-    }
 
-    if (-not (Test-Path $nodeModules) -or $installedHash -ne $lockHash) {
-        Write-Host "Synchronizing frontend dependencies..."
+    if (-not (Test-Path $nodeModules)) {
+        Write-Host "Installing frontend dependencies..."
         Push-Location $FrontendDir
         try {
-            if (Test-Path $lockFile) {
+            if (Test-Path (Join-Path $FrontendDir "package-lock.json")) {
                 & $npm ci | Out-Host
             }
             else {
                 & $npm install | Out-Host
-            }
-            if ($LASTEXITCODE -ne 0) {
-                throw "Frontend dependency installation failed (exit code $LASTEXITCODE). Check the npm error above."
-            }
-            if ($lockHash) {
-                Set-Content -LiteralPath $lockStamp -Value $lockHash -Encoding ASCII
             }
         }
         finally {
             Pop-Location
         }
     }
-
-    return $npm
 }
 
 function Start-Backend {
@@ -382,20 +454,23 @@ function Start-Backend {
     Write-Host "Starting backend at $BackendUrl..."
     $stdout = Join-Path $BackendDir "quicklaunch-backend-$BackendPort.out.log"
     $stderr = Join-Path $BackendDir "quicklaunch-backend-$BackendPort.err.log"
-    Start-Process `
+    $process = Start-Process `
         -FilePath $Python `
-        -ArgumentList @("-m", "uvicorn", "app.main:app", "--reload", "--host", $HostName, "--port", "$BackendPort") `
+        -ArgumentList @(
+            "-m", "uvicorn", "app.main:app",
+            "--host", $HostName,
+            "--port", "$BackendPort"
+        ) `
         -WorkingDirectory $BackendDir `
         -RedirectStandardOutput $stdout `
         -RedirectStandardError $stderr `
-        -WindowStyle Hidden
+        -WindowStyle Hidden `
+        -PassThru
 
-    Wait-For -Check { Test-Backend } -Seconds 45 -Name "Backend"
+    Wait-For -Check { Test-Backend } -Seconds 120 -Name "Backend" -Process $process -StdoutPath $stdout -StderrPath $stderr
 }
 
 function Start-Frontend {
-    param([string]$NpmCommand)
-
     if (Test-FrontendAt $FrontendUrl) {
         Write-Host "Frontend already running at $FrontendUrl"
         return
@@ -408,33 +483,34 @@ function Start-Frontend {
     Write-Host "Starting frontend at $FrontendUrl..."
     $stdout = Join-Path $FrontendDir "quicklaunch-frontend-$FrontendPort.out.log"
     $stderr = Join-Path $FrontendDir "quicklaunch-frontend-$FrontendPort.err.log"
-    $escapedNpmCommand = $NpmCommand.Replace("'", "''")
-    $command = "`$env:VITE_PROXY_TARGET = '$BackendUrl'; & '$escapedNpmCommand' run dev -- --host $HostName --port $FrontendPort --strictPort"
+    $command = "`$env:VITE_PROXY_TARGET = '$BackendUrl'; & npm.cmd run dev -- --host $HostName --port $FrontendPort --strictPort"
 
-    Start-Process `
+    $process = Start-Process `
         -FilePath "powershell.exe" `
         -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $command) `
         -WorkingDirectory $FrontendDir `
         -RedirectStandardOutput $stdout `
         -RedirectStandardError $stderr `
-        -WindowStyle Hidden
+        -WindowStyle Hidden `
+        -PassThru
 
-    Wait-For -Check { Test-FrontendAt $FrontendUrl } -Seconds 45 -Name "Frontend"
+    Wait-For -Check { Test-FrontendAt $FrontendUrl } -Seconds 90 -Name "Frontend" -Process $process -StdoutPath $stdout -StderrPath $stderr
 }
 
 $backendPython = Ensure-BackendEnvironment
-<<<<<<< Updated upstream
-Ensure-FrontendEnvironment
-=======
 Repair-CorruptBackendDatabases -Python $backendPython
-$npmCommand = Ensure-FrontendEnvironment
->>>>>>> Stashed changes
+Ensure-FrontendEnvironment
 $BackendPort = Get-BackendPort
 $FrontendPort = Get-FrontendPort
 $BackendUrl = "http://${HostName}:$BackendPort"
 $FrontendUrl = "http://${HostName}:$FrontendPort"
 Start-Backend -Python $backendPython
-Start-Frontend -NpmCommand $npmCommand
+Start-Frontend
 
-Write-Host "Opening $FrontendUrl"
-Start-Process $FrontendUrl
+if (-not $NoBrowser) {
+    Write-Host "Opening $FrontendUrl"
+    Start-Process $FrontendUrl
+}
+else {
+    Write-Host "Timetable app is ready at $FrontendUrl"
+}

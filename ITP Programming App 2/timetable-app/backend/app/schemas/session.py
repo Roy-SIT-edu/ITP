@@ -8,7 +8,6 @@ class SessionInput(BaseModel):
     programme: str | None = None
     module_code: str | None = None
     module_title: str | None = None
-    module_host_key: str | None = None
     student_group_code: str | None = None
     year: int | None = None
     exact_class_size: int | None = None

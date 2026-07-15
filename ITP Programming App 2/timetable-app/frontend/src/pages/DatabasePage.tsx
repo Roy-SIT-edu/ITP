@@ -17,7 +17,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createDatabaseRow,
   databaseCurrentInputUrl,
@@ -40,12 +40,21 @@ type SortState = {
   direction: "asc" | "desc";
 } | null;
 
+type RecordsTableOptions = {
+  className?: string;
+  emptyText?: string;
+  showNewRow?: boolean;
+};
+
+const hiddenLabEditColumns = new Set(["requirement_id", "is_active", "source_sheet", "source_row_no", "raw_programme"]);
+
 const fallbackLabels: Record<string, string> = {
   rooms: "Rooms",
   staff: "Staff",
   programmes: "Programmes",
   modules: "Modules",
   "student-groups": "Student Groups",
+  "lab-requirements": "Lab Requirements",
   "time-slots": "Time Slots",
   requirements: "Requirements",
 };
@@ -62,10 +71,6 @@ function displayValue(value: DatabaseRow[string]) {
   return String(value);
 }
 
-<<<<<<< Updated upstream
-function buildBlankDraft(columns: DatabaseColumn[]) {
-  return Object.fromEntries(
-=======
 function textValue(row: DatabaseRow, key: string) {
   const value = row[key];
   if (value === null || value === undefined || typeof value === "boolean") return "";
@@ -73,15 +78,11 @@ function textValue(row: DatabaseRow, key: string) {
 }
 
 function listFromSet(values: Set<string>) {
-  return [...values].sort((left, right) =>
-    left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" }),
-  );
+  return [...values].sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" }));
 }
 
 function labProgramme(row: DatabaseRow) {
-  return (
-    textValue(row, "programme") || textValue(row, "raw_programme") || textValue(row, "source_sheet") || "Unassigned"
-  );
+  return textValue(row, "programme") || textValue(row, "raw_programme") || textValue(row, "source_sheet") || "Unassigned";
 }
 
 function labVenue(row: DatabaseRow) {
@@ -283,9 +284,12 @@ function LabUsageOverview({
 
 function buildBlankDraft(columns: DatabaseColumn[], dataType?: string) {
   const draft: Record<string, unknown> = Object.fromEntries(
->>>>>>> Stashed changes
     columns.filter((column) => !column.read_only).map((column) => [column.key, initialValue(column)]),
   );
+  if (dataType === "student-groups" && "size" in draft) {
+    draft.size = 40;
+  }
+  return draft;
 }
 
 function compareRows(left: DatabaseRow, right: DatabaseRow, column: DatabaseColumn, direction: "asc" | "desc") {
@@ -358,9 +362,9 @@ export default function DatabasePage({ dataType }: Props) {
 
   useEffect(() => {
     if (config && adding && Object.keys(newDraft).length === 0) {
-      setNewDraft(buildBlankDraft(config.columns));
+      setNewDraft(buildBlankDraft(config.columns, dataType));
     }
-  }, [adding, config, newDraft]);
+  }, [adding, config, dataType, newDraft]);
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -394,7 +398,7 @@ export default function DatabasePage({ dataType }: Props) {
   const beginAdd = () => {
     setAdding(true);
     setEditingId(null);
-    setNewDraft(buildBlankDraft(columns));
+    setNewDraft(buildBlankDraft(columns, dataType));
     setError(null);
     setSuccess(null);
   };
@@ -504,8 +508,34 @@ export default function DatabasePage({ dataType }: Props) {
         />
       );
     }
+    if (column.options?.length) {
+      const currentValue = value === null || value === undefined ? "" : String(value);
+      const options = column.options.some((option) => option.toLowerCase() === currentValue.toLowerCase())
+        ? column.options
+        : currentValue
+          ? [currentValue, ...column.options]
+          : column.options;
+      return (
+        <select
+          required={column.required}
+          value={currentValue}
+          onChange={(event) => updateDraft(target, column.key, event.target.value)}
+        >
+          {!column.required && <option value="">Not set</option>}
+          {column.required && <option value="">Select {column.label}</option>}
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      );
+    }
     return (
       <input
+        max={column.kind === "number" ? column.max_value : undefined}
+        maxLength={column.kind === "text" ? column.max_length : undefined}
+        min={column.kind === "number" ? column.min_value : undefined}
         required={column.required}
         type={column.kind === "number" ? "number" : column.kind === "time" ? "time" : "text"}
         value={value === null || value === undefined ? "" : String(value)}
@@ -516,8 +546,6 @@ export default function DatabasePage({ dataType }: Props) {
     );
   };
 
-<<<<<<< Updated upstream
-=======
   const renderRecordsTable = (tableRows: DatabaseRow[], options: RecordsTableOptions = {}) => {
     const showNewRow = Boolean(options.showNewRow);
     return (
@@ -687,12 +715,7 @@ export default function DatabasePage({ dataType }: Props) {
                         <button className="button slim" disabled={busy} title="Save" type="submit">
                           <Save size={14} />
                         </button>
-                        <button
-                          className="button secondary slim"
-                          title="Cancel"
-                          type="button"
-                          onClick={() => setAdding(false)}
-                        >
+                        <button className="button secondary slim" title="Cancel" type="button" onClick={() => setAdding(false)}>
                           <X size={14} />
                         </button>
                       </div>
@@ -741,20 +764,10 @@ export default function DatabasePage({ dataType }: Props) {
                 <tr key={row.id}>
                   <td>
                     <div className="row-actions">
-                      <button
-                        className="button secondary slim"
-                        title="Edit"
-                        type="button"
-                        onClick={() => beginEdit(row)}
-                      >
+                      <button className="button secondary slim" title="Edit" type="button" onClick={() => beginEdit(row)}>
                         <Edit2 size={14} />
                       </button>
-                      <button
-                        className="button danger slim"
-                        title="Delete"
-                        type="button"
-                        onClick={() => removeRow(row)}
-                      >
+                      <button className="button danger slim" title="Delete" type="button" onClick={() => removeRow(row)}>
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -801,7 +814,6 @@ export default function DatabasePage({ dataType }: Props) {
     );
   };
 
->>>>>>> Stashed changes
   return (
     <div className="page database-page">
       <div className="page-header">
@@ -892,126 +904,15 @@ export default function DatabasePage({ dataType }: Props) {
           <span className="muted">{filteredRows.length} rows</span>
         </div>
 
-<<<<<<< Updated upstream
-        <div className="table-wrap database-table">
-          <table>
-            <thead>
-              <tr>
-                <th className="action-col">Actions</th>
-                {columns.map((column) => (
-                  <th key={column.key}>
-                    <button
-                      aria-label={`Sort by ${column.label}`}
-                      aria-pressed={sort?.key === column.key}
-                      className="table-sort-button"
-                      onClick={() => toggleSort(column)}
-                      type="button"
-                    >
-                      <span>{column.label}</span>
-                      {sort?.key === column.key ? (
-                        sort.direction === "asc" ? (
-                          <ArrowUp size={13} />
-                        ) : (
-                          <ArrowDown size={13} />
-                        )
-                      ) : (
-                        <ArrowUpDown size={13} />
-                      )}
-                    </button>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {adding && (
-                <tr>
-                  <td className="action-cell">
-                    <form className="row-actions" id="new-database-row" onSubmit={saveNew}>
-                      <button className="button slim" disabled={busy} title="Save" type="submit">
-                        <Save size={14} />
-                      </button>
-                      <button
-                        className="button secondary slim"
-                        title="Cancel"
-                        type="button"
-                        onClick={() => setAdding(false)}
-                      >
-                        <X size={14} />
-                      </button>
-                    </form>
-                  </td>
-                  {columns.map((column) => (
-                    <td key={column.key}>{column.read_only ? "" : fieldInput(column, newDraft[column.key], "new")}</td>
-                  ))}
-                </tr>
-              )}
-              {filteredRows.map((row) => {
-                const editing = editingId === row.id;
-                return (
-                  <tr key={row.id}>
-                    <td className="action-cell">
-                      {editing ? (
-                        <form className="row-actions" onSubmit={saveEdit}>
-                          <button className="button slim" disabled={busy} title="Save" type="submit">
-                            <Save size={14} />
-                          </button>
-                          <button
-                            className="button secondary slim"
-                            title="Cancel"
-                            type="button"
-                            onClick={() => setEditingId(null)}
-                          >
-                            <X size={14} />
-                          </button>
-                        </form>
-                      ) : (
-                        <div className="row-actions">
-                          <button
-                            className="button secondary slim"
-                            title="Edit"
-                            type="button"
-                            onClick={() => beginEdit(row)}
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button
-                            className="button danger slim"
-                            title="Delete"
-                            type="button"
-                            onClick={() => removeRow(row)}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                    {columns.map((column) => (
-                      <td key={column.key}>
-                        {editing && !column.read_only
-                          ? fieldInput(column, draft[column.key], "edit")
-                          : displayValue(row[column.key])}
-                      </td>
-                    ))}
-                  </tr>
-                );
-              })}
-              {!loading && filteredRows.length === 0 && !adding && (
-                <tr>
-                  <td className="table-empty-cell" colSpan={columns.length + 1}>
-                    No rows found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-=======
         {dataType === "lab-requirements" ? (
-          <LabUsageOverview adding={adding} rows={filteredRows} renderLabRecords={renderLabRecords} />
+          <LabUsageOverview
+            adding={adding}
+            rows={filteredRows}
+            renderLabRecords={renderLabRecords}
+          />
         ) : (
           renderRecordsTable(filteredRows, { showNewRow: adding })
         )}
->>>>>>> Stashed changes
       </section>
     </div>
   );

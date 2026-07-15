@@ -50,8 +50,7 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
 
   const latest = dashboard?.latest_schedule ?? null;
   const hasImport = (dashboard?.imported_rows ?? 0) > 0;
-  const validationClear = hasImport && dashboard?.validation.is_valid;
-  const validationRan = hasImport;
+
   const generationRan = !!latest;
   const generationClear = !!latest && latest.status !== "FAILED";
   const success = !!latest && latest.status === "COMPLETED" && latest.hard_violation_count === 0;
@@ -65,24 +64,12 @@ export default function WorkflowProgress({ route, onNavigate }: Props) {
       locked: false,
     },
     {
-      id: "validation",
-      step: 2,
-      label: "Validate Data",
-      detail: validationRan
-        ? validationClear
-          ? "Checks clear"
-          : `${dashboard?.validation.error_count ?? 0} errors`
-        : "Not run",
-      state: validationClear ? "complete" : validationRan ? "attention" : "pending",
-      locked: !hasImport,
-    },
-    {
       id: "soft-constraints",
-      step: 3,
-      label: "Priorities & Generate",
-      detail: validationClear ? (generationRan ? "Generated" : "Ready to generate") : "Validate first",
-      state: generationRan ? "complete" : validationClear ? "ready" : validationRan ? "attention" : "pending",
-      locked: !validationClear,
+      step: 2,
+      label: "Generate Timetable",
+      detail: hasImport ? (generationRan ? "Generated" : "Ready to generate") : "Import data first",
+      state: generationRan ? "complete" : hasImport ? "ready" : "pending",
+      locked: !hasImport,
     },
     {
       id: "review",

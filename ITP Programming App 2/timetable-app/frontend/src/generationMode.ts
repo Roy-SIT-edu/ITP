@@ -20,7 +20,7 @@ export function getGenerationMode(): GenerationMode {
 }
 
 export function generationModeLabel(mode: GenerationMode) {
-  return mode === "reproducible" ? "Standard" : "Fast";
+  return mode === "reproducible" ? "Reproducible" : "Standard";
 }
 
 function getGenerationRuntimeHistory(): GenerationRuntimeHistory {

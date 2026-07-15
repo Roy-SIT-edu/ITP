@@ -6,7 +6,6 @@ import re
 
 from app.models.constraint_violation import ConstraintViolation
 from app.models.room import Room
-from app.models.schedule_run import ScheduleRun
 from app.models.scheduled_session import ScheduledSession
 from app.models.student_group import StudentGroup
 from app.models.time_slot import TimeSlot
@@ -23,54 +22,6 @@ from sqlalchemy.orm import Session as DbSession
 
 
 class QuickFixService:
-    def availability(self, db: DbSession, schedule_run_id: int) -> dict:
-        run = db.query(ScheduleRun).filter_by(id=schedule_run_id).first()
-        if run is None:
-            raise ValueError("Schedule run not found.")
-
-        scheduled = (
-            db.query(ScheduledSession)
-            .filter(
-                ScheduledSession.schedule_run_id == schedule_run_id,
-                ScheduledSession.included_in_final.is_(True),
-            )
-            .order_by(ScheduledSession.day, ScheduledSession.start_time)
-            .all()
-        )
-        violations = db.query(ConstraintViolation).filter_by(schedule_run_id=schedule_run_id).all()
-        affected_session_ids = {
-            int(value.strip()) for violation in violations for value in (violation.affected_session_ids or "").split(",") if value.strip()
-        }
-        targets = {item.session_id: item for item in scheduled if item.session_id in affected_session_ids}
-        rooms = db.query(Room).order_by(Room.room_code).all()
-        groups = db.query(StudentGroup).order_by(StudentGroup.group_code).all()
-        slots = db.query(TimeSlot).order_by(TimeSlot.day, TimeSlot.start_time).all()
-        group_ids_by_code = {group.group_code.lower(): group.id for group in groups}
-
-        by_session_id = {
-            str(session_id): self._has_clean_suggestion(
-                target,
-                scheduled,
-                rooms,
-                slots,
-                group_ids_by_code,
-            )
-            for session_id, target in targets.items()
-        }
-        for session_id in affected_session_ids:
-            by_session_id.setdefault(str(session_id), False)
-
-        by_conflict_id = {}
-        for violation in violations:
-            target_session_id = self._first_affected_session_id(violation)
-            by_conflict_id[str(violation.id)] = bool(target_session_id is not None and by_session_id.get(str(target_session_id), False))
-
-        return {
-            "schedule_run_id": schedule_run_id,
-            "by_session_id": by_session_id,
-            "by_conflict_id": by_conflict_id,
-        }
-
     def suggest_fixes(
         self,
         db: DbSession,
@@ -85,10 +36,7 @@ class QuickFixService:
 
         scheduled = (
             db.query(ScheduledSession)
-            .filter(
-                ScheduledSession.schedule_run_id == schedule_run_id,
-                ScheduledSession.included_in_final.is_(True),
-            )
+            .filter_by(schedule_run_id=schedule_run_id)
             .order_by(ScheduledSession.day, ScheduledSession.start_time)
             .all()
         )
@@ -157,27 +105,10 @@ class QuickFixService:
                 if len(selected) == 3:
                     break
 
-        return [self._serialize_suggestion(target, suggestion_type, room, slot) for suggestion_type, _, room, slot in selected]
-
-    def _has_clean_suggestion(
-        self,
-        target: ScheduledSession,
-        scheduled: list[ScheduledSession],
-        rooms: list[Room],
-        slots: list[TimeSlot],
-        group_ids_by_code: dict[str, int],
-    ) -> bool:
-        if target.session and target.session.is_lab_requirement:
-            return False
-        for room in rooms:
-            if not candidate_room_allowed(target.session, room):
-                continue
-            for slot in slots:
-                if not self._slot_allowed(target, slot) or self._same_placement(target, room, slot):
-                    continue
-                if self._placement_is_clean(target, room, slot, scheduled, group_ids_by_code):
-                    return True
-        return False
+        return [
+            self._serialize_suggestion(target, suggestion_type, room, slot)
+            for suggestion_type, _, room, slot in selected
+        ]
 
     def _violation(self, db: DbSession, schedule_run_id: int, conflict_id: int) -> ConstraintViolation:
         violation = db.query(ConstraintViolation).filter_by(id=conflict_id, schedule_run_id=schedule_run_id).first()
@@ -303,7 +234,9 @@ class QuickFixService:
 
     def _session_staff_ids(self, item: ScheduledSession) -> list[int]:
         ids = [
-            assignment.staff_id for assignment in getattr(item.session, "staff_assignments", []) or [] if assignment.staff_id is not None
+            assignment.staff_id
+            for assignment in getattr(item.session, "staff_assignments", []) or []
+            if assignment.staff_id is not None
         ]
         if not ids and item.staff_id is not None:
             ids.append(item.staff_id)

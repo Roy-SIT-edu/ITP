@@ -10,8 +10,9 @@ import DashboardPage from "./pages/DashboardPage";
 import ExportPage from "./pages/ExportPage";
 import TimetableReviewPage from "./pages/TimetableReviewPage";
 import UploadPage from "./pages/UploadPage";
-import ValidationPage from "./pages/ValidationPage";
 import SoftConstraintsPage from "./pages/SoftConstraintsPage";
+import SettingsPage from "./pages/SettingsPage";
+import RunReportPage from "./pages/RunReportPage";
 
 const routeMap = {
   dashboard: DashboardPage,
@@ -20,10 +21,13 @@ const routeMap = {
   "database-staff": () => <DatabasePage dataType="staff" />,
   "database-programmes": () => <DatabasePage dataType="programmes" />,
   "database-modules": () => <DatabasePage dataType="modules" />,
-  validation: ValidationPage,
+  "database-student-groups": () => <DatabasePage dataType="student-groups" />,
+  "database-lab-requirements": () => <DatabasePage dataType="lab-requirements" />,
   "soft-constraints": SoftConstraintsPage,
   review: TimetableReviewPage,
   export: ExportPage,
+  settings: SettingsPage,
+  "run-report": RunReportPage,
 };
 
 type RouteKey = keyof typeof routeMap;
@@ -40,6 +44,11 @@ function currentRoute(): RouteKey {
     window.history.replaceState(null, "", "#soft-constraints");
     return "soft-constraints";
   }
+  if (hash === "validation") {
+    window.history.replaceState(null, "", "#soft-constraints");
+    return "soft-constraints";
+  }
+  if (hash.startsWith("run-report/")) return "run-report";
   return hash in routeMap ? (hash as RouteKey) : "dashboard";
 }
 
@@ -58,6 +67,8 @@ export default function App() {
       setRoute(nextRoute as RouteKey);
     }
   };
+
+  if (route === "run-report") return <Page />;
 
   return (
     <Layout route={route} onNavigate={navigate}>

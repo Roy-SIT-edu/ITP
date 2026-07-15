@@ -1,11 +1,13 @@
-import { ArrowDown, ArrowUp, ChevronDown, Play, RefreshCw, Save, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, Clock3, Play, RefreshCw, Save, Search } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import StatusBadge from "./StatusBadge";
+import { formatGenerationDuration, generationModeLabel, type GenerationMode } from "../generationMode";
 import type { ScheduleGenerateResult, SessionRow, SoftConstraintPriority } from "../types";
 
 export type RankedSoftPriority = SoftConstraintPriority & {
   rank: number;
   weight: number;
+  isActive: boolean;
 };
 
 export type SoftPreferenceHint = {
@@ -30,36 +32,22 @@ const preferenceFilters: { tone: PreferenceFilter; label: string }[] = [
 ];
 
 export function GenerationReadinessPanel({
-  canGenerate,
-  dirty,
-  generating,
-  generationResult,
-  hasHardErrors,
+  importedRowCount,
   priorityCount,
   readinessText,
-  saving,
   softRowCount,
-  validationLoaded,
   warningCount,
-  onGenerate,
 }: {
-  canGenerate: boolean;
-  dirty: boolean;
-  generating: boolean;
-  generationResult: ScheduleGenerateResult | null;
-  hasHardErrors: boolean;
+  importedRowCount?: number;
   priorityCount: number;
   readinessText: string;
-  saving: boolean;
   softRowCount: number;
-  validationLoaded: boolean;
   warningCount: number;
-  onGenerate: () => void;
 }) {
-  const blocked = hasHardErrors || !validationLoaded;
+  const blocked = importedRowCount === 0;
 
   return (
-    <section className="status-card generation-panel">
+    <section className="status-card generation-panel generation-panel-readiness">
       <div className="generation-copy">
         <div className="status-card-title">Generation Readiness</div>
         <div className="status-row">
@@ -67,6 +55,11 @@ export function GenerationReadinessPanel({
           <span>{readinessText}</span>
         </div>
         <div className="soft-summary-row">
+          {typeof importedRowCount === "number" && (
+            <span>
+              <strong>{importedRowCount}</strong> imported rows
+            </span>
+          )}
           <span>
             <strong>{priorityCount}</strong> priorities
           </span>
@@ -78,26 +71,109 @@ export function GenerationReadinessPanel({
           </span>
         </div>
       </div>
+    </section>
+  );
+}
+
+export function GenerationActionPanel({
+  canGenerate,
+  completing,
+  dirty,
+  elapsedSeconds,
+  estimatedSeconds,
+  generating,
+  generationResult,
+  generationMode,
+  saving,
+  onGenerate,
+}: {
+  canGenerate: boolean;
+  completing: boolean;
+  dirty: boolean;
+  elapsedSeconds: number;
+  estimatedSeconds: number;
+  generating: boolean;
+  generationResult: ScheduleGenerateResult | null;
+  generationMode: GenerationMode;
+  saving: boolean;
+  onGenerate: () => void;
+}) {
+  const estimatedProgress =
+    estimatedSeconds > 0 ? Math.min(90, Math.max(4, Math.round((elapsedSeconds / estimatedSeconds) * 90))) : 0;
+  const progress = completing ? 100 : generating && estimatedSeconds > 0 ? estimatedProgress : 0;
+  const estimatedRemaining = Math.max(0, estimatedSeconds - elapsedSeconds);
+  const stalled = generating && !completing && estimatedRemaining === 0;
+
+  return (
+    <section className="status-card generation-panel">
+      <div className="generation-copy">
+        <div className="status-card-title">Run Timetable Generation</div>
+        <div className="status-row">
+          <StatusBadge label={generationModeLabel(generationMode)} tone="info" />
+        </div>
+      </div>
       <div className="generation-actions">
         <button className="button large" disabled={!canGenerate || generating || saving} onClick={onGenerate}>
-          {generating ? <RefreshCw className="spin" size={18} /> : <Play size={18} />}
-          {generating ? "Running Solver" : "Generate Timetable"}
+          {generating ? <RefreshCw className={completing ? "" : "spin"} size={18} /> : <Play size={18} />}
+          {completing ? "Finalising" : generating ? "Running Solver" : "Generate Timetable"}
         </button>
         {dirty && <span className="muted">Unsaved ranking will be saved first.</span>}
       </div>
+      {generating && estimatedSeconds > 0 && (
+        <div className="solver-progress" aria-live="polite">
+          <div className="solver-progress-heading">
+            <span>
+              <Clock3 size={16} />
+              <strong>{formatGenerationDuration(elapsedSeconds)}</strong> elapsed
+            </span>
+            <span>
+              {completing
+                ? "Schedule generated"
+                : estimatedRemaining > 0
+                  ? `About ${formatGenerationDuration(estimatedRemaining)} remaining`
+                  : "Still solving"}
+            </span>
+          </div>
+          <div
+            aria-label="Estimated timetable generation progress"
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={progress}
+            className="solver-progress-track"
+            role="progressbar"
+          >
+            <span
+              className={`solver-progress-fill ${stalled ? "stalled" : ""} ${completing ? "completing" : ""}`}
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <p>Estimated progress {progress}%</p>
+        </div>
+      )}
       {generationResult && (
         <div className="result-strip">
+          {generationResult.quality && (
+            <span title={generationResult.quality.summary}>
+              Quality <strong>{generationResult.quality.score}/100</strong> {generationResult.quality.label}
+            </span>
+          )}
           <span>
             Run <strong>{generationResult.schedule_run_id}</strong>
           </span>
           <span>
             Solver <strong>{generationResult.solver_status}</strong>
           </span>
+          {typeof generationResult.generation_seconds === "number" && (
+            <span>
+              Runtime <strong>{formatGenerationDuration(generationResult.generation_seconds)}</strong>
+            </span>
+          )}
           <span>
             Hard <strong>{generationResult.hard_violation_count}</strong>
           </span>
           <span>
-            Soft <strong>{generationResult.soft_score}</strong>
+            Soft Warnings{" "}
+            <strong>{generationResult.quality?.soft_warning_count ?? generationResult.soft_warning_count ?? 0}</strong>
           </span>
         </div>
       )}
@@ -112,6 +188,7 @@ export function PriorityRanking({
   saving,
   onMove,
   onSave,
+  onToggle,
 }: {
   dirty: boolean;
   generating: boolean;
@@ -119,9 +196,11 @@ export function PriorityRanking({
   saving: boolean;
   onMove: (index: number, direction: -1 | 1) => void;
   onSave: () => void;
+  onToggle: (constraintCode: string, isActive: boolean) => void;
 }) {
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
   const previousRects = useRef(new Map<string, DOMRect>());
+  const activeCount = priorities.filter((item) => item.isActive).length;
 
   const setRowRef = (code: string) => (element: HTMLDivElement | null) => {
     if (element) {
@@ -140,6 +219,11 @@ export function PriorityRanking({
   const moveWithAnimation = (index: number, direction: -1 | 1) => {
     captureRowPositions();
     onMove(index, direction);
+  };
+
+  const toggleWithAnimation = (constraintCode: string, isActive: boolean) => {
+    captureRowPositions();
+    onToggle(constraintCode, isActive);
   };
 
   useLayoutEffect(() => {
@@ -187,43 +271,73 @@ export function PriorityRanking({
         <div className="empty-state">No soft constraints are available.</div>
       ) : (
         <div className="priority-list">
-          {priorities.map((item, index) => (
-            <div className="priority-row" key={item.constraint_code} ref={setRowRef(item.constraint_code)}>
-              <div className="priority-rank">
-                <span>Rank</span>
-                <strong>{item.rank}</strong>
+          {priorities.map((item, index) => {
+            const isActive = item.isActive;
+            return (
+              <div
+                className={`priority-row ${isActive ? "active" : "inactive"}`}
+                key={item.constraint_code}
+                ref={setRowRef(item.constraint_code)}
+              >
+                <div className="priority-rank">
+                  {isActive ? (
+                    <>
+                      <span>Rank</span>
+                      <strong>{item.rank}</strong>
+                    </>
+                  ) : (
+                    <StatusBadge label="Inactive" tone="neutral" />
+                  )}
+                </div>
+                <div className="priority-main">
+                  <strong>{item.label}</strong>
+                  <span>{item.description}</span>
+                  <small>{item.constraint_code}</small>
+                </div>
+                <div className="priority-weight" aria-hidden="true">
+                  <span>Weight</span>
+                  <strong className="priority-weight-value" aria-hidden="true">
+                    {item.weight}
+                  </strong>
+                </div>
+                <div className="priority-controls">
+                  <label
+                    className={`priority-switch ${saving || generating ? "disabled" : ""}`}
+                    title={`${isActive ? "Disable" : "Enable"} ${item.label}`}
+                  >
+                    <input
+                      checked={isActive}
+                      disabled={saving || generating}
+                      type="checkbox"
+                      onChange={(event) => toggleWithAnimation(item.constraint_code, event.target.checked)}
+                    />
+                    <span className="priority-switch-track" aria-hidden="true">
+                      <span className="priority-switch-thumb" />
+                    </span>
+                    <span className="priority-switch-label">{isActive ? "Active" : "Off"}</span>
+                  </label>
+                  <button
+                    className="button secondary slim"
+                    type="button"
+                    title={`Move ${item.label} up`}
+                    disabled={!isActive || index === 0 || saving || generating}
+                    onClick={() => moveWithAnimation(index, -1)}
+                  >
+                    <ArrowUp size={14} />
+                  </button>
+                  <button
+                    className="button secondary slim"
+                    type="button"
+                    title={`Move ${item.label} down`}
+                    disabled={!isActive || index >= activeCount - 1 || saving || generating}
+                    onClick={() => moveWithAnimation(index, 1)}
+                  >
+                    <ArrowDown size={14} />
+                  </button>
+                </div>
               </div>
-              <div className="priority-main">
-                <strong>{item.label}</strong>
-                <span>{item.description}</span>
-                <small>{item.constraint_code}</small>
-              </div>
-              <div className="priority-weight">
-                <span>Weight</span>
-                <strong>{item.weight}</strong>
-              </div>
-              <div className="priority-controls">
-                <button
-                  className="button secondary slim"
-                  type="button"
-                  title={`Move ${item.label} up`}
-                  disabled={index === 0 || saving || generating}
-                  onClick={() => moveWithAnimation(index, -1)}
-                >
-                  <ArrowUp size={14} />
-                </button>
-                <button
-                  className="button secondary slim"
-                  type="button"
-                  title={`Move ${item.label} down`}
-                  disabled={index === priorities.length - 1 || saving || generating}
-                  onClick={() => moveWithAnimation(index, 1)}
-                >
-                  <ArrowDown size={14} />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>

@@ -12,7 +12,6 @@ class Staff(Base):
     id = Column(Integer, primary_key=True, index=True)
     staff_name = Column(String, nullable=True, index=True)
     staff_id = Column(String, unique=True, nullable=True, index=True)
-    staff_host_key = Column(String, nullable=True)
 
     sessions = relationship("Session", back_populates="staff")
     session_assignments = relationship("SessionStaff", back_populates="staff")

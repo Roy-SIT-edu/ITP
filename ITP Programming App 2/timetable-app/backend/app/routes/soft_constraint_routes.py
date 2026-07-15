@@ -12,6 +12,7 @@ router = APIRouter(prefix="/api/soft-constraints", tags=["soft-constraints"])
 
 class SoftConstraintPriorityInput(BaseModel):
     ordered_codes: list[str]
+    active_codes: list[str] | None = None
 
 
 @router.get("")
@@ -22,6 +23,6 @@ def soft_constraint_priorities(db: DbSession = Depends(get_db)):
 @router.put("")
 def update_soft_constraint_priorities(data: SoftConstraintPriorityInput, db: DbSession = Depends(get_db)):
     try:
-        return SoftConstraintPriorityService().update_priorities(db, data.ordered_codes)
+        return SoftConstraintPriorityService().update_priorities(db, data.ordered_codes, data.active_codes)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

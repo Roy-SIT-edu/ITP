@@ -1,6 +1,6 @@
 """SQLAlchemy model for solver assignments of sessions to rooms and slots."""
 
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String
+from sqlalchemy import Column, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -19,7 +19,6 @@ class ScheduledSession(Base):
     start_time = Column(String, nullable=False)
     end_time = Column(String, nullable=False)
     week_pattern = Column(String, nullable=False)
-    included_in_final = Column(Boolean, nullable=False, default=True)
 
     schedule_run = relationship("ScheduleRun", back_populates="scheduled_sessions")
     session = relationship("Session", back_populates="scheduled_sessions")

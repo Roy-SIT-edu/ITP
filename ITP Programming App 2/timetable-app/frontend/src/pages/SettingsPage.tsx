@@ -147,8 +147,8 @@ export default function SettingsPage() {
               <Gauge size={20} />
             </span>
             <span>
-              <strong>Fast</strong>
-              <small>Generates faster, but results may vary between runs.</small>
+              <strong>Standard</strong>
+              <small>Faster parallel search. Results can vary slightly between runs.</small>
             </span>
           </button>
           <button
@@ -161,11 +161,15 @@ export default function SettingsPage() {
               <Repeat2 size={20} />
             </span>
             <span>
-              <strong>Standard</strong>
-              <small>Takes longer, but gives the same result from the same inputs.</small>
+              <strong>Reproducible</strong>
+              <small>Fixed single-worker search for more consistent results from the same inputs.</small>
             </span>
           </button>
         </div>
+        <p className="generation-mode-note">
+          Reproducible mode usually takes 1–3 minutes on a large timetable and now has a five-minute solver budget. The
+          Generate Timetable page shows live elapsed and estimated remaining time.
+        </p>
       </section>
 
       <PriorityRanking

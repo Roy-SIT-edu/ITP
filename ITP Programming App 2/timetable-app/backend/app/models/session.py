@@ -42,6 +42,10 @@ class Session(Base):
     remarks = Column(Text, nullable=True)
     source_file = Column(String, nullable=True)
     source_row_no = Column(Integer, nullable=True)
+    required_room_codes = Column(Text, nullable=True)
+    required_student_group_codes = Column(Text, nullable=True)
+    is_lab_requirement = Column(Boolean, nullable=False, default=False)
+    lab_requirement_id = Column(Integer, nullable=True, index=True)
 
     programme = relationship("Programme", back_populates="sessions")
     module = relationship("Module", back_populates="sessions")

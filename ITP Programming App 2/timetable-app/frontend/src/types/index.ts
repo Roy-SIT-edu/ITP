@@ -33,6 +33,7 @@ export type UploadSummary = {
   rows_failed: number;
   errors: ValidationIssue[];
   file_summaries?: UploadFileSummary[];
+  preview_rows?: ImportPreviewRow[];
 };
 
 export type UploadFileSummary = {
@@ -42,12 +43,23 @@ export type UploadFileSummary = {
   columns?: string[];
 };
 
+export type ImportPreviewRow = {
+  row_id: string;
+  source_file: string | null;
+  source_row_no: number;
+  values: Record<string, string | number | boolean | null>;
+};
+
 export type DatabaseColumn = {
   key: string;
   label: string;
   kind: "text" | "number" | "boolean" | "time";
   required: boolean;
   read_only: boolean;
+  options?: string[];
+  min_value?: number;
+  max_value?: number;
+  max_length?: number;
 };
 
 export type DatabaseTypeInfo = {
@@ -69,6 +81,7 @@ export type ScheduleRun = {
   hard_violation_count: number;
   soft_score: number;
   message: string | null;
+  quality?: ScheduleQuality;
 };
 
 export type ScheduleComparison = ScheduleRun & {
@@ -76,6 +89,21 @@ export type ScheduleComparison = ScheduleRun & {
   stored_hard_issues: number;
   stored_soft_issues: number;
   quality_score: number;
+  quality: ScheduleQuality;
+};
+
+export type ScheduleQuality = {
+  score: number;
+  label: string;
+  tone: "neutral" | "good" | "warn" | "bad" | "info";
+  summary: string;
+  hard_issue_count: number;
+  soft_warning_count: number;
+  affected_session_count: number;
+  affected_session_percent: number;
+  soft_pressure_per_session: number;
+  raw_soft_score: number;
+  export_ready: boolean;
 };
 
 export type ScheduleExplanation = {
@@ -97,21 +125,20 @@ export type ScheduleGenerateResult = {
   source_schedule_run_id?: number;
   solver_status: string;
   hard_violation_count: number;
-<<<<<<< Updated upstream
-=======
   remaining_hard_violation_count?: number;
   moved_session_count?: number;
-  timed_out?: boolean;
-  unresolved_fixed_session_ids?: number[];
   unresolved_lab_session_ids?: number[];
+  unresolved_fixed_session_ids?: number[];
+  timed_out?: boolean;
   soft_warning_count?: number;
->>>>>>> Stashed changes
   soft_score: number;
+  quality?: ScheduleQuality;
+  generation_mode?: "standard" | "reproducible";
+  generation_seconds?: number;
+  solver_timeout_seconds?: number;
   message: string;
 };
 
-<<<<<<< Updated upstream
-=======
 export type ReportBreakdownItem = {
   label: string;
   count: number;
@@ -165,35 +192,6 @@ export type ReportConflict = ConstraintViolation & {
   }>;
 };
 
-export type ReportLabOverlapSession = {
-  session_id: number;
-  scheduled_session_id: number;
-  requirement_id: string | null;
-  lab_requirement_id: number | null;
-  module_code: string | null;
-  programme: string | null;
-  student_group_code: string | null;
-  day: string;
-  start_time: string;
-  end_time: string;
-  week_pattern: string;
-  room: string | null;
-  included_in_final: boolean;
-};
-
-export type ReportLabOverlap = {
-  left: ReportLabOverlapSession;
-  right: ReportLabOverlapSession;
-  resource_types: Array<"ROOM" | "STAFF" | "STUDENT_GROUP">;
-  resources: {
-    rooms: string[];
-    staff: string[];
-    student_groups: string[];
-  };
-  excluded_session_ids: number[];
-  resolved_in_final: boolean;
-};
-
 export type ScheduleReport = {
   report_generated_at: string;
   run: ScheduleRun;
@@ -210,9 +208,6 @@ export type ScheduleReport = {
     scheduled_count: number;
     uploaded_session_count: number;
     lab_session_count: number;
-    original_lab_session_count: number;
-    excluded_lab_session_count: number;
-    lab_overlap_pair_count: number;
     programme_count: number;
     module_count: number;
     student_group_count: number;
@@ -239,17 +234,9 @@ export type ScheduleReport = {
     by_constraint: Array<{ severity: "HARD" | "SOFT"; constraint_code: string; count: number }>;
     items: ReportConflict[];
   };
-  lab_overlap_resolution: {
-    detected_pair_count: number;
-    excluded_session_count: number;
-    excluded_session_ids: number[];
-    excluded_sessions: ReportLabOverlapSession[];
-    overlaps: ReportLabOverlap[];
-  };
   sessions: ReportSession[];
 };
 
->>>>>>> Stashed changes
 export type SoftConstraintPriority = {
   constraint_code: string;
   label: string;
@@ -257,6 +244,7 @@ export type SoftConstraintPriority = {
   default_rank: number;
   rank: number;
   weight: number;
+  isActive: boolean;
 };
 
 export type TimeSlot = {
@@ -285,9 +273,15 @@ export type ScheduledRow = {
   day: string;
   start_time: string;
   end_time: string;
+  start_week: number | null;
+  end_week: number | null;
   week_pattern: string;
+  custom_weeks: string | null;
   delivery_mode: string | null;
   campus_mode: string | null;
+  source_file?: string | null;
+  is_lab_requirement?: boolean;
+  lab_requirement_id?: number | null;
 };
 
 export type Room = {
@@ -310,8 +304,6 @@ export type ConstraintViolation = {
   affected_session_ids: number[];
 };
 
-<<<<<<< Updated upstream
-=======
 export type QuickFixSuggestion = {
   type: "VENUE_CHANGE" | "TIME_CHANGE" | "ALTERNATIVE_BEST";
   description: string;
@@ -331,13 +323,6 @@ export type QuickFixResponse = {
   suggestions: QuickFixSuggestion[];
 };
 
-export type QuickFixAvailability = {
-  schedule_run_id: number;
-  by_session_id: Record<string, boolean>;
-  by_conflict_id: Record<string, boolean>;
-};
-
->>>>>>> Stashed changes
 export type SessionRow = {
   id: number;
   requirement_id: string | null;
@@ -370,6 +355,8 @@ export type SessionRow = {
   remarks: string | null;
   source_file: string | null;
   source_row_no: number | null;
+  is_lab_requirement?: boolean;
+  lab_requirement_id?: number | null;
 };
 
 export type AvailabilityEntry = {
@@ -403,5 +390,5 @@ export type Dashboard = {
     error_count: number;
     warning_count: number;
   };
-  latest_schedule: ScheduleRun | null;
+  latest_schedule: (ScheduleRun & { scheduled_count: number }) | null;
 };

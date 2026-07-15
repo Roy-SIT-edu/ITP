@@ -5,6 +5,7 @@ register the full metadata set with SQLAlchemy.
 """
 
 from app.models.constraint_violation import ConstraintViolation
+from app.models.lab_requirement import LabRequirement
 from app.models.module import Module
 from app.models.programme import Programme
 from app.models.room import Room
@@ -19,6 +20,7 @@ from app.models.time_slot import TimeSlot
 
 __all__ = [
     "ConstraintViolation",
+    "LabRequirement",
     "Module",
     "Programme",
     "Room",

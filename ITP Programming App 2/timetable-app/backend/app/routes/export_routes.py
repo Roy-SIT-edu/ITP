@@ -11,9 +11,19 @@ from app.services.export_service import ExportService
 router = APIRouter(prefix="/api/export", tags=["export"])
 
 
-def _ensure_run(db: DbSession, schedule_run_id: int) -> None:
-    if not db.query(ScheduleRun).filter_by(id=schedule_run_id).first():
+def _ensure_run(db: DbSession, schedule_run_id: int) -> ScheduleRun:
+    run = db.query(ScheduleRun).filter_by(id=schedule_run_id).first()
+    if not run:
         raise HTTPException(status_code=404, detail={"message": "Schedule run not found"})
+    if int(run.hard_violation_count or 0) > 0:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "You must resolve all Hard Conflicts before you can export your timetable.",
+                "hard_conflicts": run.hard_violation_count,
+            },
+        )
+    return run
 
 
 @router.get("/{schedule_run_id}/csv")

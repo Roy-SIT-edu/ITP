@@ -10,26 +10,33 @@ import type {
   Dashboard,
   DatabaseRow,
   DatabaseTypeInfo,
-<<<<<<< Updated upstream
-=======
   ImportPreviewRow,
   QuickFixResponse,
-  QuickFixAvailability,
->>>>>>> Stashed changes
   Room,
   ScheduleComparison,
   ScheduleExplanation,
   ScheduleGenerateResult,
   ScheduleRun,
   ScheduleResponse,
+  ScheduleReport,
   SessionRow,
   SoftConstraintPriority,
   TimeSlot,
   UploadSummary,
   ValidationResult,
 } from "../types";
+import type { GenerationMode } from "../generationMode";
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "";
+
+type SoftConstraintPriorityResponse = Omit<SoftConstraintPriority, "isActive"> & {
+  is_active?: boolean;
+  isActive?: boolean;
+};
+
+type SoftConstraintPriorityUpdate = Pick<SoftConstraintPriority, "constraint_code"> & {
+  isActive?: boolean;
+};
 
 export class ApiError extends Error {
   status: number;
@@ -69,6 +76,13 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return payload as T;
 }
 
+function normalizeSoftConstraintPriority(item: SoftConstraintPriorityResponse): SoftConstraintPriority {
+  return {
+    ...item,
+    isActive: item.isActive ?? item.is_active ?? true,
+  };
+}
+
 export function getDashboard() {
   return request<Dashboard>("/api/dashboard");
 }
@@ -95,6 +109,14 @@ export function uploadTemplate(files: File[]) {
   return request<UploadSummary>("/api/upload/input-template", {
     method: "POST",
     body: formData,
+  });
+}
+
+export function importEditedTemplateRows(rows: ImportPreviewRow[]) {
+  return request<UploadSummary>("/api/upload/input-template/edited", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rows }),
   });
 }
 
@@ -149,22 +171,36 @@ export function getValidation() {
   return request<ValidationResult>("/api/validation/latest");
 }
 
-export function generateSchedule() {
-  return request<ScheduleGenerateResult>("/api/schedules/generate", {
+export function generateSchedule(mode: GenerationMode = "standard") {
+  return request<ScheduleGenerateResult>(`/api/schedules/generate?mode=${encodeURIComponent(mode)}`, {
     method: "POST",
   });
 }
 
 export function getSoftConstraintPriorities() {
-  return request<SoftConstraintPriority[]>("/api/soft-constraints");
+  return request<SoftConstraintPriorityResponse[]>("/api/soft-constraints").then((items) =>
+    items.map(normalizeSoftConstraintPriority),
+  );
 }
 
-export function updateSoftConstraintPriorities(orderedCodes: string[]) {
-  return request<SoftConstraintPriority[]>("/api/soft-constraints", {
+export function updateSoftConstraintPriorities(priorities: SoftConstraintPriorityUpdate[] | string[]) {
+  const normalized = priorities.map((item) =>
+    typeof item === "string"
+      ? { constraint_code: item, isActive: true }
+      : { constraint_code: item.constraint_code, isActive: item.isActive !== false },
+  );
+  const activeItems = normalized.filter((item) => item.isActive);
+  const inactiveItems = normalized.filter((item) => !item.isActive);
+  const displayList = [...activeItems, ...inactiveItems];
+
+  return request<SoftConstraintPriorityResponse[]>("/api/soft-constraints", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ordered_codes: orderedCodes }),
-  });
+    body: JSON.stringify({
+      ordered_codes: displayList.map((item) => item.constraint_code),
+      active_codes: activeItems.map((item) => item.constraint_code),
+    }),
+  }).then((items) => items.map(normalizeSoftConstraintPriority));
 }
 
 export function getScheduleRuns() {
@@ -188,6 +224,14 @@ export function getScheduleExplanations(scheduleRunId: number) {
   return request<ScheduleExplanation[]>(`/api/schedules/${scheduleRunId}/explanations`);
 }
 
+export function getScheduleReport(scheduleRunId: number) {
+  return request<ScheduleReport>(`/api/schedules/${scheduleRunId}/report`);
+}
+
+export function scheduleReportPdfUrl(scheduleRunId: number) {
+  return `${API_BASE}/api/schedules/${scheduleRunId}/report.pdf`;
+}
+
 export function moveScheduledSession(
   scheduleRunId: number,
   sessionId: number,
@@ -203,8 +247,6 @@ export function moveScheduledSession(
   );
 }
 
-<<<<<<< Updated upstream
-=======
 export function suggestScheduleFixes(
   scheduleRunId: number,
   data: { conflict_id?: number | null; session_id?: number | null },
@@ -216,10 +258,6 @@ export function suggestScheduleFixes(
   });
 }
 
-export function getQuickFixAvailability(scheduleRunId: number) {
-  return request<QuickFixAvailability>(`/api/schedules/${scheduleRunId}/quick-fix-availability`);
-}
-
 export function recheckSchedule(scheduleRunId: number) {
   return request<{ message: string; schedule_run: ScheduleRun | null; violations: ConstraintViolation[] }>(
     `/api/schedules/${scheduleRunId}/recheck`,
@@ -229,16 +267,12 @@ export function recheckSchedule(scheduleRunId: number) {
   );
 }
 
-export function autoDeconflict(scheduleRunId: number, timeoutSeconds = 30) {
-  return request<ScheduleGenerateResult>(
-    `/api/schedules/${scheduleRunId}/auto-deconflict?timeout_seconds=${encodeURIComponent(timeoutSeconds)}`,
-    {
-      method: "POST",
-    },
-  );
+export function autoDeconflict(scheduleRunId: number) {
+  return request<ScheduleGenerateResult>(`/api/schedules/${scheduleRunId}/auto-deconflict`, {
+    method: "POST",
+  });
 }
 
->>>>>>> Stashed changes
 export function getViolations(scheduleRunId: number) {
   return request<ConstraintViolation[]>(`/api/schedules/${scheduleRunId}/violations`);
 }

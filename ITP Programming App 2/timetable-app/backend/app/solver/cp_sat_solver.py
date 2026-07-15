@@ -11,8 +11,6 @@ from ortools.sat.python import cp_model
 from app.models.room import Room
 from app.models.session import Session
 from app.models.time_slot import TimeSlot
-<<<<<<< Updated upstream
-=======
 from app.services.compatibility import (
     is_online_mode,
     normalize_token,
@@ -27,12 +25,17 @@ from app.services.scheduling_constants import (
 from app.services.scheduling_rules import (
     candidate_room_allowed,
     candidate_slot_allowed,
+    fixed_sessions_conflict,
+    required_room_codes,
     required_student_group_codes,
-    session_is_initially_fixed,
 )
->>>>>>> Stashed changes
 from app.solver.model_builder import TimetableModelBuilder
 from app.solver.result_parser import ResultParser
+
+SUCCESS_STATUSES = {cp_model.OPTIMAL, cp_model.FEASIBLE}
+DEFAULT_TERM_WEEKS = 13
+TIME_BUCKET_MINUTES = 30
+GREEDY_CONFLICT_PENALTY = 100000
 
 
 class CpSatTimetableSolver:
@@ -46,13 +49,10 @@ class CpSatTimetableSolver:
         time_slots: list[TimeSlot],
         rooms: list[Room],
         soft_constraint_weights: dict[str, int] | None = None,
-<<<<<<< Updated upstream
-        max_seconds: float = 20.0,
-=======
         max_seconds: float = 0.0,
         fast_mode: bool = False,
         reproducible: bool = False,
->>>>>>> Stashed changes
+        hints: list[dict] | None = None,
     ) -> dict:
         if not sessions:
             return {
@@ -62,12 +62,39 @@ class CpSatTimetableSolver:
                 "message": "No sessions are available to schedule.",
             }
 
-<<<<<<< Updated upstream
-=======
-        # Fresh generation first honors all source fixed timings. If those
-        # timings clash, the relaxed hard-resource model below still preserves
-        # their placements so administrators can review the real conflicts.
->>>>>>> Stashed changes
+        if not hints and self._has_known_fixed_hard_clash(sessions):
+            return self._greedy_fallback(
+                sessions,
+                time_slots,
+                rooms,
+                soft_constraint_weights,
+                "Fixed hard clashes are present; generated a reviewable timetable with conflict checks.",
+            )
+
+        if hints:
+            # Auto Deconflict mode: go straight to the relaxed model.
+            # The relaxed model penalizes hard conflicts (100k) and changes (10), so it will
+            # aggressively deconflict the schedule without getting stuck in INFEASIBLE/UNKNOWN traps.
+            relaxed = self.model_builder.build(
+                sessions,
+                time_slots,
+                rooms,
+                soft_constraint_weights,
+                relax_hard_conflicts=True,
+                hints=hints,
+            )
+            relaxed_result = self._solve_built_model(relaxed, max_seconds, fast_mode=fast_mode, reproducible=reproducible)
+            if relaxed_result["solver_status"] in {"OPTIMAL", "FEASIBLE"}:
+                return relaxed_result
+            return self._greedy_fallback(
+                sessions,
+                time_slots,
+                rooms,
+                soft_constraint_weights,
+                "Solver timed out; generated a reviewable timetable with conflict checks.",
+            )
+
+        # Fresh Generation mode: start with the strict model to ensure 0 hard conflicts
         built = self.model_builder.build(sessions, time_slots, rooms, soft_constraint_weights)
         if built.no_candidate_reasons:
             return {
@@ -77,8 +104,6 @@ class CpSatTimetableSolver:
                 "message": " ".join(built.no_candidate_reasons),
             }
 
-<<<<<<< Updated upstream
-=======
         result = self._solve_built_model(built, max_seconds, fast_mode, reproducible)
         if result["solver_status"] in {"OPTIMAL", "FEASIBLE"}:
             return result
@@ -101,7 +126,6 @@ class CpSatTimetableSolver:
                 rooms,
                 soft_constraint_weights,
                 relax_hard_conflicts=True,
-                relax_fixed_placements=False,
             )
             relaxed_result = self._solve_built_model(relaxed, max_seconds, fast_mode=True, reproducible=reproducible)
             if relaxed_result["solver_status"] in {"OPTIMAL", "FEASIBLE"}:
@@ -118,29 +142,32 @@ class CpSatTimetableSolver:
 
     @staticmethod
     def _configured_solver(max_seconds: float, fast_mode: bool, reproducible: bool) -> cp_model.CpSolver:
->>>>>>> Stashed changes
         solver = cp_model.CpSolver()
-        solver.parameters.max_time_in_seconds = max_seconds
-        # Multiple workers usually improves feasibility search on timetable grids.
-        solver.parameters.num_search_workers = 8
+        if max_seconds > 0:
+            solver.parameters.max_time_in_seconds = max_seconds
+        if fast_mode:
+            solver.parameters.stop_after_first_solution = True
+        solver.parameters.num_search_workers = 1 if reproducible else 8
+        if reproducible:
+            solver.parameters.random_seed = 42
+        return solver
+
+    def _solve_built_model(self, built, max_seconds: float, fast_mode: bool, reproducible: bool) -> dict:
+        solver = self._configured_solver(max_seconds, fast_mode, reproducible)
         status = solver.Solve(built.model)
         status_name = solver.StatusName(status)
 
-<<<<<<< Updated upstream
-        if status not in {cp_model.OPTIMAL, cp_model.FEASIBLE}:
-=======
         if status not in SUCCESS_STATUSES:
             message = (
                 "Solver timed out before finding a timetable. Try again or reduce flexible room/time choices."
                 if status_name == "UNKNOWN"
-                else "No feasible timetable found. Check room capacity, staff clashes, fixed lab sessions, and unavailable slots."
+                else "No feasible timetable found. Check room capacity, staff clashes, fixed sessions, and unavailable slots."
             )
->>>>>>> Stashed changes
             return {
                 "solver_status": status_name,
                 "assignments": [],
                 "soft_score": 0,
-                "message": "No feasible timetable found. Check room capacity, staff clashes, fixed sessions, and unavailable slots.",
+                "message": message,
             }
 
         return {
@@ -149,8 +176,6 @@ class CpSatTimetableSolver:
             "soft_score": int(solver.ObjectiveValue()) if built.soft_penalties else 0,
             "message": "Schedule generated successfully",
         }
-<<<<<<< Updated upstream
-=======
 
     def _greedy_fallback(
         self,
@@ -185,7 +210,7 @@ class CpSatTimetableSolver:
         ordered_sessions = sorted(
             sessions,
             key=lambda session: (
-                0 if session_is_initially_fixed(session) else 1,
+                0 if session.is_lab_requirement or normalize_token(session.scheduling_type) == "fixed" else 1,
                 len(candidate_map[session.id]),
                 session.id,
             ),
@@ -205,6 +230,45 @@ class CpSatTimetableSolver:
             "message": message,
         }
 
+    def _has_known_fixed_hard_clash(self, sessions: list[Session]) -> bool:
+        fixed = [
+            session
+            for session in sessions
+            if normalize_token(session.scheduling_type) == "fixed"
+            and session.fixed_day
+            and session.fixed_start_time
+            and session.fixed_end_time
+        ]
+        for index, left in enumerate(fixed):
+            for right in fixed[index + 1 :]:
+                if left.is_lab_requirement and right.is_lab_requirement:
+                    continue
+                if not fixed_sessions_conflict(left, right):
+                    continue
+                if set(self._session_staff_ids(left)) & set(self._session_staff_ids(right)):
+                    return True
+                if self._group_keys(left) & self._group_keys(right):
+                    return True
+                if self._single_required_room_key(left) and self._single_required_room_key(left) == self._single_required_room_key(right):
+                    return True
+        return False
+
+    def _group_keys(self, session: Session) -> set[str]:
+        keys = set()
+        if session.student_group_id is not None:
+            keys.add(f"id:{session.student_group_id}")
+        if session.student_group and session.student_group.group_code:
+            keys.add(f"code:{session.student_group.group_code.lower()}")
+        for code in required_student_group_codes(session):
+            keys.add(f"code:{code.lower()}")
+        return keys
+
+    def _single_required_room_key(self, session: Session) -> str | None:
+        codes = required_room_codes(session)
+        if len(codes) == 1:
+            return codes[0].lower()
+        return None
+
     def _session_candidates(self, session: Session, time_slots: list[TimeSlot], rooms: list[Room]) -> list[dict]:
         return [
             {"session": session, "time_slot": slot, "room": room}
@@ -214,13 +278,14 @@ class CpSatTimetableSolver:
             if candidate_room_allowed(session, room)
         ]
 
-    def _candidate_score(
-        self, candidate: dict, occupied: dict[str, set], group_ids_by_code: dict[str, int], weights: dict[str, int]
-    ) -> int:
+    def _candidate_score(self, candidate: dict, occupied: dict[str, set], group_ids_by_code: dict[str, int], weights: dict[str, int]) -> int:
         score = self._single_candidate_soft_penalty(candidate, weights)
         score += self._bucket_conflict_count(self._room_buckets(candidate), occupied["room"]) * GREEDY_CONFLICT_PENALTY
         score += self._bucket_conflict_count(self._staff_buckets(candidate), occupied["staff"]) * GREEDY_CONFLICT_PENALTY
-        score += self._bucket_conflict_count(self._group_buckets(candidate, group_ids_by_code), occupied["group"]) * GREEDY_CONFLICT_PENALTY
+        score += (
+            self._bucket_conflict_count(self._group_buckets(candidate, group_ids_by_code), occupied["group"])
+            * GREEDY_CONFLICT_PENALTY
+        )
         room = candidate["room"]
         session = candidate["session"]
         if session.exact_class_size and room.capacity:
@@ -339,4 +404,3 @@ class CpSatTimetableSolver:
             "end_time": slot.end_time,
             "week_pattern": slot.week_pattern,
         }
->>>>>>> Stashed changes

@@ -3,8 +3,6 @@ import type { SessionRow } from "../types";
 
 export type RequirementFormData = Omit<SessionRow, "id">;
 
-const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-
 export default function RequirementFormModal({
   editingSession,
   formData,
@@ -107,16 +105,6 @@ export default function RequirementFormModal({
             </select>
           </label>
           <label>
-            Campus Mode
-            <select
-              value={formData.campus_mode || ""}
-              onChange={(event) => onUpdate("campus_mode", event.target.value)}
-            >
-              <option value="Physical">Physical</option>
-              <option value="Virtual">Virtual</option>
-            </select>
-          </label>
-          <label>
             Duration (mins)
             <input
               required
@@ -190,11 +178,11 @@ export default function RequirementFormModal({
           <label>
             Scheduling Type
             <select
-              value={formData.scheduling_type || "Flexible"}
+              value={formData.scheduling_type || ""}
               onChange={(event) => onUpdate("scheduling_type", event.target.value)}
             >
               <option value="Flexible">Flexible</option>
-              <option value="Fixed">Fixed on first generation</option>
+              <option value="Fixed">Fixed</option>
             </select>
           </label>
           {formData.scheduling_type === "Fixed" && (
@@ -202,22 +190,20 @@ export default function RequirementFormModal({
               <label>
                 Fixed Day
                 <select
-                  required
                   value={formData.fixed_day || ""}
                   onChange={(event) => onUpdate("fixed_day", event.target.value)}
                 >
-                  <option value="">Select day</option>
-                  {WEEKDAYS.map((day) => (
-                    <option key={day} value={day}>
-                      {day}
-                    </option>
-                  ))}
+                  <option value="">Select Day</option>
+                  <option value="Monday">Monday</option>
+                  <option value="Tuesday">Tuesday</option>
+                  <option value="Wednesday">Wednesday</option>
+                  <option value="Thursday">Thursday</option>
+                  <option value="Friday">Friday</option>
                 </select>
               </label>
               <label>
                 Fixed Start Time
                 <input
-                  required
                   type="time"
                   value={formData.fixed_start_time || ""}
                   onChange={(event) => onUpdate("fixed_start_time", event.target.value)}
@@ -226,7 +212,6 @@ export default function RequirementFormModal({
               <label>
                 Fixed End Time
                 <input
-                  required
                   type="time"
                   value={formData.fixed_end_time || ""}
                   onChange={(event) => onUpdate("fixed_end_time", event.target.value)}

@@ -182,6 +182,46 @@ def weeks_conflict(pattern_a: object, pattern_b: object) -> bool:
     return True
 
 
+def session_weeks_conflict(session_a, slot_a, session_b, slot_b) -> bool:
+    weeks_a = _active_week_set(session_a)
+    weeks_b = _active_week_set(session_b)
+    if weeks_a is not None and weeks_b is not None:
+        return bool(weeks_a & weeks_b)
+    if weeks_a is not None:
+        return _week_set_conflicts_pattern(weeks_a, getattr(session_b, "week_pattern", None), getattr(slot_b, "week_pattern", None))
+    if weeks_b is not None:
+        return _week_set_conflicts_pattern(weeks_b, getattr(session_a, "week_pattern", None), getattr(slot_a, "week_pattern", None))
+    return weeks_conflict(getattr(slot_a, "week_pattern", None), getattr(slot_b, "week_pattern", None))
+
+
+def _active_week_set(session) -> set[int] | None:
+    if session is None:
+        return None
+    pattern = normalize_token(getattr(session, "week_pattern", None) or "Weekly")
+    if pattern == "custom":
+        weeks = set(parse_custom_weeks(getattr(session, "custom_weeks", None)))
+        return weeks or None
+    start_week = positive_int(getattr(session, "start_week", None))
+    end_week = positive_int(getattr(session, "end_week", None))
+    if start_week is None or end_week is None or end_week < start_week:
+        return None
+    weeks = set(range(start_week, end_week + 1))
+    if pattern == "odd":
+        weeks = {week for week in weeks if week % 2 == 1}
+    elif pattern == "even":
+        weeks = {week for week in weeks if week % 2 == 0}
+    return weeks or None
+
+
+def _week_set_conflicts_pattern(weeks: set[int], session_pattern: object, slot_pattern: object) -> bool:
+    pattern = normalize_token(session_pattern or slot_pattern or "Weekly")
+    if pattern == "odd":
+        return any(week % 2 == 1 for week in weeks)
+    if pattern == "even":
+        return any(week % 2 == 0 for week in weeks)
+    return True
+
+
 def slot_conflicts(slot_a, slot_b) -> bool:
     return (
         slot_a.day == slot_b.day

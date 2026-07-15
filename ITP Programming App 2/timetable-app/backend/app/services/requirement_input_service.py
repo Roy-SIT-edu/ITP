@@ -6,6 +6,7 @@ the references exist and the row can be scheduled against current rooms/slots.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -18,6 +19,7 @@ from app.models.session import Session as RequirementSession
 from app.models.session_staff import SessionStaff
 from app.models.staff import Staff
 from app.models.student_group import StudentGroup
+from app.models.time_slot import TimeSlot
 from app.schemas.session import SessionInput
 from app.services.compatibility import (
     ALLOWED_DELIVERY_MODES,
@@ -37,7 +39,9 @@ from app.services.compatibility import (
     room_capacity_fits,
     time_to_minutes,
     venue_room_compatible,
+    weeks_conflict,
 )
+from app.services.student_group_service import student_group_code, student_group_partition
 from sqlalchemy import func
 from sqlalchemy.orm import Session as DbSession
 
@@ -111,7 +115,6 @@ class RequirementInputService:
             "Year": data.year,
             "Student Group Code": data.student_group_code,
             "Module Code": data.module_code,
-            "Module Host Key": data.module_host_key,
             "Module Title": data.module_title,
             "Class Type": data.class_type,
             "Duration Minutes": data.duration_minutes,
@@ -200,14 +203,17 @@ class RequirementInputService:
         module = self._lookup_or_create_module(
             db,
             self._required_text(row, source_row_no, "Module Code", errors),
-            clean_text(self._value(row, "Module Host Key")),
             clean_text(self._value(row, "Module Title")),
             source_row_no,
             errors,
             allow_reference_upsert,
         )
-        year = self._required_positive_int(row, source_row_no, "Year", errors)
-        exact_class_size = self._required_positive_int(row, source_row_no, "Exact Class Size", errors)
+        year = self._positive_int(self._value(row, "Year"))
+        raw_class_size = self._value(row, "Exact Class Size")
+        has_uploaded_class_size = clean_text(raw_class_size) is not None
+        exact_class_size = self._positive_int(raw_class_size)
+        if has_uploaded_class_size and exact_class_size is None:
+            errors.append(self._issue(source_row_no, "Exact Class Size", "Exact Class Size must be numeric and greater than 0."))
         group = self._lookup_or_create_group(
             db,
             clean_text(self._value(row, "Student Group Code")),
@@ -219,6 +225,8 @@ class RequirementInputService:
             errors,
             allow_reference_upsert,
         )
+        if exact_class_size is None and not has_uploaded_class_size:
+            exact_class_size = self._class_size_from_group(group, source_row_no, errors)
         staff_assignments = self._staff_assignments(db, row, source_row_no, errors)
         staff = staff_assignments[0]["staff"] if staff_assignments else None
 
@@ -245,7 +253,7 @@ class RequirementInputService:
 
         class_type = self._required_text(row, source_row_no, "Class Type", errors)
         delivery_mode = self._delivery_mode(row, source_row_no, errors)
-        campus_mode = self._campus_mode(row, source_row_no, errors)
+        campus_mode = self._campus_mode(row, source_row_no, errors, delivery_mode)
         venue_type = self._required_text(row, source_row_no, "Venue Type Required", errors)
         duration = self._duration_minutes(row)
         if duration is None:
@@ -262,30 +270,10 @@ class RequirementInputService:
             errors.append(self._issue(source_row_no, "Custom Weeks", "Custom week pattern requires at least one week number."))
 
         scheduling_type = self._scheduling_type(row, source_row_no, errors)
-        fixed_day = self._fixed_day(row, source_row_no, errors)
-        fixed_start, fixed_end = self._fixed_times(row, source_row_no, errors)
-        fixed_timing_values = (fixed_day, fixed_start, fixed_end)
-        if all(fixed_timing_values):
-            scheduling_type = "Fixed"
-        elif any(fixed_timing_values):
-            errors.append(
-                self._issue(
-                    source_row_no,
-                    "Fixed Time",
-                    "Fixed timing must provide Fixed Day, Fixed Start Time, and Fixed End Time together.",
-                )
-            )
-        if scheduling_type == "Fixed":
-            if not fixed_day:
-                errors.append(self._issue(source_row_no, "Fixed Day", "Fixed requirements must provide a Fixed Day."))
-            if not fixed_start or not fixed_end:
-                errors.append(
-                    self._issue(
-                        source_row_no,
-                        "Fixed Start Time",
-                        "Fixed requirements must provide Fixed Start Time and Fixed End Time.",
-                    )
-                )
+        fixed_day = self._fixed_day(row, source_row_no, errors, required=scheduling_type == "Fixed")
+        fixed_start, fixed_end = self._fixed_times(row, source_row_no, errors, required=scheduling_type == "Fixed")
+        if scheduling_type == "Fixed" and fixed_day and fixed_start and fixed_end and week_pattern:
+            self._check_fixed_time_slot(db, fixed_day, fixed_start, fixed_end, week_pattern, source_row_no, errors)
 
         preferred_days = self._validated_day_list(row, "Preferred Days", source_row_no, errors)
         avoid_days = self._validated_day_list(row, "Avoid Days", source_row_no, errors)
@@ -393,7 +381,6 @@ class RequirementInputService:
         self,
         db: DbSession,
         module_code: str | None,
-        module_host_key: str | None,
         module_title: str | None,
         source_row_no: int,
         errors: list[dict],
@@ -408,7 +395,6 @@ class RequirementInputService:
                 return None
             module = Module(
                 module_code=module_code,
-                module_host_key=module_host_key,
                 module_title=module_title or module_code,
                 term=None,
             )
@@ -428,12 +414,12 @@ class RequirementInputService:
         errors: list[dict],
         allow_reference_upsert: bool,
     ) -> StudentGroup | None:
-        if not programme or not year or not class_size:
+        if not programme or not year:
             return None
-        group_code = group_code or self._generated_group_code(programme.code, year, class_size, requirement_id)
+        group_code = self._resolved_group_code(group_code, programme.code, year, class_size, requirement_id)
         group = db.query(StudentGroup).filter(func.lower(StudentGroup.group_code) == group_code.lower()).first()
         if not group:
-            if not allow_reference_upsert:
+            if not allow_reference_upsert or class_size is None:
                 errors.append(
                     self._issue(
                         source_row_no, "Student Group Code", f"Student group '{group_code}' does not exist in Database > Student Groups."
@@ -451,7 +437,44 @@ class RequirementInputService:
         return group
 
     def _generated_group_code(self, programme_code: str, year: int, class_size: int, requirement_id: str | None) -> str:
-        return f"{programme_code.upper()}-Y{year}"
+        return student_group_code(programme_code, year, 1)
+
+    def _resolved_group_code(
+        self,
+        group_code: str | None,
+        programme_code: str,
+        year: int,
+        class_size: int | None,
+        requirement_id: str | None,
+    ) -> str:
+        if not group_code:
+            return self._generated_group_code(programme_code, year, class_size or 0, requirement_id)
+        if re.fullmatch(r"p\s*\d+", group_code.strip(), re.IGNORECASE):
+            partition = student_group_partition(group_code)
+            if partition:
+                return student_group_code(programme_code, year, partition)
+        return group_code
+
+    def _class_size_from_group(self, group: StudentGroup | None, source_row_no: int, errors: list[dict]) -> int | None:
+        if not group:
+            errors.append(
+                self._issue(
+                    source_row_no,
+                    "Exact Class Size",
+                    "Exact Class Size is required when no student group size can be derived.",
+                )
+            )
+            return None
+        size = self._positive_int(group.size)
+        if size is None:
+            errors.append(
+                self._issue(
+                    source_row_no,
+                    "Exact Class Size",
+                    f"Student group '{group.group_code}' needs a numeric size in Database > Student Groups.",
+                )
+            )
+        return size
 
     def _staff_assignments(
         self,
@@ -550,6 +573,34 @@ class RequirementInputService:
         if query.first():
             errors.append(self._issue(source_row_no, "Requirement ID", f"Requirement ID '{requirement_id}' already exists."))
 
+    def _check_fixed_time_slot(
+        self,
+        db: DbSession,
+        fixed_day: str,
+        fixed_start: str,
+        fixed_end: str,
+        week_pattern: str,
+        source_row_no: int,
+        errors: list[dict],
+    ) -> None:
+        matches = (
+            db.query(TimeSlot)
+            .filter(
+                TimeSlot.day == fixed_day,
+                TimeSlot.start_time == fixed_start,
+                TimeSlot.end_time == fixed_end,
+            )
+            .all()
+        )
+        if not any(weeks_conflict(slot.week_pattern, week_pattern) for slot in matches):
+            errors.append(
+                self._issue(
+                    source_row_no,
+                    "Fixed Start Time",
+                    "No time slot matches the fixed day, start time, end time, and week pattern.",
+                )
+            )
+
     def _has_feasible_room(
         self,
         db: DbSession,
@@ -595,10 +646,16 @@ class RequirementInputService:
             return canonical_delivery_mode(raw)
         return canonical_delivery_mode(raw)
 
-    def _campus_mode(self, row: Mapping[str, Any], source_row_no: int, errors: list[dict]) -> str | None:
-        raw = self._required_text(row, source_row_no, "Campus Mode", errors)
+    def _campus_mode(
+        self,
+        row: Mapping[str, Any],
+        source_row_no: int,
+        errors: list[dict],
+        delivery_mode: str | None,
+    ) -> str | None:
+        raw = clean_text(self._value(row, "Campus Mode"))
         if not raw:
-            return None
+            return self._derived_campus_mode(delivery_mode)
         token = normalize_token(raw)
         if token in {"physical", "campus", "on campus", "in campus", "face to face", "in person"}:
             return "Physical"
@@ -608,6 +665,14 @@ class RequirementInputService:
             return "External"
         errors.append(self._issue(source_row_no, "Campus Mode", "Campus Mode must be Physical, Virtual, Online, Remote, or External."))
         return raw
+
+    def _derived_campus_mode(self, delivery_mode: str | None) -> str | None:
+        token = normalize_token(delivery_mode)
+        if token in {"online", "asynchronous", "async"}:
+            return "Virtual"
+        if token:
+            return "Physical"
+        return None
 
     def _week_pattern(self, row: Mapping[str, Any], source_row_no: int, errors: list[dict]) -> str | None:
         raw = self._required_text(row, source_row_no, "Week Pattern", errors)
@@ -624,7 +689,7 @@ class RequirementInputService:
         token = normalize_token(raw)
         if token == "fixed":
             return "Fixed"
-        if token in {"flexible", "preferred", "preference", "standard"}:
+        if token in {"flexible", "preferred", "preference"}:
             return "Flexible"
         errors.append(self._issue(source_row_no, "Scheduling Type", "Scheduling Type must be Fixed or Flexible."))
         return raw
@@ -634,9 +699,12 @@ class RequirementInputService:
         row: Mapping[str, Any],
         source_row_no: int,
         errors: list[dict],
+        required: bool,
     ) -> str | None:
         raw = clean_text(self._value(row, "Fixed Day"))
         if not raw:
+            if required:
+                errors.append(self._issue(source_row_no, "Fixed Day", "Fixed sessions must include a fixed day."))
             return None
         day = canonical_day(raw)
         if day not in DAY_ORDER:
@@ -648,11 +716,16 @@ class RequirementInputService:
         row: Mapping[str, Any],
         source_row_no: int,
         errors: list[dict],
+        required: bool,
     ) -> tuple[str | None, str | None]:
         start_raw = self._value(row, "Fixed Start Time")
         end_raw = self._value(row, "Fixed End Time")
         start = time_to_minutes(start_raw)
         end = time_to_minutes(end_raw)
+        if start is None and required:
+            errors.append(self._issue(source_row_no, "Fixed Start Time", "Fixed sessions must include a fixed start time."))
+        if end is None and required:
+            errors.append(self._issue(source_row_no, "Fixed End Time", "Fixed sessions must include a fixed end time."))
         if start is not None and end is not None and end <= start:
             errors.append(self._issue(source_row_no, "Fixed End Time", "Fixed End Time must be after Fixed Start Time."))
         return (

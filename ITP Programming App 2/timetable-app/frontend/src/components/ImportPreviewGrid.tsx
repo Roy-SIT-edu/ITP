@@ -55,11 +55,7 @@ export default function ImportPreviewGrid({ applying, summary, onApply }: Props)
       const rowIssues = issuesForRow(issuesByRow, row);
       if (issuesOnly && rowIssues.length === 0) return false;
       if (!search) return true;
-      return [
-        row.source_file,
-        String(row.source_row_no),
-        ...Object.values(row.values).map((value) => String(value ?? "")),
-      ]
+      return [row.source_file, String(row.source_row_no), ...Object.values(row.values).map((value) => String(value ?? ""))]
         .join(" ")
         .toLowerCase()
         .includes(search);
@@ -115,7 +111,11 @@ export default function ImportPreviewGrid({ applying, summary, onApply }: Props)
         <div className="import-preview-toolbar">
           <label className="preference-search">
             <Search size={16} />
-            <input placeholder="Search rows..." value={query} onChange={(event) => setQuery(event.target.value)} />
+            <input
+              placeholder="Search rows..."
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
           </label>
           <div className="import-preview-actions">
             <label className="toggle-control">
@@ -205,9 +205,7 @@ function groupIssuesByRow(issues: ValidationIssue[]) {
 }
 
 function issuesForRow(groups: Map<string, ValidationIssue[]>, row: ImportPreviewRow) {
-  return (
-    groups.get(issueKey(row.source_file, row.source_row_no)) ?? groups.get(issueKey(null, row.source_row_no)) ?? []
-  );
+  return groups.get(issueKey(row.source_file, row.source_row_no)) ?? groups.get(issueKey(null, row.source_row_no)) ?? [];
 }
 
 function issuesForCell(issues: ValidationIssue[], column: string) {

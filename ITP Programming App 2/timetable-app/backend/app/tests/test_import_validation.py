@@ -3,6 +3,7 @@
 from app.models.module import Module
 from app.models.session import Session
 from app.models.session_staff import SessionStaff
+from app.models.student_group import StudentGroup
 from app.services.import_service import ImportService
 from app.services.validation_service import ValidationService
 from app.tests.conftest import new_template_row, valid_row, write_template, write_two_tab_template
@@ -104,7 +105,7 @@ def test_two_tab_template_imports_with_defaults_and_generated_group(db_session, 
     assert summary["rows_imported"] == 1
     assert session.module.module_code == "NEW1001"
     assert db_session.query(Module).filter_by(module_code="NEW1001").one()
-    assert session.student_group.group_code == "DSC-Y2"
+    assert session.student_group.group_code == "DSC Y2 P1"
     assert session.scheduling_type == "Flexible"
     assert session.week_pattern == "Weekly"
     assert session.start_week == 1
@@ -113,9 +114,6 @@ def test_two_tab_template_imports_with_defaults_and_generated_group(db_session, 
     assert session.staff.staff_id == "S001"
 
 
-<<<<<<< Updated upstream
-def test_two_tab_optional_fields_create_fixed_custom_session(db_session, tmp_path):
-=======
 def test_two_tab_template_derives_class_size_from_short_group_code(db_session, tmp_path):
     group = db_session.query(StudentGroup).filter_by(group_code="DSC Y2 P1").one()
     group.size = 47
@@ -136,8 +134,7 @@ def test_two_tab_template_derives_class_size_from_short_group_code(db_session, t
     assert session.campus_mode == "Physical"
 
 
-def test_two_tab_optional_fixed_timing_is_fixed_on_initial_generation(db_session, tmp_path):
->>>>>>> Stashed changes
+def test_two_tab_optional_fields_create_fixed_custom_session(db_session, tmp_path):
     path = write_two_tab_template(
         tmp_path / "two-tab-fixed.xlsx",
         [new_template_row(**{"Requirement ID": "REQ-FIXED-001"})],
@@ -241,10 +238,10 @@ def test_two_tab_template_stores_co_teachers_and_validation_detects_clash(db_ses
 
     assert summary["rows_failed"] == 0
     assert db_session.query(SessionStaff).count() == 4
-    assert not any("STAFF_DOUBLE_BOOKING" in error.get("message", "") or error["field"] == "Fixed Time" for error in validation["errors"])
+    assert any("STAFF_DOUBLE_BOOKING" in error.get("message", "") or error["field"] == "Fixed Time" for error in validation["errors"])
 
 
-def test_uploaded_fixed_label_and_timing_are_preserved_for_initial_generation(db_session, tmp_path):
+def test_fixed_session_requires_matching_time_slot(db_session, tmp_path):
     path = write_template(
         tmp_path / "input.xlsx",
         [
@@ -252,44 +249,19 @@ def test_uploaded_fixed_label_and_timing_are_preserved_for_initial_generation(db
                 **{
                     "Scheduling Type": "Fixed",
                     "Fixed Day": "Monday",
-                    "Fixed Start Time": "09:00",
-                    "Fixed End Time": "11:00",
+                    "Fixed Start Time": "08:00",
+                    "Fixed End Time": "09:00",
                 }
             )
         ],
     )
 
-    summary = ImportService().import_input_template(db_session, path)
-
-    imported = db_session.query(Session).filter_by(requirement_id="REQ-TEST-001").one()
-    assert summary["rows_imported"] == 1
-    assert db_session.query(Session).count() == 1
-    assert imported.scheduling_type == "Fixed"
-    assert imported.fixed_day == "Monday"
-    assert imported.fixed_start_time == "09:00"
-    assert imported.fixed_end_time == "11:00"
-
-
-def test_uploaded_fixed_requirement_requires_complete_timing(db_session, tmp_path):
-    path = write_template(
-        tmp_path / "incomplete-fixed.xlsx",
-        [
-            valid_row(
-                **{
-                    "Scheduling Type": "Fixed",
-                    "Fixed Day": "",
-                    "Fixed Start Time": "",
-                    "Fixed End Time": "",
-                }
-            )
-        ],
-    )
-
+    before_count = db_session.query(Session).count()
     summary = ImportService().import_input_template(db_session, path)
 
     assert summary["rows_imported"] == 0
-    assert any(error["field"] == "Fixed Day" for error in summary["errors"])
-    assert any(error["field"] == "Fixed Start Time" for error in summary["errors"])
+    assert db_session.query(Session).count() == before_count
+    assert any("No time slot matches" in error["message"] for error in summary["errors"])
 
 
 def test_venue_feasibility_requires_matching_room_capacity(db_session, tmp_path):

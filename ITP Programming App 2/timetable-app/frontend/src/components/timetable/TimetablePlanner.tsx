@@ -1,41 +1,224 @@
+import { CalendarDays, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { ScheduledRow } from "../../types";
 import { days, type MoveDraft, type PlannerSlot } from "./types";
-import { heatClass, intervalsOverlap } from "./timetableUtils";
+import { getFirstOverlapKey, intervalsOverlap, timeToMinutes } from "./timetableUtils";
 
 type Props = {
+  rows?: ScheduledRow[];
   slots: PlannerSlot[];
   grouped: Map<string, ScheduledRow[]>;
+  weekStart?: Date;
+  weekNumber?: number;
+  displayStartTime?: string;
+  displayEndTime?: string;
+  onPreviousWeek?: () => void;
+  onNextWeek?: () => void;
+  onWeekDateChange?: (value: string) => void;
+  onDisplayStartTimeChange?: (value: string) => void;
+  onDisplayEndTimeChange?: (value: string) => void;
+  onRefresh?: () => void;
   selectedSlotKey?: string | null;
   isPlacing?: boolean;
   selectedSessionDraft?: MoveDraft;
-  onSelectSlot?: (key: string, rows: ScheduledRow[]) => void;
+  onSelectSlot?: (key: string, rows: ScheduledRow[], options?: { focusSlotDetails?: boolean }) => void;
+  conflictSlotKeys?: Set<string>;
+  availableSlotKeys?: Set<string>;
+  softAvailableSlotKeys?: Set<string>;
+  blockedSlotKeys?: Set<string>;
 };
 
+const HOUR_HEIGHT = 64;
+const MAX_DETAILED_LANES = 2;
+const MAX_DETAILED_EVENTS_PER_SLOT = 2;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+type CalendarEventDensity = "normal" | "short" | "compact";
+
+type CalendarLayoutItem =
+  | {
+      kind: "event";
+      day: string;
+      row: ScheduledRow;
+      slotKeys: string[];
+      style: CSSProperties;
+      density: CalendarEventDensity;
+    }
+  | {
+      kind: "cluster";
+      day: string;
+      id: string;
+      rows: ScheduledRow[];
+      start: number;
+      end: number;
+      slotKeys: string[];
+      style: CSSProperties;
+    };
+
 export default function TimetablePlanner({
+  rows = [],
   slots,
   grouped,
+  weekStart,
+  weekNumber,
+  displayStartTime = "08:00",
+  displayEndTime = "22:00",
+  onPreviousWeek,
+  onNextWeek,
+  onWeekDateChange,
+  onDisplayStartTimeChange,
+  onDisplayEndTimeChange,
+  onRefresh,
   selectedSlotKey,
   isPlacing,
   selectedSessionDraft,
   onSelectSlot,
+  conflictSlotKeys = new Set(),
+  availableSlotKeys = new Set(),
+  softAvailableSlotKeys = new Set(),
+  blockedSlotKeys = new Set(),
 }: Props) {
+  const safeWeekStart = weekStart ?? startOfWeek(new Date());
+  const [showAmPm, setShowAmPm] = useState(true);
+  const [showClassTitle, setShowClassTitle] = useState(true);
+  const [showInstructors, setShowInstructors] = useState(false);
+  const defaultVisibleDays = useMemo(() => days.slice(), []);
+  const [visibleDays, setVisibleDays] = useState(defaultVisibleDays);
+  const [daySelectionTouched, setDaySelectionTouched] = useState(false);
+  const displayDays = days.filter((day) => visibleDays.includes(day));
+  const rangeStart = slots[0] ? timeToMinutes(slots[0].start_time) : timeToMinutes(displayStartTime);
+  const rangeEnd = slots[slots.length - 1]
+    ? timeToMinutes(slots[slots.length - 1].end_time)
+    : timeToMinutes(displayEndTime);
+  const calendarHeight = Math.max(HOUR_HEIGHT, ((rangeEnd - rangeStart) / 60) * HOUR_HEIGHT);
+  const dayHeadings = displayDays.map((day) => ({
+    day,
+    date: addDays(safeWeekStart, days.indexOf(day)),
+  }));
+  const events = useMemo(
+    () => layoutEvents(rows, displayDays, rangeStart, rangeEnd, slots),
+    [displayDays, rangeEnd, rangeStart, rows, slots],
+  );
+
+  useEffect(() => {
+    if (!daySelectionTouched) {
+      setVisibleDays(defaultVisibleDays);
+    }
+  }, [daySelectionTouched, defaultVisibleDays]);
+
+  const updateStartTime = (value: string) => {
+    onDisplayStartTimeChange?.(value);
+    if (timeToMinutes(value) >= timeToMinutes(displayEndTime)) {
+      onDisplayEndTimeChange?.(nextHour(value));
+    }
+  };
+
+  const updateEndTime = (value: string) => {
+    onDisplayEndTimeChange?.(value);
+    if (timeToMinutes(value) <= timeToMinutes(displayStartTime)) {
+      onDisplayStartTimeChange?.(previousHour(value));
+    }
+  };
+
+  const toggleDay = (day: string) => {
+    setDaySelectionTouched(true);
+    setVisibleDays((current) => {
+      if (current.includes(day)) {
+        return current.length > 1 ? current.filter((item) => item !== day) : current;
+      }
+      return days.filter((item) => item === day || current.includes(item));
+    });
+  };
+
   return (
-    <div className="planner-shell">
-      <div className="planner-grid" role="grid" aria-label="Timetable planner summary">
-        <div className="planner-corner">Time</div>
-        {days.map((day) => (
-          <div className="planner-day-heading" key={day}>
-            {day}
+    <div className="planner-shell calendar-shell">
+      <div className="calendar-week-toolbar">
+        <button className="button secondary slim" onClick={onPreviousWeek} type="button">
+          <ChevronLeft size={16} />
+          Previous Week
+        </button>
+        <div className="calendar-week-title">
+          <strong>Week of {formatDateRange(safeWeekStart)}</strong>
+          <span>Academic week {weekNumber ?? 1}</span>
+        </div>
+        <button className="button secondary slim" onClick={onNextWeek} type="button">
+          Next Week
+          <ChevronRight size={16} />
+        </button>
+      </div>
+
+      <div className="calendar-control-bar">
+        <label>
+          <span>Show Week Of</span>
+          <div className="calendar-date-input">
+            <input
+              type="date"
+              value={toDateInput(safeWeekStart)}
+              onChange={(event) => onWeekDateChange?.(event.target.value)}
+            />
+            <CalendarDays size={16} />
+          </div>
+        </label>
+        <label>
+          <span>Start Time</span>
+          <select value={displayStartTime} onChange={(event) => updateStartTime(event.target.value)}>
+            {timeOptions(6, 22).map((time) => (
+              <option key={time} value={time}>
+                {formatTime(time, showAmPm)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>End Time</span>
+          <select value={displayEndTime} onChange={(event) => updateEndTime(event.target.value)}>
+            {timeOptions(7, 23).map((time) => (
+              <option key={time} value={time}>
+                {formatTime(time, showAmPm)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button className="button secondary slim" onClick={onRefresh} type="button">
+          <RefreshCw size={16} />
+          Refresh Calendar
+        </button>
+      </div>
+
+      <div
+        className="calendar-board"
+        role="grid"
+        aria-label="Weekly timetable calendar"
+        style={{ gridTemplateColumns: `70px repeat(${dayHeadings.length}, minmax(178px, 1fr))` }}
+      >
+        <div className="calendar-corner">Time</div>
+        {dayHeadings.map(({ day, date }) => (
+          <div className="calendar-day-heading" key={day}>
+            <strong>{day}</strong>
+            <span>
+              {date.getDate()} {MONTHS[date.getMonth()]}
+            </span>
           </div>
         ))}
-        {slots.map((slot) => (
-          <div className="planner-row" key={slot.key}>
-            <div className="planner-time">{slot.label}</div>
-            {days.map((day) => {
+
+        <div className="calendar-time-rail" style={{ height: calendarHeight }}>
+          {slots.map((slot) => (
+            <div className="calendar-time-label" key={slot.key} style={{ height: HOUR_HEIGHT }}>
+              {formatTime(slot.start_time, showAmPm)}
+            </div>
+          ))}
+        </div>
+
+        {dayHeadings.map(({ day }) => (
+          <div className="calendar-day-column" key={day} style={{ height: calendarHeight }}>
+            {slots.map((slot) => {
               const key = `${day}|${slot.start_time}|${slot.end_time}`;
               const slotRows = grouped.get(key) ?? [];
               const selected = key === selectedSlotKey;
-              const count = slotRows.length;
+              const isConflictCell = conflictSlotKeys.has(key);
+              const isSoftAvailableCell = softAvailableSlotKeys.has(key);
+              const isAvailableCell = availableSlotKeys.has(key) && !isSoftAvailableCell;
+              const isBlockedCell = blockedSlotKeys.has(key);
               const draftSelected =
                 selectedSessionDraft?.day === day &&
                 Boolean(selectedSessionDraft.start_time) &&
@@ -48,32 +231,23 @@ export default function TimetablePlanner({
                 );
               return (
                 <button
-                  className={`planner-cell ${count ? heatClass(count) : "empty"} ${selected ? "selected" : ""} ${
+                  aria-label={`${day} ${formatTime(slot.start_time, showAmPm)} slot`}
+                  className={`calendar-slot ${slotRows.length ? "busy" : "empty"} ${selected ? "selected" : ""} ${
                     isPlacing ? "placing-mode" : ""
-<<<<<<< Updated upstream
-                  } ${draftSelected ? "highlight-draft" : ""}`}
-                  disabled={!count && !onSelectSlot && !isPlacing}
-=======
                   } ${draftSelected ? "highlight-draft" : ""} ${isConflictCell ? "conflict-current" : ""} ${
                     isAvailableCell ? "conflict-available" : ""
-                  } ${isSoftAvailableCell ? "conflict-soft-available" : ""} ${isBlockedCell ? "conflict-blocked" : ""}`}
+                  } ${isSoftAvailableCell ? "conflict-soft-available" : ""} ${
+                    isBlockedCell ? "conflict-blocked" : ""
+                  }`}
                   disabled={(isPlacing && isBlockedCell) || (!slotRows.length && !onSelectSlot && !isPlacing)}
->>>>>>> Stashed changes
                   key={key}
                   onClick={() => onSelectSlot?.(key, slotRows)}
+                  style={{ height: HOUR_HEIGHT }}
+                  title={isBlockedCell ? "Hard conflict blocked" : undefined}
                   type="button"
-                >
-                  <span className="planner-cell-count">{count}</span>
-                  <span className="planner-cell-label">{count === 1 ? "session" : "sessions"}</span>
-                  {slotRows.slice(0, 2).map((row) => (
-                    <small key={row.session_id}>{row.module_code ?? row.requirement_id}</small>
-                  ))}
-                  {count > 2 && <em>+{count - 2} more</em>}
-                </button>
+                />
               );
             })}
-<<<<<<< Updated upstream
-=======
 
             {events
               .filter((event) => event.day === day)
@@ -85,11 +259,9 @@ export default function TimetablePlanner({
                   const labCount = event.rows.filter(isLabRequirement).length;
                   return (
                     <button
-                      aria-pressed={isSelected}
                       className={`calendar-event calendar-event-group ${labCount ? "lab-requirement" : ""} ${
                         hasConflict ? "conflict-current" : ""
                       } ${isSelected ? "selected" : ""}`}
-                      data-timetable-selection-surface
                       disabled={!onSelectSlot}
                       key={event.id}
                       onClick={() => {
@@ -124,11 +296,9 @@ export default function TimetablePlanner({
                 const slotRows = grouped.get(firstKey) ?? [event.row];
                 return (
                   <button
-                    aria-pressed={isSelected}
                     className={`calendar-event ${event.density} ${isLabRequirement(event.row) ? "lab-requirement" : ""} ${
                       hasConflict ? "conflict-current" : ""
                     } ${isSelected ? "selected" : ""}`}
-                    data-timetable-selection-surface
                     disabled={!onSelectSlot}
                     key={event.row.scheduled_session_id}
                     onClick={() => onSelectSlot?.(firstKey, slotRows)}
@@ -159,46 +329,48 @@ export default function TimetablePlanner({
                   </button>
                 );
               })}
->>>>>>> Stashed changes
           </div>
         ))}
       </div>
-      <div className="planner-legend">
-        <div className="legend-group">
-          <span className="legend-title">Density:</span>
-          <span>
-            <i className="load-0" />0
-          </span>
-          <span>
-            <i className="load-1" />1
-          </span>
-          <span>
-            <i className="load-2" />2
-          </span>
-          <span>
-            <i className="load-4" />
-            3-4
-          </span>
-          <span>
-            <i className="load-5" />
-            5+
-          </span>
+
+      <div className="calendar-options-panel">
+        <div className="calendar-options-title">Display Options</div>
+        <div className="calendar-option-grid">
+          <label>
+            <input checked={showAmPm} onChange={(event) => setShowAmPm(event.target.checked)} type="checkbox" />
+            Show AM/PM
+          </label>
+          <label>
+            <input
+              checked={showClassTitle}
+              onChange={(event) => setShowClassTitle(event.target.checked)}
+              type="checkbox"
+            />
+            Show Class Title
+          </label>
+          <label>
+            <input
+              checked={showInstructors}
+              onChange={(event) => setShowInstructors(event.target.checked)}
+              type="checkbox"
+            />
+            Show Instructors
+          </label>
+          {days.map((day) => (
+            <label key={day}>
+              <input checked={visibleDays.includes(day)} onChange={() => toggleDay(day)} type="checkbox" />
+              {day}
+            </label>
+          ))}
+          <button className="button secondary slim" onClick={onRefresh} type="button">
+            <RefreshCw size={16} />
+            Refresh Calendar
+          </button>
         </div>
-        {isPlacing && (
-          <div className="legend-group">
-            <span className="legend-title">Placement:</span>
-            <span>
-              <i className="legend-draft" />
-              Draft Move
-            </span>
-          </div>
-        )}
       </div>
     </div>
   );
 }
-<<<<<<< Updated upstream
-=======
 
 function layoutEvents(
   rows: ScheduledRow[],
@@ -297,9 +469,7 @@ function layoutEvents(
 
 function maxRowsInPlannerSlot(rows: ScheduledRow[], slots: PlannerSlot[]) {
   return slots.reduce((largest, slot) => {
-    const count = rows.filter((row) =>
-      intervalsOverlap(row.start_time, row.end_time, slot.start_time, slot.end_time),
-    ).length;
+    const count = rows.filter((row) => intervalsOverlap(row.start_time, row.end_time, slot.start_time, slot.end_time)).length;
     return Math.max(largest, count);
   }, 0);
 }
@@ -401,4 +571,3 @@ function minutesToTime(minutes: number) {
   const minute = minutes % 60;
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
->>>>>>> Stashed changes

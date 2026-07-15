@@ -1,38 +1,32 @@
 """Shared timetable compatibility rules.
 
 The validator and CP-SAT model builder both need to answer the same core
-questions: can this requirement use this slot and can it use this room? Keeping
-those rules here prevents the two workflows from drifting apart.
+questions: can this requirement use this slot, can it use this room, and do two
+fixed requirements clash?  Keeping those rules here prevents the two workflows
+from drifting apart.
 """
 
 from __future__ import annotations
+
+import re
 
 from app.models.room import Room
 from app.models.session import Session
 from app.models.time_slot import TimeSlot
 from app.services.compatibility import (
     delivery_room_compatible,
+    intervals_overlap,
     normalize_token,
     parse_custom_weeks,
     parse_day_list,
     room_capacity_fits,
+    session_weeks_conflict,
     venue_room_compatible,
-    weeks_conflict,
 )
 
 
-<<<<<<< Updated upstream
-def candidate_slot_allowed(session: Session, slot: TimeSlot) -> bool:
-    """Return whether a saved requirement can be assigned to a time slot."""
-=======
 def candidate_slot_allowed(session: Session, slot: TimeSlot, relax_fixed: bool = False) -> bool:
-    """Return whether a requirement can use a slot in the current workflow phase.
-
-    Initial generation honors both built-in labs and Excel rows marked Fixed.
-    Correction workflows may relax uploaded Fixed rows, but callers must still
-    keep built-in labs out of their movable target set.
-    """
->>>>>>> Stashed changes
+    """Return whether a saved requirement can be assigned to a time slot."""
 
     if session.duration_minutes and slot.duration_minutes != session.duration_minutes:
         return False
@@ -53,11 +47,7 @@ def candidate_slot_allowed(session: Session, slot: TimeSlot, relax_fixed: bool =
     elif session_week in {"weekly", "odd", "even"} and session_week != slot_week:
         return False
 
-<<<<<<< Updated upstream
-    if normalize_token(session.scheduling_type) == "fixed":
-=======
-    if not relax_fixed and session_is_initially_fixed(session):
->>>>>>> Stashed changes
+    if not relax_fixed and normalize_token(session.scheduling_type) == "fixed":
         if session.fixed_day and slot.day != session.fixed_day:
             return False
         if session.fixed_start_time and slot.start_time != session.fixed_start_time:
@@ -71,49 +61,11 @@ def candidate_slot_allowed(session: Session, slot: TimeSlot, relax_fixed: bool =
     return True
 
 
-<<<<<<< Updated upstream
-def candidate_room_allowed(session: Session, room: Room) -> bool:
-    """Return whether a saved requirement can be assigned to a room."""
-
-    return room_capacity_fits(session, room) and delivery_room_compatible(session, room) and venue_room_compatible(session, room)
-
-
-def fixed_sessions_conflict(left: Session, right: Session) -> bool:
-    """Return whether two fixed requirements overlap in time and week pattern."""
-
-    return (
-        left.fixed_day == right.fixed_day
-        and weeks_conflict(left.week_pattern, right.week_pattern)
-        and intervals_overlap(
-            left.fixed_start_time or "",
-            left.fixed_end_time or "",
-            right.fixed_start_time or "",
-            right.fixed_end_time or "",
-        )
-    )
-=======
-def session_is_immovable(session: Session) -> bool:
-    """Return whether automatic or manual placement must preserve this session."""
-
-    return bool(session.is_lab_requirement)
-
-
-def session_is_initially_fixed(session: Session) -> bool:
-    """Return whether fresh generation must honor the saved fixed timing."""
-
-    has_complete_fixed_timing = bool(session.fixed_day and session.fixed_start_time and session.fixed_end_time)
-    return bool(session.is_lab_requirement or normalize_token(session.scheduling_type) == "fixed" or has_complete_fixed_timing)
-
-
-def effective_scheduling_type(session: Session) -> str:
-    """Expose the source scheduling intent shown to administrators."""
-
-    return "Fixed" if session_is_initially_fixed(session) else "Flexible"
-
-
 def candidate_room_allowed(session: Session, room: Room, relax_fixed: bool = False) -> bool:
     """Return whether a saved requirement can be assigned to a room."""
 
+    if not relax_fixed:
+        pass  # Room constraints for fixed sessions are handled by required_room_codes below
     required_codes = required_room_codes(session)
     if required_codes:
         if room.room_code.lower() not in {code.lower() for code in required_codes}:
@@ -134,7 +86,21 @@ def required_student_group_codes(session: Session) -> list[str]:
 def _split_codes(value: object) -> list[str]:
     text = value if isinstance(value, str) else ""
     return [part.strip() for part in re.split(r"[,;]+", text) if part.strip()]
->>>>>>> Stashed changes
+
+
+def fixed_sessions_conflict(left: Session, right: Session) -> bool:
+    """Return whether two fixed requirements overlap in time and week pattern."""
+
+    return (
+        left.fixed_day == right.fixed_day
+        and session_weeks_conflict(left, None, right, None)
+        and intervals_overlap(
+            left.fixed_start_time or "",
+            left.fixed_end_time or "",
+            right.fixed_start_time or "",
+            right.fixed_end_time or "",
+        )
+    )
 
 
 def session_label(session: Session) -> str:
