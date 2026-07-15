@@ -430,7 +430,16 @@ class ImportService:
             frame["Student Group Code"] = None
         self._apply_specific_week_defaults(frame)
         self._apply_specific_date_defaults(frame)
-        frame["Scheduling Type"] = frame.apply(self._derive_scheduling_type, axis=1)
+        if "Scheduling Type" not in frame.columns:
+            frame["Scheduling Type"] = None
+        frame["Scheduling Type"] = frame.apply(
+            lambda row: (
+                "Fixed"
+                if all(clean_text(row.get(column)) for column in ("Fixed Day", "Fixed Start Time", "Fixed End Time"))
+                else clean_text(row.get("Scheduling Type")) or "Flexible"
+            ),
+            axis=1,
+        )
         if "Week Pattern" not in frame.columns:
             frame["Week Pattern"] = None
         frame["Week Pattern"] = frame.apply(
@@ -538,13 +547,6 @@ class ImportService:
         if match:
             return max(1, min(int(match.group(1)), 6))
         return 1
-
-    def _derive_scheduling_type(self, row) -> str:
-        explicit = clean_text(row.get("Scheduling Type"))
-        if explicit:
-            return explicit
-        has_fixed_time = any(clean_text(row.get(column)) for column in ["Fixed Day", "Fixed Date", "Fixed Start Time", "Fixed End Time"])
-        return "Fixed" if has_fixed_time else "Flexible"
 
     def _clear_sessions_and_schedules(self, db: DbSession) -> None:
         clear_schedule_state(db)

@@ -1,9 +1,11 @@
 """Tests for requirements workbook upload routes."""
 
+import pytest
 from app import models  # noqa: F401
 from app.database import Base, get_db
 from app.main import app
 from app.models.session import Session
+from app.services.schedule_service import ScheduleService
 from app.services.seed_service import seed_reference_data, seed_sample_sessions
 from app.tests.conftest import valid_row, write_template
 from fastapi.testclient import TestClient
@@ -148,3 +150,39 @@ def test_upload_route_returns_400_for_unreadable_workbook(tmp_path):
 
     assert response.status_code == 400
     assert "Could not read timetable workbook" in response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    ("sample_id", "expected_fixed_count", "expected_hard_conflicts"),
+    [
+        ("no-constraints", 0, False),
+        ("soft-constraints", 0, False),
+        ("hard-constraints", 20, False),
+        ("mixed-constraints", 6, True),
+    ],
+)
+def test_demo_sample_workbooks_import_expected_workflows(
+    tmp_path,
+    sample_id,
+    expected_fixed_count,
+    expected_hard_conflicts,
+):
+    db = _route_db(tmp_path)
+    client = _client_for(db)
+    try:
+        catalogue = client.get("/api/upload/demo-samples")
+        response = client.post(f"/api/upload/demo-samples/{sample_id}/load")
+        fixed_count = db.query(Session).filter(Session.scheduling_type == "Fixed").count()
+        generation = ScheduleService().generate(db, reproducible=True)
+    finally:
+        app.dependency_overrides.clear()
+        db.close()
+
+    assert catalogue.status_code == 200
+    assert next(item for item in catalogue.json() if item["id"] == sample_id)["available"] is True
+    assert response.status_code == 200
+    assert response.json()["rows_imported"] == 20
+    assert response.json()["rows_failed"] == 0
+    assert fixed_count == expected_fixed_count
+    assert generation["schedule_run_id"] > 0
+    assert (generation["hard_violation_count"] > 0) is expected_hard_conflicts

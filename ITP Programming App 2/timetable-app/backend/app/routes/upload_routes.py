@@ -29,9 +29,14 @@ DEMO_SAMPLES = {
         "description": "Twenty flexible rows with preferred and avoided teaching days.",
     },
     "hard-constraints": {
-        "label": "Hard constraints",
+        "label": "Fixed timings",
         "filename": "sample_hard_constraints_20_rows.xlsx",
-        "description": "Twenty fixed rows using valid day and time slots.",
+        "description": "Twenty uploaded fixed rows whose timings are honored on the first generated run.",
+    },
+    "mixed-constraints": {
+        "label": "Mixed references and preferences",
+        "filename": "sample_mixed_constraints_20_rows.xlsx",
+        "description": "Six first-run fixed timings plus fourteen flexible rows with soft preferences.",
     },
 }
 

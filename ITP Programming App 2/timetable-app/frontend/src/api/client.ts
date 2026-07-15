@@ -10,6 +10,12 @@ import type {
   Dashboard,
   DatabaseRow,
   DatabaseTypeInfo,
+<<<<<<< Updated upstream
+=======
+  ImportPreviewRow,
+  QuickFixResponse,
+  QuickFixAvailability,
+>>>>>>> Stashed changes
   Room,
   ScheduleComparison,
   ScheduleExplanation,
@@ -197,6 +203,42 @@ export function moveScheduledSession(
   );
 }
 
+<<<<<<< Updated upstream
+=======
+export function suggestScheduleFixes(
+  scheduleRunId: number,
+  data: { conflict_id?: number | null; session_id?: number | null },
+) {
+  return request<QuickFixResponse>(`/api/schedules/${scheduleRunId}/suggest-fixes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export function getQuickFixAvailability(scheduleRunId: number) {
+  return request<QuickFixAvailability>(`/api/schedules/${scheduleRunId}/quick-fix-availability`);
+}
+
+export function recheckSchedule(scheduleRunId: number) {
+  return request<{ message: string; schedule_run: ScheduleRun | null; violations: ConstraintViolation[] }>(
+    `/api/schedules/${scheduleRunId}/recheck`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function autoDeconflict(scheduleRunId: number, timeoutSeconds = 30) {
+  return request<ScheduleGenerateResult>(
+    `/api/schedules/${scheduleRunId}/auto-deconflict?timeout_seconds=${encodeURIComponent(timeoutSeconds)}`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+>>>>>>> Stashed changes
 export function getViolations(scheduleRunId: number) {
   return request<ConstraintViolation[]>(`/api/schedules/${scheduleRunId}/violations`);
 }

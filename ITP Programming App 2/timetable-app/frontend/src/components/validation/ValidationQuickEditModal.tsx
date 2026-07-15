@@ -173,12 +173,8 @@ export default function ValidationQuickEditModal({
                 <div className="detail-row">
                   <label>
                     <strong>Scheduling Type</strong>
-                    <select
-                      value={editValues.scheduling_type}
-                      onChange={(event) => setEditValues((prev) => ({ ...prev, scheduling_type: event.target.value }))}
-                    >
+                    <select value="Flexible" disabled>
                       <option value="Flexible">Flexible</option>
-                      <option value="Fixed">Fixed</option>
                     </select>
                   </label>
                 </div>

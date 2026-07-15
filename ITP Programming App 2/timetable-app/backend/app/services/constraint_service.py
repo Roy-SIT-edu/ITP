@@ -12,7 +12,11 @@ from app.services.compatibility import (
     delivery_room_compatible,
     intervals_overlap,
     is_online_mode,
+<<<<<<< Updated upstream
     normalize_token,
+=======
+    session_weeks_conflict,
+>>>>>>> Stashed changes
     time_to_minutes,
     weeks_conflict,
 )
@@ -63,7 +67,10 @@ class ConstraintService:
     def check_schedule(self, db: DbSession, schedule_run_id: int) -> list[dict]:
         scheduled = (
             db.query(ScheduledSession)
-            .filter_by(schedule_run_id=schedule_run_id)
+            .filter(
+                ScheduledSession.schedule_run_id == schedule_run_id,
+                ScheduledSession.included_in_final.is_(True),
+            )
             .order_by(ScheduledSession.day, ScheduledSession.start_time)
             .all()
         )
@@ -152,6 +159,7 @@ class ConstraintService:
                         "affected_session_ids": [item.session_id],
                     }
                 )
+<<<<<<< Updated upstream
             if normalize_token(item.session.scheduling_type) == "fixed":
                 if (
                     item.session.fixed_day != item.day
@@ -166,6 +174,18 @@ class ConstraintService:
                             "affected_session_ids": [item.session_id],
                         }
                     )
+=======
+            required_codes = required_room_codes(item.session)
+            if required_codes and item.room.room_code.lower() not in {code.lower() for code in required_codes}:
+                violations.append(
+                    {
+                        "constraint_code": "REQUIRED_ROOM_MISMATCH",
+                        "severity": "HARD",
+                        "message": f"{self._module_label(item)} must use one of {', '.join(required_codes)} but is placed in {item.room.room_code}.",
+                        "affected_session_ids": [item.session_id],
+                    }
+                )
+>>>>>>> Stashed changes
 
     def _soft_checks(self, scheduled: list[ScheduledSession], violations: list[dict]) -> None:
         self._tutor_gap_checks(scheduled, violations)

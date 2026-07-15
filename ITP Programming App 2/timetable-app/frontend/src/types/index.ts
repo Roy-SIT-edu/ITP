@@ -94,12 +94,162 @@ export type ScheduleResponse = {
 
 export type ScheduleGenerateResult = {
   schedule_run_id: number;
+  source_schedule_run_id?: number;
   solver_status: string;
   hard_violation_count: number;
+<<<<<<< Updated upstream
+=======
+  remaining_hard_violation_count?: number;
+  moved_session_count?: number;
+  timed_out?: boolean;
+  unresolved_fixed_session_ids?: number[];
+  unresolved_lab_session_ids?: number[];
+  soft_warning_count?: number;
+>>>>>>> Stashed changes
   soft_score: number;
   message: string;
 };
 
+<<<<<<< Updated upstream
+=======
+export type ReportBreakdownItem = {
+  label: string;
+  count: number;
+  percent: number;
+};
+
+export type ReportWorkloadItem = {
+  label: string;
+  session_count: number;
+  hours: number;
+};
+
+export type ReportSession = {
+  scheduled_session_id: number;
+  session_id: number;
+  requirement_id: string | null;
+  programme: string | null;
+  module_code: string | null;
+  class_type: string | null;
+  student_group_code: string | null;
+  staff_names: string[];
+  room: string | null;
+  day: string;
+  start_time: string;
+  end_time: string;
+  duration_minutes: number;
+  week_pattern: string | null;
+  custom_weeks: string | null;
+  start_week: number | null;
+  end_week: number | null;
+  delivery_mode: string | null;
+  campus_mode: string | null;
+  scheduling_type: string | null;
+  exact_class_size: number | null;
+  source_file: string | null;
+  is_lab_requirement: boolean;
+  lab_requirement_id: number | null;
+  hard_issue_count: number;
+  soft_issue_count: number;
+  issue_count: number;
+  issue_codes: string[];
+};
+
+export type ReportConflict = ConstraintViolation & {
+  affected_sessions: Array<{
+    session_id: number;
+    requirement_id: string | null;
+    module_code: string | null;
+    student_group_code: string | null;
+    placement: string;
+  }>;
+};
+
+export type ReportLabOverlapSession = {
+  session_id: number;
+  scheduled_session_id: number;
+  requirement_id: string | null;
+  lab_requirement_id: number | null;
+  module_code: string | null;
+  programme: string | null;
+  student_group_code: string | null;
+  day: string;
+  start_time: string;
+  end_time: string;
+  week_pattern: string;
+  room: string | null;
+  included_in_final: boolean;
+};
+
+export type ReportLabOverlap = {
+  left: ReportLabOverlapSession;
+  right: ReportLabOverlapSession;
+  resource_types: Array<"ROOM" | "STAFF" | "STUDENT_GROUP">;
+  resources: {
+    rooms: string[];
+    staff: string[];
+    student_groups: string[];
+  };
+  excluded_session_ids: number[];
+  resolved_in_final: boolean;
+};
+
+export type ScheduleReport = {
+  report_generated_at: string;
+  run: ScheduleRun;
+  quality: ScheduleQuality;
+  quality_breakdown: {
+    starting_score: number;
+    hard_conflict_deduction: number;
+    soft_warning_deduction: number;
+    affected_session_deduction: number;
+    preference_pressure_deduction: number;
+    hard_conflict_cap_applied: boolean;
+  };
+  summary: {
+    scheduled_count: number;
+    uploaded_session_count: number;
+    lab_session_count: number;
+    original_lab_session_count: number;
+    excluded_lab_session_count: number;
+    lab_overlap_pair_count: number;
+    programme_count: number;
+    module_count: number;
+    student_group_count: number;
+    staff_count: number;
+    room_count: number;
+    total_scheduled_hours: number;
+    hard_conflict_count: number;
+    soft_warning_count: number;
+    affected_session_count: number;
+  };
+  breakdowns: {
+    by_source: ReportBreakdownItem[];
+    by_programme: ReportBreakdownItem[];
+    by_class_type: ReportBreakdownItem[];
+    by_day: ReportBreakdownItem[];
+    by_delivery_mode: ReportBreakdownItem[];
+    room_workload: ReportWorkloadItem[];
+    staff_workload: ReportWorkloadItem[];
+  };
+  conflicts: {
+    hard_count: number;
+    soft_count: number;
+    affected_session_count: number;
+    by_constraint: Array<{ severity: "HARD" | "SOFT"; constraint_code: string; count: number }>;
+    items: ReportConflict[];
+  };
+  lab_overlap_resolution: {
+    detected_pair_count: number;
+    excluded_session_count: number;
+    excluded_session_ids: number[];
+    excluded_sessions: ReportLabOverlapSession[];
+    overlaps: ReportLabOverlap[];
+  };
+  sessions: ReportSession[];
+};
+
+>>>>>>> Stashed changes
 export type SoftConstraintPriority = {
   constraint_code: string;
   label: string;
@@ -160,6 +310,34 @@ export type ConstraintViolation = {
   affected_session_ids: number[];
 };
 
+<<<<<<< Updated upstream
+=======
+export type QuickFixSuggestion = {
+  type: "VENUE_CHANGE" | "TIME_CHANGE" | "ALTERNATIVE_BEST";
+  description: string;
+  session_id: number;
+  new_room: string;
+  new_time: string;
+  room_code: string;
+  day: string;
+  start_time: string;
+  end_time: string;
+};
+
+export type QuickFixResponse = {
+  conflict_id: number | null;
+  severity: "HARD" | "SOFT";
+  session_id: number;
+  suggestions: QuickFixSuggestion[];
+};
+
+export type QuickFixAvailability = {
+  schedule_run_id: number;
+  by_session_id: Record<string, boolean>;
+  by_conflict_id: Record<string, boolean>;
+};
+
+>>>>>>> Stashed changes
 export type SessionRow = {
   id: number;
   requirement_id: string | null;

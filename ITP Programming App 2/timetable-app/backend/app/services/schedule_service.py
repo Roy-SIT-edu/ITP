@@ -12,6 +12,12 @@ from app.models.scheduled_session import ScheduledSession
 from app.models.session import Session
 from app.models.time_slot import TimeSlot
 from app.services.constraint_service import ConstraintService
+<<<<<<< Updated upstream
+=======
+from app.services.lab_overlap_service import LabOverlapService
+from app.services.lab_requirement_service import LabRequirementService
+from app.services.schedule_quality_service import affected_session_count, schedule_quality_summary
+>>>>>>> Stashed changes
 from app.services.soft_constraint_priority_service import SoftConstraintPriorityService
 from app.services.validation_service import ValidationService
 from app.solver.cp_sat_solver import CpSatTimetableSolver
@@ -24,6 +30,11 @@ class ScheduleService:
         self.solver = CpSatTimetableSolver()
         self.constraint_service = ConstraintService()
         self.priority_service = SoftConstraintPriorityService()
+<<<<<<< Updated upstream
+=======
+        self.lab_requirement_service = LabRequirementService()
+        self.lab_overlap_service = LabOverlapService()
+>>>>>>> Stashed changes
 
     def generate(self, db: DbSession) -> dict:
         validation = self.validation_service.validate_latest(db)
@@ -75,16 +86,60 @@ class ScheduleService:
                 )
             )
         db.flush()
+<<<<<<< Updated upstream
         check = self.constraint_service.check_and_store(db, run.id, soft_weights)
+=======
+        lab_overlap_resolution = self.lab_overlap_service.resolve_run(db, run_id)
+        check = self.constraint_service.check_and_store(db, run_id, soft_weights)
+>>>>>>> Stashed changes
         run.hard_violation_count = check["hard_violation_count"]
         run.soft_score = int(run.soft_score or 0) + check["weighted_soft_score"]
         run.status = "COMPLETED" if run.hard_violation_count == 0 else "COMPLETED_WITH_CONFLICTS"
+        if lab_overlap_resolution["excluded_session_count"]:
+            run.message = (
+                f"{run.message} Excluded {lab_overlap_resolution['excluded_session_count']} fixed lab session(s) "
+                f"from the final timetable to resolve {lab_overlap_resolution['detected_pair_count']} overlap pair(s)."
+            )
         db.commit()
+
+        final_scheduled_count = sum(
+            1 for assignment in result["assignments"] if assignment["session_id"] not in lab_overlap_resolution["excluded_session_ids"]
+        )
 
         return {
             "schedule_run_id": run.id,
             "solver_status": run.solver_status,
             "hard_violation_count": run.hard_violation_count,
             "soft_score": run.soft_score,
+<<<<<<< Updated upstream
             "message": run.message,
         }
+=======
+            "quality": schedule_quality_summary(
+                scheduled_count=final_scheduled_count,
+                hard_issue_count=run.hard_violation_count,
+                soft_warning_count=check["soft_warning_count"],
+                raw_soft_score=run.soft_score,
+                affected_session_count=affected_session_count(check["violations"]),
+            ),
+            "generation_mode": "reproducible" if reproducible else "standard",
+            "generation_seconds": round(perf_counter() - started_at, 1),
+            "solver_timeout_seconds": effective_timeout,
+            "lab_overlap_pair_count": lab_overlap_resolution["detected_pair_count"],
+            "excluded_lab_session_count": lab_overlap_resolution["excluded_session_count"],
+            "excluded_lab_session_ids": lab_overlap_resolution["excluded_session_ids"],
+            "message": run.message,
+        }
+
+    def auto_deconflict(
+        self,
+        db: DbSession,
+        schedule_run_id: int,
+        timeout: float | None = None,
+    ) -> dict:
+        """Create a safe derived schedule run that preserves source requirements."""
+
+        from app.services.auto_deconflict_service import AutoDeconflictService
+
+        return AutoDeconflictService().run(db, schedule_run_id, timeout=timeout)
+>>>>>>> Stashed changes

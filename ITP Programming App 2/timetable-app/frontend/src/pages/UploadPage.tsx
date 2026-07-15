@@ -8,6 +8,11 @@ import { resetRequirementInputs, uploadTemplate } from "../api/client";
 import { formatApiError } from "../api/errors";
 import ImportSummary from "../components/ImportSummary";
 import InlineActivity from "../components/InlineActivity";
+<<<<<<< Updated upstream
+=======
+import { GenerationReadinessPanel, SoftPreferenceTable } from "../components/SoftConstraintWorkflow";
+import { softConstraintHints } from "../components/softPreferenceHints";
+>>>>>>> Stashed changes
 import UploadBox from "../components/UploadBox";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
 import { clearSessionState, useSessionState } from "../sessionState";
@@ -66,6 +71,32 @@ export default function UploadPage() {
     }
   };
 
+<<<<<<< Updated upstream
+=======
+  const handleApplyEditedRows = async (rows: ImportPreviewRow[]) => {
+    setApplyingEdits(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const nextSummary = await importEditedTemplateRows(rows);
+      setSummary(nextSummary);
+      if (nextSummary.rows_failed > 0) {
+        setError("Edited rows still have validation issues. Check the highlighted cells and apply again.");
+      } else {
+        setSuccess(
+          `${nextSummary.rows_imported} edited requirement${nextSummary.rows_imported === 1 ? "" : "s"} imported.`,
+        );
+        notifyWorkflowProgressChange();
+      }
+      await loadReadiness();
+    } catch (err) {
+      setError(formatApiError(err, "Could not apply edited rows"));
+    } finally {
+      setApplyingEdits(false);
+    }
+  };
+
+>>>>>>> Stashed changes
   return (
     <div className="page">
       <div className="page-header">
@@ -106,6 +137,28 @@ export default function UploadPage() {
       {error && <div className="notice bad">{error}</div>}
       {success && <div className="notice good">{success}</div>}
       {summary && <ImportSummary summary={summary} />}
+<<<<<<< Updated upstream
+=======
+      {summary && <ImportPreviewGrid applying={applyingEdits} summary={summary} onApply={handleApplyEditedRows} />}
+      {readinessError && <div className="notice bad">{readinessError}</div>}
+      {readinessLoading && (
+        <InlineActivity
+          kind="validate"
+          title="Loading generation readiness"
+          steps={["Loading priorities", "Reading imported requirements", "Preparing soft preference review"]}
+        />
+      )}
+      <GenerationReadinessPanel
+        importedRowCount={sessions.length}
+        priorityCount={priorities.length}
+        readinessText={sessions.length > 0 ? "Ready to generate." : "Import requirements before generating."}
+        softRowCount={softRows.length}
+        warningCount={0}
+      />
+      <div className="soft-workspace">
+        <SoftPreferenceTable rows={softRows} warningCount={0} />
+      </div>
+>>>>>>> Stashed changes
     </div>
   );
 }

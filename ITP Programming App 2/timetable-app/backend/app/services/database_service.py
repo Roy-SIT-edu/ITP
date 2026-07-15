@@ -27,6 +27,7 @@ from app.services.compatibility import (
     canonical_week_pattern,
     clean_text,
     minutes_to_time,
+    normalize_token,
     time_to_minutes,
 )
 from app.services.schedule_state_service import clear_schedule_state
@@ -186,10 +187,10 @@ DATABASE_TYPES: dict[str, DatabaseTypeConfig] = {
             ColumnSpec("end_week", "End Week", "number", required=True),
             ColumnSpec("week_pattern", "Week Pattern", required=True),
             ColumnSpec("custom_weeks", "Custom Weeks"),
-            ColumnSpec("scheduling_type", "Scheduling Type", required=True),
-            ColumnSpec("fixed_day", "Fixed Day"),
-            ColumnSpec("fixed_start_time", "Fixed Start", "time"),
-            ColumnSpec("fixed_end_time", "Fixed End", "time"),
+            ColumnSpec("scheduling_type", "Scheduling Type", read_only=True),
+            ColumnSpec("fixed_day", "Initial Fixed Day", read_only=True),
+            ColumnSpec("fixed_start_time", "Initial Fixed Start", "time", read_only=True),
+            ColumnSpec("fixed_end_time", "Initial Fixed End", "time", read_only=True),
             ColumnSpec("preferred_days", "Preferred Days"),
             ColumnSpec("avoid_days", "Avoid Days"),
             ColumnSpec("priority", "Priority"),
@@ -423,6 +424,7 @@ class DatabaseService:
         data["delivery_mode"] = canonical_delivery_mode(data.get("delivery_mode"))
         data["week_pattern"] = canonical_week_pattern(data.get("week_pattern")) or "Weekly"
         data["fixed_day"] = canonical_day(data.get("fixed_day"))
+        data["scheduling_type"] = "Fixed" if normalize_token(data.get("scheduling_type")) == "fixed" else "Flexible"
         data["source_file"] = clean_text(data.get("source_file")) or "Database Entry"
         return data
 
@@ -528,6 +530,16 @@ class DatabaseService:
         return errors
 
     def _ensure_unique_key(self, db: DbSession, config: DatabaseTypeConfig, item, row_id: int | None = None) -> None:
+<<<<<<< Updated upstream
+=======
+        if config.id == "staff" and not getattr(item, "staff_id", None):
+            query = db.query(Staff).filter(func.lower(Staff.staff_name) == (item.staff_name or "").lower())
+            if row_id is not None:
+                query = query.filter(Staff.id != row_id)
+            if query.first():
+                raise DatabaseValidationError([{"row": 0, "field": "staff_name", "message": "A staff row with this name already exists."}])
+            return
+>>>>>>> Stashed changes
         filters = [getattr(config.model, field) == getattr(item, field) for field in config.key_fields]
         query = db.query(config.model).filter(*filters)
         if row_id is not None:

@@ -7,6 +7,10 @@ modules, programmes, student groups, and sessions are intentionally not seeded.
 
 from __future__ import annotations
 
+<<<<<<< Updated upstream
+=======
+import json
+>>>>>>> Stashed changes
 import re
 from pathlib import Path
 

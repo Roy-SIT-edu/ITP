@@ -1,0 +1,6 @@
+# Development-only tools layered on the production requirements.
+-r requirements.in
+
+httpx==0.28.1
+pytest==8.4.2
+ruff==0.15.21

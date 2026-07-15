@@ -11,6 +11,11 @@ from app.models.session import Session
 from app.models.staff import Staff
 from app.models.student_group import StudentGroup
 from app.models.time_slot import TimeSlot
+<<<<<<< Updated upstream
+=======
+from app.services.scheduling_rules import effective_scheduling_type
+from app.services.student_group_service import student_group_partition
+>>>>>>> Stashed changes
 
 
 def programme_to_dict(item: Programme) -> dict:
@@ -118,7 +123,7 @@ def session_to_dict(item: Session) -> dict:
         "end_week": item.end_week,
         "week_pattern": item.week_pattern,
         "custom_weeks": item.custom_weeks,
-        "scheduling_type": item.scheduling_type,
+        "scheduling_type": effective_scheduling_type(item),
         "fixed_day": item.fixed_day,
         "fixed_start_time": item.fixed_start_time,
         "fixed_end_time": item.fixed_end_time,

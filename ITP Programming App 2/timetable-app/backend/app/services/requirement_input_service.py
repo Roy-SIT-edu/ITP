@@ -18,7 +18,6 @@ from app.models.session import Session as RequirementSession
 from app.models.session_staff import SessionStaff
 from app.models.staff import Staff
 from app.models.student_group import StudentGroup
-from app.models.time_slot import TimeSlot
 from app.schemas.session import SessionInput
 from app.services.compatibility import (
     ALLOWED_DELIVERY_MODES,
@@ -38,7 +37,6 @@ from app.services.compatibility import (
     room_capacity_fits,
     time_to_minutes,
     venue_room_compatible,
-    weeks_conflict,
 )
 from sqlalchemy import func
 from sqlalchemy.orm import Session as DbSession
@@ -264,10 +262,30 @@ class RequirementInputService:
             errors.append(self._issue(source_row_no, "Custom Weeks", "Custom week pattern requires at least one week number."))
 
         scheduling_type = self._scheduling_type(row, source_row_no, errors)
-        fixed_day = self._fixed_day(row, source_row_no, errors, required=scheduling_type == "Fixed")
-        fixed_start, fixed_end = self._fixed_times(row, source_row_no, errors, required=scheduling_type == "Fixed")
-        if scheduling_type == "Fixed" and fixed_day and fixed_start and fixed_end and week_pattern:
-            self._check_fixed_time_slot(db, fixed_day, fixed_start, fixed_end, week_pattern, source_row_no, errors)
+        fixed_day = self._fixed_day(row, source_row_no, errors)
+        fixed_start, fixed_end = self._fixed_times(row, source_row_no, errors)
+        fixed_timing_values = (fixed_day, fixed_start, fixed_end)
+        if all(fixed_timing_values):
+            scheduling_type = "Fixed"
+        elif any(fixed_timing_values):
+            errors.append(
+                self._issue(
+                    source_row_no,
+                    "Fixed Time",
+                    "Fixed timing must provide Fixed Day, Fixed Start Time, and Fixed End Time together.",
+                )
+            )
+        if scheduling_type == "Fixed":
+            if not fixed_day:
+                errors.append(self._issue(source_row_no, "Fixed Day", "Fixed requirements must provide a Fixed Day."))
+            if not fixed_start or not fixed_end:
+                errors.append(
+                    self._issue(
+                        source_row_no,
+                        "Fixed Start Time",
+                        "Fixed requirements must provide Fixed Start Time and Fixed End Time.",
+                    )
+                )
 
         preferred_days = self._validated_day_list(row, "Preferred Days", source_row_no, errors)
         avoid_days = self._validated_day_list(row, "Avoid Days", source_row_no, errors)
@@ -532,34 +550,6 @@ class RequirementInputService:
         if query.first():
             errors.append(self._issue(source_row_no, "Requirement ID", f"Requirement ID '{requirement_id}' already exists."))
 
-    def _check_fixed_time_slot(
-        self,
-        db: DbSession,
-        fixed_day: str,
-        fixed_start: str,
-        fixed_end: str,
-        week_pattern: str,
-        source_row_no: int,
-        errors: list[dict],
-    ) -> None:
-        matches = (
-            db.query(TimeSlot)
-            .filter(
-                TimeSlot.day == fixed_day,
-                TimeSlot.start_time == fixed_start,
-                TimeSlot.end_time == fixed_end,
-            )
-            .all()
-        )
-        if not any(weeks_conflict(slot.week_pattern, week_pattern) for slot in matches):
-            errors.append(
-                self._issue(
-                    source_row_no,
-                    "Fixed Start Time",
-                    "No time slot matches the fixed day, start time, end time, and week pattern.",
-                )
-            )
-
     def _has_feasible_room(
         self,
         db: DbSession,
@@ -634,7 +624,7 @@ class RequirementInputService:
         token = normalize_token(raw)
         if token == "fixed":
             return "Fixed"
-        if token in {"flexible", "preferred", "preference"}:
+        if token in {"flexible", "preferred", "preference", "standard"}:
             return "Flexible"
         errors.append(self._issue(source_row_no, "Scheduling Type", "Scheduling Type must be Fixed or Flexible."))
         return raw
@@ -644,12 +634,9 @@ class RequirementInputService:
         row: Mapping[str, Any],
         source_row_no: int,
         errors: list[dict],
-        required: bool,
     ) -> str | None:
         raw = clean_text(self._value(row, "Fixed Day"))
         if not raw:
-            if required:
-                errors.append(self._issue(source_row_no, "Fixed Day", "Fixed sessions must include a fixed day."))
             return None
         day = canonical_day(raw)
         if day not in DAY_ORDER:
@@ -661,16 +648,11 @@ class RequirementInputService:
         row: Mapping[str, Any],
         source_row_no: int,
         errors: list[dict],
-        required: bool,
     ) -> tuple[str | None, str | None]:
         start_raw = self._value(row, "Fixed Start Time")
         end_raw = self._value(row, "Fixed End Time")
         start = time_to_minutes(start_raw)
         end = time_to_minutes(end_raw)
-        if start is None and required:
-            errors.append(self._issue(source_row_no, "Fixed Start Time", "Fixed sessions must include a fixed start time."))
-        if end is None and required:
-            errors.append(self._issue(source_row_no, "Fixed End Time", "Fixed sessions must include a fixed end time."))
         if start is not None and end is not None and end <= start:
             errors.append(self._issue(source_row_no, "Fixed End Time", "Fixed End Time must be after Fixed Start Time."))
         return (

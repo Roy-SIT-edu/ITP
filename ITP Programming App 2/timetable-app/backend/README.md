@@ -20,7 +20,9 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-The API runs on http://localhost:8000 and creates `timetable.db` automatically.
+`requirements.in` is the production source list and `requirements.txt` is its fully pinned, hash-locked output. Development and CI use `requirements-dev.in` and `requirements-dev.txt`; test, HTTP client, and Ruff packages are not installed by the production launcher.
+
+The API runs on http://localhost:8000 and creates the split SQLite databases under `data/` automatically.
 
 ## Structure
 
@@ -31,6 +33,7 @@ The API runs on http://localhost:8000 and creates `timetable.db` automatically.
 - `app/services/import_service.py`: Excel import
 - `app/services/validation_service.py`: pre-solver validation
 - `app/services/schedule_service.py`: generation orchestration
+- `app/services/auto_deconflict_service.py`: safe deterministic derived-run conflict reduction
 - `app/services/constraint_service.py`: post-solve checks
 - `app/services/export_service.py`: CSV/XLSX output
 - `app/solver/`: CP-SAT model builder, solver runner, result parser
@@ -51,6 +54,12 @@ POST /api/upload/input-template
 ```powershell
 pytest
 ```
+
+## Uploaded Sessions and Fixed Labs
+
+Fresh generation preserves the supplied day/time of uploaded requirements marked `Fixed`, allowing unavoidable clashes to appear as hard conflicts for administrator review. The administrator can correct the generated run manually or use Auto Deconflict, which may move uploaded fixed sessions in a derived run without rewriting source requirements. Only sessions synchronized from the Lab Requirements database remain permanently immovable.
+
+The solver retains all fixed lab assignments for audit. After a successful run, room, staff, and student-group overlap pairs are covered by an exact deterministic minimum exclusion set; those selected assignments remain stored but are omitted from the final timetable and exports. Run reports list every pair and exclusion. Per-lab capacity, delivery, required-room, and fixed-time post-checks remain exempt. Lab-to-normal-session clashes remain hard conflicts and continue to block export.
 
 ## Notes
 

@@ -55,6 +55,7 @@ class SoftConstraintPriorityService:
     def list_priorities(self, db: DbSession) -> list[dict]:
         self._ensure_defaults(db)
         rows = {item.constraint_code: item for item in db.query(SoftConstraintPriority).order_by(SoftConstraintPriority.rank).all()}
+<<<<<<< Updated upstream
         priorities = [
             {
                 **definition,
@@ -64,6 +65,28 @@ class SoftConstraintPriorityService:
             for definition in SOFT_CONSTRAINT_DEFINITIONS
         ]
         return sorted(priorities, key=lambda item: item["rank"])
+=======
+        priorities = []
+        for definition in SOFT_CONSTRAINT_DEFINITIONS:
+            row = rows[definition["constraint_code"]]
+            is_active = bool(row.is_active)
+            priorities.append(
+                {
+                    **definition,
+                    "rank": row.rank if is_active else 0,
+                    "weight": row.weight if is_active else 0,
+                    "is_active": is_active,
+                    "_sort_rank": row.rank,
+                }
+            )
+        sorted_priorities = sorted(
+            priorities,
+            key=lambda item: (not item["is_active"], item["_sort_rank"], item["default_rank"]),
+        )
+        for item in sorted_priorities:
+            item.pop("_sort_rank", None)
+        return sorted_priorities
+>>>>>>> Stashed changes
 
     def update_priorities(self, db: DbSession, ordered_codes: list[str]) -> list[dict]:
         known_codes = [definition["constraint_code"] for definition in SOFT_CONSTRAINT_DEFINITIONS]
@@ -89,7 +112,11 @@ class SoftConstraintPriorityService:
         return self.list_priorities(db)
 
     def weights(self, db: DbSession) -> dict[str, int]:
+<<<<<<< Updated upstream
         return {item["constraint_code"]: item["weight"] for item in self.list_priorities(db)}
+=======
+        return {item["constraint_code"]: item["weight"] if item["is_active"] else 0 for item in self.list_priorities(db)}
+>>>>>>> Stashed changes
 
     @staticmethod
     def weight_for_rank(rank: int, total: int) -> int:

@@ -134,8 +134,51 @@ def _ensure_programme_years_column(engine) -> None:
             connection.execute(text("ALTER TABLE programmes ADD COLUMN years INTEGER"))
 
 
+<<<<<<< Updated upstream
 def _ensure_split_schema(engines: dict[str, object]) -> None:
     _ensure_programme_years_column(engines["programmes"])
+=======
+def _ensure_soft_constraint_active_column(engine) -> None:
+    with engine.begin() as connection:
+        columns = {row[1] for row in connection.execute(text("PRAGMA table_info(soft_constraint_priorities)")).fetchall()}
+        if columns and "is_active" not in columns:
+            connection.execute(text("ALTER TABLE soft_constraint_priorities ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1"))
+
+
+def _ensure_column(engine, table_name: str, column_name: str, definition: str) -> None:
+    with engine.begin() as connection:
+        columns = {row[1] for row in connection.execute(text(f"PRAGMA table_info({table_name})")).fetchall()}
+        if columns and column_name not in columns:
+            connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"))
+
+
+def _ensure_session_lab_columns(engine) -> None:
+    _ensure_column(engine, "sessions", "required_room_codes", "TEXT")
+    _ensure_column(engine, "sessions", "required_student_group_codes", "TEXT")
+    _ensure_column(engine, "sessions", "is_lab_requirement", "BOOLEAN NOT NULL DEFAULT 0")
+    _ensure_column(engine, "sessions", "lab_requirement_id", "INTEGER")
+
+
+def _drop_column_if_exists(engine, table_name: str, column_name: str) -> None:
+    with engine.begin() as connection:
+        columns = {row[1] for row in connection.execute(text(f"PRAGMA table_info({table_name})")).fetchall()}
+        if column_name in columns:
+            connection.execute(text(f"ALTER TABLE {table_name} DROP COLUMN {column_name}"))
+
+
+def _ensure_split_schema(engines: dict[str, object]) -> None:
+    _ensure_programme_years_column(engines["programmes"])
+    _ensure_soft_constraint_active_column(engines["schedule_state"])
+    _ensure_column(
+        engines["schedule_state"],
+        "scheduled_sessions",
+        "included_in_final",
+        "BOOLEAN NOT NULL DEFAULT 1",
+    )
+    _ensure_session_lab_columns(engines["requirements"])
+    _drop_column_if_exists(engines["modules"], "modules", "module_host_key")
+    _drop_column_if_exists(engines["staff"], "staff", "staff_host_key")
+>>>>>>> Stashed changes
 
 
 def _copy_legacy_rows(target_db: Session, legacy_database_path: Path) -> None:

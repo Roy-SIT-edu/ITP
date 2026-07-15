@@ -1,9 +1,19 @@
+<<<<<<< Updated upstream
 import { useEffect, useMemo, useState } from "react";
 import type { Room, ScheduledRow, TimeSlot } from "../../types";
 import MoveControls from "./MoveControls";
 import TimetablePlanner from "./TimetablePlanner";
 import type { MoveDraft } from "./types";
 import { buildPlannerSlots, duration, getFirstOverlapKey, groupRowsBySlot } from "./timetableUtils";
+=======
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Room, ScheduledRow, TimeSlot, SessionRow } from "../../types";
+import MoveControls from "./MoveControls";
+import TimetablePlanner from "./TimetablePlanner";
+import { days, type MoveDraft } from "./types";
+import { buildPlannerSlots, duration, groupRowsBySlot, timeToMinutes } from "./timetableUtils";
+import { getSession, updateSession, recheckSchedule } from "../../api/client";
+>>>>>>> Stashed changes
 
 type Props = {
   rows: ScheduledRow[];
@@ -26,6 +36,7 @@ export default function TimetableGrid({
   onChangeMove,
   onSaveMove,
 }: Props) {
+<<<<<<< Updated upstream
   const slots = useMemo(() => buildPlannerSlots(rows, timeSlots), [rows, timeSlots]);
   const grouped = useMemo(() => groupRowsBySlot(rows, slots), [rows, slots]);
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(rows[0]?.session_id ?? null);
@@ -36,10 +47,49 @@ export default function TimetableGrid({
   const selectedRow = useMemo(
     () => rows.find((row) => row.session_id === selectedSessionId) ?? rows[0] ?? null,
     [rows, selectedSessionId],
+=======
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
+  const [baseWeekStart] = useState(() => startOfWeek(new Date()));
+  const [displayStartTime, setDisplayStartTime] = useState("08:00");
+  const [displayEndTime, setDisplayEndTime] = useState("22:00");
+  const baseWeekRows = allRows ?? rows;
+  const baseWeekNumber = useMemo(() => firstScheduledWeek(baseWeekRows), [baseWeekRows]);
+  const selectedWeekNumber = useMemo(
+    () => Math.max(1, baseWeekNumber + Math.round((weekStart.getTime() - baseWeekStart.getTime()) / WEEK_MS)),
+    [baseWeekNumber, baseWeekStart, weekStart],
+  );
+  const visibleRows = useMemo(
+    () => rows.filter((row) => rowOccursInWeek(row, selectedWeekNumber)),
+    [rows, selectedWeekNumber],
+  );
+  const slots = useMemo(
+    () => buildPlannerSlots(visibleRows, timeSlots, displayStartTime, displayEndTime),
+    [displayEndTime, displayStartTime, timeSlots, visibleRows],
+  );
+  const grouped = useMemo(() => groupRowsBySlot(visibleRows, slots), [visibleRows, slots]);
+  const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
+  const [selectedSlotKey, setSelectedSlotKey] = useState<string | null>(null);
+  const [selectedRowsOverride, setSelectedRowsOverride] = useState<ScheduledRow[] | null>(null);
+  const [slotDetailsAttention, setSlotDetailsAttention] = useState(0);
+  const [isPlacing, setIsPlacing] = useState(false);
+  const selectedRow = useMemo(
+    () =>
+      selectedSessionId === null ? null : (visibleRows.find((row) => row.session_id === selectedSessionId) ?? null),
+    [visibleRows, selectedSessionId],
+>>>>>>> Stashed changes
   );
   const selectedSlotRows = useMemo(() => grouped.get(selectedSlotKey ?? "") ?? [], [grouped, selectedSlotKey]);
 
+  const clearSelection = useCallback(() => {
+    setSelectedSessionId(null);
+    setSelectedSlotKey(null);
+    setSelectedRowsOverride(null);
+    setIsPlacing(false);
+    onSelectSession?.(null);
+  }, [onSelectSession]);
+
   useEffect(() => {
+<<<<<<< Updated upstream
     if (rows.length === 0) {
       setSelectedSessionId(null);
       setSelectedSlotKey(null);
@@ -52,6 +102,39 @@ export default function TimetableGrid({
       setSelectedSlotKey(getFirstOverlapKey(rows[0], slots));
     }
   }, [grouped, rows, selectedSessionId, selectedSlotKey, slots]);
+=======
+    if (selectedSessionId !== null && !visibleRows.some((row) => row.session_id === selectedSessionId)) {
+      clearSelection();
+      return;
+    }
+    if (selectedSlotKey && !grouped.has(selectedSlotKey)) {
+      setSelectedSlotKey(null);
+      setSelectedRowsOverride(null);
+    }
+  }, [clearSelection, grouped, visibleRows, selectedSessionId, selectedSlotKey]);
+
+  useEffect(() => {
+    if (selectedSessionId === null || isPlacing) return;
+
+    const clearOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element) || target.closest("[data-timetable-selection-surface]")) return;
+      clearSelection();
+    };
+
+    document.addEventListener("pointerdown", clearOnOutsidePointer, true);
+    return () => document.removeEventListener("pointerdown", clearOnOutsidePointer, true);
+  }, [clearSelection, isPlacing, selectedSessionId]);
+
+  useEffect(() => {
+    if (
+      selectedRowsOverride &&
+      selectedRowsOverride.some((row) => !visibleRows.some((visibleRow) => visibleRow.session_id === row.session_id))
+    ) {
+      setSelectedRowsOverride(null);
+    }
+  }, [selectedRowsOverride, visibleRows]);
+>>>>>>> Stashed changes
 
   if (editable) {
     return (
@@ -185,7 +268,15 @@ function SlotSessionList({
   const label = rows[0] ? `${rows[0].day}, ${rows[0].start_time}-${rows[0].end_time}` : "No slot selected";
 
   return (
+<<<<<<< Updated upstream
     <section className="slot-detail-panel">
+=======
+    <section
+      className={`slot-detail-panel ${isHighlighted ? "attention" : ""}`}
+      data-timetable-selection-surface
+      ref={panelRef}
+    >
+>>>>>>> Stashed changes
       <div className="schedule-edit-heading">
         <div>
           <strong>Slot Details</strong>
@@ -246,14 +337,14 @@ function SelectedSessionEditor({
 }) {
   if (!row) {
     return (
-      <section className="schedule-edit-panel selected-session-panel">
-        <div className="empty-state">No sessions match the current filters.</div>
+      <section className="schedule-edit-panel selected-session-panel" data-timetable-selection-surface>
+        <div className="empty-state">Select a session from the timetable to view or edit it.</div>
       </section>
     );
   }
 
   return (
-    <section className="schedule-edit-panel selected-session-panel">
+    <section className="schedule-edit-panel selected-session-panel" data-timetable-selection-surface>
       <div className="schedule-edit-heading">
         <div>
           <strong>Selected Session</strong>
@@ -272,6 +363,7 @@ function SelectedSessionEditor({
             {row.week_pattern ?? "Weeks not set"}
           </small>
         </div>
+<<<<<<< Updated upstream
         <div className="selected-session-facts">
           <span>
             <strong>Current slot</strong>
@@ -297,6 +389,136 @@ function SelectedSessionEditor({
           isPlacing={isPlacing}
           setIsPlacing={setIsPlacing}
         />
+=======
+
+        {scheduleRunId && sessionData && (
+          <div className="move-controls">
+            <div className="move-controls-header">
+              <div>
+                <strong>Edit Session</strong>
+                <span>Requirements and placement</span>
+              </div>
+              <div className="selected-session-editor-actions">
+                <button
+                  className={`button slim ${isPlacing ? "primary" : "secondary"}`}
+                  onClick={() => {
+                    onSelectSession?.(row.session_id);
+                    setIsPlacing(!isPlacing);
+                  }}
+                  type="button"
+                >
+                  {isPlacing ? "Cancel Selection" : "Pick Time"}
+                </button>
+                <button className="button primary slim" disabled={isSaving} onClick={handleSaveAll}>
+                  {isSaving ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </div>
+
+            {errorDetails && <div className="notice bad selected-session-error">{errorDetails}</div>}
+
+            <div className="selected-session-editor-grid">
+              <label className="move-field selected-session-field-wide">
+                <span>Staff</span>
+                <select
+                  value={sessionData.staff_id ?? ""}
+                  onChange={(e) => {
+                    setSessionData({ ...sessionData, staff_id: e.target.value || null });
+                    setIsSessionDirty(true);
+                  }}
+                >
+                  <option value="">-- No Staff --</option>
+                  {staffOptions?.map((staff) => (
+                    <option key={staff.id} value={staff.id}>
+                      {staff.name} ({staff.id})
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="move-field">
+                <span>Type</span>
+                <select value={sessionData.is_lab_requirement ? "Fixed" : "Flexible"} disabled>
+                  <option value="Flexible">Flexible</option>
+                  <option value="Fixed">Fixed lab</option>
+                </select>
+              </label>
+
+              <label className="move-field">
+                <span>Mode</span>
+                <select
+                  value={sessionData.delivery_mode ?? ""}
+                  onChange={(e) => {
+                    setSessionData({ ...sessionData, delivery_mode: e.target.value });
+                    setIsSessionDirty(true);
+                  }}
+                >
+                  <option value="">-- Select --</option>
+                  <option value="F2F">F2F</option>
+                  <option value="Online">Online</option>
+                  <option value="Blended">Blended</option>
+                </select>
+              </label>
+
+              <label className="move-field">
+                <span>Venue</span>
+                <select
+                  value={sessionData.venue_type_required ?? ""}
+                  onChange={(e) => {
+                    setSessionData({ ...sessionData, venue_type_required: e.target.value });
+                    setIsSessionDirty(true);
+                  }}
+                >
+                  <option value="">-- Any --</option>
+                  <option value="Classroom">Classroom</option>
+                  <option value="Lecture Theatre">Lecture Theatre</option>
+                  <option value="Computer Lab">Computer Lab</option>
+                  <option value="Science Lab">Science Lab</option>
+                </select>
+              </label>
+              <label className="move-field">
+                <span>Day</span>
+                <select value={draft.day} onChange={(e) => updateMove({ day: e.target.value })}>
+                  {days.map((day) => (
+                    <option key={day} value={day}>
+                      {day}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="move-field">
+                <span>Time</span>
+                <select value={draft.start_time} onChange={(e) => updateMove({ start_time: e.target.value })}>
+                  {matchingSlots.map((slot) => (
+                    <option key={`${slot.day}-${slot.start_time}-${slot.end_time}`} value={slot.start_time}>
+                      {slot.start_time}-{slot.end_time}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="move-field">
+                <span>Room</span>
+                <input
+                  list={`room-options-${row.session_id}`}
+                  value={draft.room_code}
+                  onChange={(e) => updateMove({ room_code: e.target.value })}
+                  placeholder="Select a room"
+                />
+              </label>
+            </div>
+
+            <datalist id={`room-options-${row.session_id}`}>
+              {rooms.map((room) => (
+                <option key={room.id} value={room.room_code}>
+                  {room.room_code}
+                </option>
+              ))}
+            </datalist>
+          </div>
+        )}
+>>>>>>> Stashed changes
       </div>
     </section>
   );

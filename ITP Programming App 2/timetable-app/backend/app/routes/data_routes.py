@@ -74,7 +74,11 @@ def time_slots(db: DbSession = Depends(get_db)):
 
 @router.get("/sessions")
 def sessions(db: DbSession = Depends(get_db)):
+<<<<<<< Updated upstream
     return [session_to_dict(item) for item in db.query(Session).order_by(Session.id).all()]
+=======
+    return [session_to_dict(item) for item in db.query(Session).filter(Session.is_lab_requirement.is_(False)).order_by(Session.id).all()]
+>>>>>>> Stashed changes
 
 
 @router.get("/sessions/{session_id}")
@@ -89,6 +93,29 @@ def get_session(session_id: int, db: DbSession = Depends(get_db)):
 def dashboard(db: DbSession = Depends(get_db)):
     latest_run = db.query(ScheduleRun).order_by(ScheduleRun.id.desc()).first()
     validation = ValidationService().validate_latest(db)
+<<<<<<< Updated upstream
+=======
+    latest_schedule = None
+    if latest_run:
+        scheduled_count = (
+            db.query(ScheduledSession)
+            .filter(
+                ScheduledSession.schedule_run_id == latest_run.id,
+                ScheduledSession.included_in_final.is_(True),
+            )
+            .count()
+        )
+        violations = db.query(ConstraintViolation).filter_by(schedule_run_id=latest_run.id).all()
+        latest_schedule = {
+            **schedule_run_to_dict(latest_run),
+            "scheduled_count": scheduled_count,
+            "quality": schedule_quality_from_violations(
+                scheduled_count=scheduled_count,
+                raw_soft_score=latest_run.soft_score or 0,
+                violations=violations,
+            ),
+        }
+>>>>>>> Stashed changes
     return {
         "total_sessions": db.query(Session).count(),
         "imported_rows": db.query(Session).count(),
@@ -108,7 +135,14 @@ def availability(db: DbSession = Depends(get_db)):
     if not latest_run:
         return {"schedule_run_id": None, "slots": slots, "staff": [], "rooms": []}
 
-    scheduled = db.query(ScheduledSession).filter_by(schedule_run_id=latest_run.id).all()
+    scheduled = (
+        db.query(ScheduledSession)
+        .filter(
+            ScheduledSession.schedule_run_id == latest_run.id,
+            ScheduledSession.included_in_final.is_(True),
+        )
+        .all()
+    )
     staff_busy: dict[str, dict] = {}
     room_busy: dict[str, dict] = {}
     for item in scheduled:

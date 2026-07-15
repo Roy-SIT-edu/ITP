@@ -1,13 +1,9 @@
 @echo off
-echo Stopping Timetable Scheduler services...
+setlocal
+set "POWERSHELL_EXE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+if not exist "%POWERSHELL_EXE%" set "POWERSHELL_EXE=powershell.exe"
 
-:: Stop Python processes (Backend)
-taskkill /F /IM python.exe /T >nul 2>&1
-
-:: Stop Node processes (Frontend)
-taskkill /F /IM node.exe /T >nul 2>&1
-
-echo.
-echo Services have been stopped.
-echo You can now close this window.
-timeout /t 3 >nul
+"%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop.ps1"
+set "STOP_EXIT_CODE=%ERRORLEVEL%"
+if not "%STOP_EXIT_CODE%"=="0" pause
+exit /b %STOP_EXIT_CODE%
