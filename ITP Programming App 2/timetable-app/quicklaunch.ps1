@@ -34,17 +34,29 @@ function Test-Http {
     }
 }
 
-function Get-MajorVersion {
+function Get-RuntimeVersion {
     param([string]$VersionText)
 
-    if ($VersionText -match "(\d+)\.") {
-        return [int]$Matches[1]
+    if ($VersionText -match "(\d+)\.(\d+)(?:\.(\d+))?") {
+        $patch = if ($Matches[3]) { [int]$Matches[3] } else { 0 }
+        return [version]::new([int]$Matches[1], [int]$Matches[2], $patch)
     }
     return $null
 }
 
+function Test-SupportedPythonVersion {
+    param([version]$Version)
+
+    return $null -ne $Version -and $Version -ge [version]"3.10.0" -and $Version -lt [version]"3.15.0"
+}
+
 function Get-SystemPython {
     $candidates = @(
+        @{ Name = "py"; PrefixArgs = @("-3.14") },
+        @{ Name = "py"; PrefixArgs = @("-3.13") },
+        @{ Name = "py"; PrefixArgs = @("-3.12") },
+        @{ Name = "py"; PrefixArgs = @("-3.11") },
+        @{ Name = "py"; PrefixArgs = @("-3.10") },
         @{ Name = "py"; PrefixArgs = @("-3") },
         @{ Name = "python"; PrefixArgs = @() },
         @{ Name = "python3"; PrefixArgs = @() }
@@ -56,27 +68,32 @@ function Get-SystemPython {
             continue
         }
 
-        $version = & $command.Source @($candidate.PrefixArgs + @("--version")) 2>&1
-        if ($LASTEXITCODE -ne 0) {
+        $previousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        $versionText = & $command.Source @($candidate.PrefixArgs + @("--version")) 2>&1
+        $exitCode = $LASTEXITCODE
+        $ErrorActionPreference = $previousErrorActionPreference
+        if ($exitCode -ne 0) {
             continue
         }
 
-        $major = Get-MajorVersion ([string]$version)
-        if ($major -ge 3) {
+        $version = Get-RuntimeVersion (($versionText | Out-String).Trim())
+        if (Test-SupportedPythonVersion $version) {
             return @{
                 Exe = $command.Source
                 PrefixArgs = $candidate.PrefixArgs
+                Version = $version
             }
         }
     }
 
-    throw "Python 3 was not found. Install Python 3.10+ from https://www.python.org/downloads/ and enable 'Add python.exe to PATH'."
+    throw "A supported Python runtime was not found. Install Python 3.10-3.14 from https://www.python.org/downloads/ and enable 'Add python.exe to PATH'."
 }
 
 function Assert-NodeRuntime {
     $node = Get-Command "node" -ErrorAction SilentlyContinue
     if (-not $node) {
-        throw "Node.js was not found. Install Node.js 20+ from https://nodejs.org/ and run this launcher again."
+        throw "Node.js was not found. Install Node.js 20.19+ or 22.12+ from https://nodejs.org/ and run this launcher again."
     }
 
     $version = & $node.Source --version 2>&1
@@ -84,9 +101,13 @@ function Assert-NodeRuntime {
         throw "Node.js is installed but did not run correctly: $version"
     }
 
-    $major = Get-MajorVersion ([string]$version)
-    if ($major -lt 20) {
-        throw "Node.js 20+ is required by the frontend tooling. Current version: $version"
+    $runtimeVersion = Get-RuntimeVersion ([string]$version)
+    $isSupported = $null -ne $runtimeVersion -and (
+        ($runtimeVersion.Major -eq 20 -and $runtimeVersion -ge [version]"20.19.0") -or
+        $runtimeVersion -ge [version]"22.12.0"
+    )
+    if (-not $isSupported) {
+        throw "Node.js 20.19+ or 22.12+ is required by the frontend tooling. Current version: $version"
     }
 }
 
@@ -198,6 +219,23 @@ function Test-PortInUse {
     }
 }
 
+function Test-BackendProcessRunning {
+    try {
+        $processes = @(Get-CimInstance Win32_Process -Filter "Name = 'python.exe' OR Name = 'pythonw.exe'" -ErrorAction Stop)
+        foreach ($process in $processes) {
+            $commandLine = ([string]$process.CommandLine).ToLowerInvariant()
+            if ((Test-AppProcess $process) -and $commandLine.Contains("uvicorn") -and $commandLine.Contains("app.main:app")) {
+                return $true
+            }
+        }
+    }
+    catch {
+        # If process inspection is unavailable, continue with the read-only
+        # SQLite check. Locked/access-denied files are never treated as corrupt.
+    }
+    return $false
+}
+
 function Get-BackendPort {
     for ($port = $BackendStartPort; $port -le $BackendStartPort + 30; $port++) {
         $candidateUrl = "http://${HostName}:$port"
@@ -290,13 +328,32 @@ function Wait-For {
 }
 
 function Ensure-BackendEnvironment {
+    $venvDir = Join-Path $BackendDir "venv"
     $python = Join-Path $BackendDir "venv\Scripts\python.exe"
     $requirements = Join-Path $BackendDir "requirements.txt"
     $requirementsStamp = Join-Path $BackendDir "venv\.requirements.sha256"
 
+    if (Test-Path $python) {
+        $previousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        $venvVersionText = & $python --version 2>&1
+        $venvExitCode = $LASTEXITCODE
+        $ErrorActionPreference = $previousErrorActionPreference
+        $venvVersion = Get-RuntimeVersion (($venvVersionText | Out-String).Trim())
+
+        if ($venvExitCode -ne 0 -or -not (Test-SupportedPythonVersion $venvVersion)) {
+            $expectedVenv = Normalize-Path (Join-Path $BackendDir "venv")
+            if ((Normalize-Path $venvDir) -ne $expectedVenv) {
+                throw "Refusing to repair an unexpected virtual-environment path: $venvDir"
+            }
+            Write-Host "Repairing the incompatible or damaged backend virtual environment..."
+            Remove-Item -LiteralPath $venvDir -Recurse -Force
+        }
+    }
+
     if (-not (Test-Path $python)) {
         $systemPython = Get-SystemPython
-        Write-Host "Creating backend virtual environment..."
+        Write-Host "Creating backend virtual environment with Python $($systemPython.Version)..."
         Push-Location $BackendDir
         try {
             & $systemPython.Exe @($systemPython.PrefixArgs + @("-m", "venv", "venv"))
@@ -311,7 +368,7 @@ function Ensure-BackendEnvironment {
 
     $previousErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    & $python -c "import fastapi, uvicorn, sqlalchemy, pandas, openpyxl, ortools, multipart, reportlab, httpx" *> $null
+    & $python -c "import fastapi, uvicorn, sqlalchemy, pandas, openpyxl, ortools, multipart, reportlab" *> $null
     $dependencyProbeExitCode = $LASTEXITCODE
     $ErrorActionPreference = $previousErrorActionPreference
 
@@ -327,7 +384,7 @@ function Ensure-BackendEnvironment {
         Write-Host "Synchronizing backend dependencies..."
         Push-Location $BackendDir
         try {
-            & $python -m pip install -r requirements.txt | Out-Host
+            & $python -m pip install --require-hashes -r requirements.txt | Out-Host
             if ($LASTEXITCODE -ne 0) {
                 throw "Backend dependency installation failed (exit code $LASTEXITCODE). Check the pip error above."
             }
@@ -344,10 +401,8 @@ function Ensure-BackendEnvironment {
 function Repair-CorruptBackendDatabases {
     param([string]$Python)
 
-    for ($port = $BackendStartPort; $port -le $BackendStartPort + 30; $port++) {
-        if (Test-BackendAt "http://${HostName}:$port") {
-            return
-        }
+    if (Test-BackendProcessRunning) {
+        return
     }
 
     $dataDir = Join-Path $BackendDir "data"
@@ -421,22 +476,39 @@ function Ensure-FrontendEnvironment {
     Assert-NodeRuntime
     $npm = Get-NpmCommand
     $nodeModules = Join-Path $FrontendDir "node_modules"
+    $lockFile = Join-Path $FrontendDir "package-lock.json"
+    $packageFile = Join-Path $FrontendDir "package.json"
+    $dependencyFile = if (Test-Path $lockFile) { $lockFile } else { $packageFile }
+    $dependencyStamp = Join-Path $FrontendDir "node_modules\.package-lock.sha256"
+    $dependencyHash = (Get-FileHash -LiteralPath $dependencyFile -Algorithm SHA256).Hash
+    $installedHash = if (Test-Path $dependencyStamp) {
+        (Get-Content -LiteralPath $dependencyStamp -Raw).Trim()
+    }
+    else {
+        ""
+    }
 
-    if (-not (Test-Path $nodeModules)) {
-        Write-Host "Installing frontend dependencies..."
+    if (-not (Test-Path $nodeModules) -or $installedHash -ne $dependencyHash) {
+        Write-Host "Synchronizing frontend dependencies..."
         Push-Location $FrontendDir
         try {
-            if (Test-Path (Join-Path $FrontendDir "package-lock.json")) {
+            if (Test-Path $lockFile) {
                 & $npm ci | Out-Host
             }
             else {
                 & $npm install | Out-Host
             }
+            if ($LASTEXITCODE -ne 0) {
+                throw "Frontend dependency installation failed (exit code $LASTEXITCODE). Check the npm error above."
+            }
+            Set-Content -LiteralPath $dependencyStamp -Value $dependencyHash -Encoding ASCII
         }
         finally {
             Pop-Location
         }
     }
+
+    return $npm
 }
 
 function Start-Backend {
@@ -471,6 +543,8 @@ function Start-Backend {
 }
 
 function Start-Frontend {
+    param([string]$NpmCommand)
+
     if (Test-FrontendAt $FrontendUrl) {
         Write-Host "Frontend already running at $FrontendUrl"
         return
@@ -483,7 +557,8 @@ function Start-Frontend {
     Write-Host "Starting frontend at $FrontendUrl..."
     $stdout = Join-Path $FrontendDir "quicklaunch-frontend-$FrontendPort.out.log"
     $stderr = Join-Path $FrontendDir "quicklaunch-frontend-$FrontendPort.err.log"
-    $command = "`$env:VITE_PROXY_TARGET = '$BackendUrl'; & npm.cmd run dev -- --host $HostName --port $FrontendPort --strictPort"
+    $escapedNpmCommand = $NpmCommand.Replace("'", "''")
+    $command = "`$env:VITE_PROXY_TARGET = '$BackendUrl'; & '$escapedNpmCommand' run dev -- --host $HostName --port $FrontendPort --strictPort"
 
     $process = Start-Process `
         -FilePath "powershell.exe" `
@@ -499,13 +574,13 @@ function Start-Frontend {
 
 $backendPython = Ensure-BackendEnvironment
 Repair-CorruptBackendDatabases -Python $backendPython
-Ensure-FrontendEnvironment
+$npmCommand = Ensure-FrontendEnvironment
 $BackendPort = Get-BackendPort
 $FrontendPort = Get-FrontendPort
 $BackendUrl = "http://${HostName}:$BackendPort"
 $FrontendUrl = "http://${HostName}:$FrontendPort"
 Start-Backend -Python $backendPython
-Start-Frontend
+Start-Frontend -NpmCommand $npmCommand
 
 if (-not $NoBrowser) {
     Write-Host "Opening $FrontendUrl"

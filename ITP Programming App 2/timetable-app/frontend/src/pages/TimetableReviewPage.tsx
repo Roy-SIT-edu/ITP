@@ -4,9 +4,9 @@
  */
 
 import {
+  ArrowUpDown,
   BookOpenCheck,
   ChevronDown,
-  Clock3,
   FileText,
   Filter,
   History,
@@ -19,8 +19,10 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   compareSchedules,
   getLatestSchedule,
+  getQuickFixAvailability,
   getRooms,
   getSchedule,
+  getScheduleExplanations,
   getScheduleRuns,
   getTimeSlots,
   getViolations,
@@ -28,7 +30,8 @@ import {
   suggestScheduleFixes,
   autoDeconflict,
 } from "../api/client";
-import ConflictTable from "../components/ConflictTable";
+import AutoDeconflictStatus from "../components/AutoDeconflictStatus";
+import ConflictTable, { type QuickFixState } from "../components/ConflictTable";
 import InlineActivity from "../components/InlineActivity";
 import OptimisedScoreInfo from "../components/OptimisedScoreInfo";
 import StatusBadge from "../components/StatusBadge";
@@ -39,15 +42,17 @@ import { conflictPresentation, uniqueConflictTypes } from "../conflictPresentati
 import { useSessionState } from "../sessionState";
 import type {
   ConstraintViolation,
+  QuickFixAvailability,
   QuickFixSuggestion,
   Room,
   ScheduleComparison,
+  ScheduleExplanation,
+  ScheduleGenerateResult,
   ScheduleResponse,
   ScheduleRun,
   ScheduledRow,
   TimeSlot,
 } from "../types";
-import { formatGenerationDuration } from "../generationMode";
 
 type Filters = {
   source: string;
@@ -75,6 +80,7 @@ type QuickFixTarget = {
 };
 
 type ConflictSeverityFilter = "all" | "hard" | "soft";
+type ConflictSort = "priority" | "type" | "class" | "time";
 type RowIssueState = { hard: boolean; soft: boolean };
 
 const emptyFilters: Filters = {
@@ -94,6 +100,7 @@ export default function TimetableReviewPage() {
   const [violations, setViolations] = useSessionState<ConstraintViolation[]>("review.violations", []);
   const [runs, setRuns] = useSessionState<ScheduleRun[]>("review.runs", []);
   const [comparisons, setComparisons] = useSessionState<ScheduleComparison[]>("review.comparisons", []);
+  const [explanations, setExplanations] = useSessionState<ScheduleExplanation[]>("review.explanations", []);
   const [rooms, setRooms] = useSessionState<Room[]>("review.rooms", []);
   const [timeSlots, setTimeSlots] = useSessionState<TimeSlot[]>("review.timeSlots", []);
   const [filters, setFilters] = useSessionState<Filters>("review.filters", emptyFilters);
@@ -109,7 +116,14 @@ export default function TimetableReviewPage() {
     "review.conflictSeverityFilter",
     "all",
   );
+  const [constraintTypeFilter, setConstraintTypeFilter] = useSessionState<string>("review.constraintTypeFilter", "all");
+  const [conflictSort, setConflictSort] = useSessionState<ConflictSort>("review.conflictSort", "priority");
   const [quickFixOpenKey, setQuickFixOpenKey] = useState<string | null>(null);
+  const [quickFixAvailability, setQuickFixAvailability] = useState<QuickFixAvailability | null>(null);
+  const [quickFixAvailabilityStatus, setQuickFixAvailabilityStatus] = useState<"idle" | "loading" | "ready" | "error">(
+    "idle",
+  );
+  const [quickFixAvailabilityRefresh, setQuickFixAvailabilityRefresh] = useState(0);
   const [quickFixSuggestions, setQuickFixSuggestions] = useState<Record<string, QuickFixSuggestion[]>>({});
   const [quickFixErrors, setQuickFixErrors] = useState<Record<string, string>>({});
   const [quickFixLoading, setQuickFixLoading] = useState<string | null>(null);
@@ -117,6 +131,7 @@ export default function TimetableReviewPage() {
   const [deconflicting, setDeconflicting] = useState(false);
   const [deconflictStartedAt, setDeconflictStartedAt] = useState<number | null>(null);
   const [deconflictElapsedSeconds, setDeconflictElapsedSeconds] = useState(0);
+  const [deconflictResult, setDeconflictResult] = useState<ScheduleGenerateResult | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -124,26 +139,31 @@ export default function TimetableReviewPage() {
     try {
       const latest = await getLatestSchedule();
       setSchedule(latest);
-      const [nextViolations, nextRuns, nextComparisons, nextRooms, nextTimeSlots] = await Promise.all([
-        getViolations(latest.schedule_run.id),
-        getScheduleRuns(),
-        compareSchedules(),
-        getRooms(),
-        getTimeSlots(),
-      ]);
+      const [nextViolations, nextRuns, nextComparisons, nextExplanations, nextRooms, nextTimeSlots] = await Promise.all(
+        [
+          getViolations(latest.schedule_run.id),
+          getScheduleRuns(),
+          compareSchedules(),
+          getScheduleExplanations(latest.schedule_run.id),
+          getRooms(),
+          getTimeSlots(),
+        ],
+      );
       setViolations(nextViolations);
       setRuns(nextRuns);
       setComparisons(nextComparisons);
+      setExplanations(nextExplanations);
       setRooms(nextRooms);
       setTimeSlots(nextTimeSlots);
     } catch (err) {
       setSchedule(null);
       setViolations([]);
+      setExplanations([]);
       setError(err instanceof Error ? err.message : "Could not load schedule");
     } finally {
       setLoading(false);
     }
-  }, [setComparisons, setError, setRooms, setRuns, setSchedule, setTimeSlots, setViolations]);
+  }, [setComparisons, setError, setExplanations, setRooms, setRuns, setSchedule, setTimeSlots, setViolations]);
 
   useEffect(() => {
     void load();
@@ -156,6 +176,36 @@ export default function TimetableReviewPage() {
     setQuickFixLoading(null);
     setApplyingQuickFix(null);
   }, [schedule?.schedule_run.id]);
+
+  useEffect(() => {
+    const scheduleRunId = schedule?.schedule_run.id;
+    if (!scheduleRunId) {
+      setQuickFixAvailability(null);
+      setQuickFixAvailabilityStatus("idle");
+      return;
+    }
+
+    let cancelled = false;
+    setQuickFixAvailability(null);
+    setQuickFixAvailabilityStatus("loading");
+    void getQuickFixAvailability(scheduleRunId)
+      .then((availability) => {
+        if (!cancelled) {
+          setQuickFixAvailability(availability);
+          setQuickFixAvailabilityStatus("ready");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setQuickFixAvailability(null);
+          setQuickFixAvailabilityStatus("error");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [quickFixAvailabilityRefresh, schedule?.schedule_run.id]);
 
   useEffect(() => {
     if (deconflictStartedAt === null) return;
@@ -247,10 +297,16 @@ export default function TimetableReviewPage() {
 
   const openRun = async (id: number) => {
     setError(null);
+    setDeconflictResult(null);
     try {
-      const nextSchedule = await getSchedule(id);
+      const [nextSchedule, nextViolations, nextExplanations] = await Promise.all([
+        getSchedule(id),
+        getViolations(id),
+        getScheduleExplanations(id),
+      ]);
       setSchedule(nextSchedule);
-      setViolations(await getViolations(id));
+      setViolations(nextViolations);
+      setExplanations(nextExplanations);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not open schedule run");
     }
@@ -272,10 +328,17 @@ export default function TimetableReviewPage() {
     setError(null);
     try {
       await moveScheduledSession(schedule.schedule_run.id, row.session_id, draft);
-      const refreshed = await getSchedule(schedule.schedule_run.id);
+      const [refreshed, nextViolations, nextExplanations, nextComparisons] = await Promise.all([
+        getSchedule(schedule.schedule_run.id),
+        getViolations(schedule.schedule_run.id),
+        getScheduleExplanations(schedule.schedule_run.id),
+        compareSchedules(),
+      ]);
       setSchedule(refreshed);
-      setViolations(await getViolations(schedule.schedule_run.id));
-      setComparisons(await compareSchedules());
+      setViolations(nextViolations);
+      setExplanations(nextExplanations);
+      setComparisons(nextComparisons);
+      setQuickFixAvailabilityRefresh((current) => current + 1);
       setMoveDrafts((current) => {
         const next = { ...current };
         delete next[row.session_id];
@@ -315,11 +378,17 @@ export default function TimetableReviewPage() {
         end_time: computedEndTime,
         room_code: moveDrafts[activeSessionId]?.room_code || targetRow.room,
       });
-      const refreshed = await getSchedule(schedule.schedule_run.id);
+      const [refreshed, newViolations, nextExplanations, nextComparisons] = await Promise.all([
+        getSchedule(schedule.schedule_run.id),
+        getViolations(schedule.schedule_run.id),
+        getScheduleExplanations(schedule.schedule_run.id),
+        compareSchedules(),
+      ]);
       setSchedule(refreshed);
-      const newViolations = await getViolations(schedule.schedule_run.id);
       setViolations(newViolations);
-      setComparisons(await compareSchedules());
+      setExplanations(nextExplanations);
+      setComparisons(nextComparisons);
+      setQuickFixAvailabilityRefresh((current) => current + 1);
       setMoveDrafts((current) => {
         const next = { ...current };
         delete next[activeSessionId];
@@ -383,14 +452,17 @@ export default function TimetableReviewPage() {
         end_time: suggestion.end_time,
         room_code: suggestion.room_code,
       });
-      const [refreshed, nextViolations, nextComparisons] = await Promise.all([
+      const [refreshed, nextViolations, nextExplanations, nextComparisons] = await Promise.all([
         getSchedule(schedule.schedule_run.id),
         getViolations(schedule.schedule_run.id),
+        getScheduleExplanations(schedule.schedule_run.id),
         compareSchedules(),
       ]);
       setSchedule(refreshed);
       setViolations(nextViolations);
+      setExplanations(nextExplanations);
       setComparisons(nextComparisons);
+      setQuickFixAvailabilityRefresh((current) => current + 1);
       setActiveSessionId(null);
       setQuickFixOpenKey(null);
       notifyWorkflowProgressChange();
@@ -414,10 +486,12 @@ export default function TimetableReviewPage() {
     setDeconflicting(true);
     setDeconflictStartedAt(Date.now());
     setDeconflictElapsedSeconds(0);
+    setDeconflictResult(null);
     setError(null);
     try {
-      await autoDeconflict(schedule.schedule_run.id);
+      const result = await autoDeconflict(schedule.schedule_run.id);
       await load();
+      setDeconflictResult(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Auto deconflict failed");
     } finally {
@@ -490,11 +564,51 @@ export default function TimetableReviewPage() {
   );
   const currentQuality = schedule?.schedule_run.quality;
 
+  const constraintTypeOptions = useMemo(() => {
+    const counts = new Map<string, { count: number; violation: ConstraintViolation }>();
+    for (const violation of violations) {
+      const current = counts.get(violation.constraint_code);
+      counts.set(violation.constraint_code, {
+        count: (current?.count ?? 0) + 1,
+        violation,
+      });
+    }
+    return Array.from(counts.entries())
+      .map(([code, value]) => ({
+        code,
+        count: value.count,
+        label: conflictPresentation(value.violation).label,
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [violations]);
+
+  const rowsBySessionId = useMemo(() => new Map(rows.map((row) => [row.session_id, row])), [rows]);
+
   const visibleViolations = useMemo(() => {
-    if (conflictSeverityFilter === "hard") return violations.filter((violation) => violation.severity === "HARD");
-    if (conflictSeverityFilter === "soft") return violations.filter((violation) => violation.severity === "SOFT");
-    return violations;
-  }, [conflictSeverityFilter, violations]);
+    const filtered = violations.filter((violation) => {
+      if (conflictSeverityFilter === "hard" && violation.severity !== "HARD") return false;
+      if (conflictSeverityFilter === "soft" && violation.severity !== "SOFT") return false;
+      return constraintTypeFilter === "all" || violation.constraint_code === constraintTypeFilter;
+    });
+
+    return filtered.sort((left, right) => {
+      if (conflictSort === "type") {
+        return conflictPresentation(left).label.localeCompare(conflictPresentation(right).label) || left.id - right.id;
+      }
+
+      const leftRow = rowsBySessionId.get(left.affected_session_ids[0]);
+      const rightRow = rowsBySessionId.get(right.affected_session_ids[0]);
+      if (conflictSort === "class") {
+        return conflictRowLabel(leftRow).localeCompare(conflictRowLabel(rightRow)) || left.id - right.id;
+      }
+      if (conflictSort === "time") {
+        return compareScheduledTimes(leftRow, rightRow) || left.id - right.id;
+      }
+
+      const severityDifference = severityRank(left.severity) - severityRank(right.severity);
+      return severityDifference || conflictPresentation(left).label.localeCompare(conflictPresentation(right).label);
+    });
+  }, [conflictSeverityFilter, conflictSort, constraintTypeFilter, rowsBySessionId, violations]);
 
   const conflictSessionIds = useMemo(() => {
     const ids = new Set<number>();
@@ -519,11 +633,24 @@ export default function TimetableReviewPage() {
       const bHasHard = visibleViolations.some(
         (v) => v.severity === "HARD" && v.affected_session_ids.includes(b.session_id),
       );
+      if (conflictSort === "class") return conflictRowLabel(a).localeCompare(conflictRowLabel(b));
+      if (conflictSort === "time") {
+        return compareScheduledTimes(a, b) || conflictRowLabel(a).localeCompare(conflictRowLabel(b));
+      }
+
+      const aTypes = visibleViolations.filter((violation) => violation.affected_session_ids.includes(a.session_id));
+      const bTypes = visibleViolations.filter((violation) => violation.affected_session_ids.includes(b.session_id));
+      if (conflictSort === "type") {
+        const aLabel = aTypes.map((violation) => conflictPresentation(violation).label).sort()[0] ?? "";
+        const bLabel = bTypes.map((violation) => conflictPresentation(violation).label).sort()[0] ?? "";
+        return aLabel.localeCompare(bLabel) || conflictRowLabel(a).localeCompare(conflictRowLabel(b));
+      }
+
       if (aHasHard && !bHasHard) return -1;
       if (!aHasHard && bHasHard) return 1;
-      return 0;
+      return bTypes.length - aTypes.length || conflictRowLabel(a).localeCompare(conflictRowLabel(b));
     });
-  }, [rows, conflictSessionIds, visibleViolations]);
+  }, [rows, conflictSessionIds, conflictSort, visibleViolations]);
 
   const conflictSessionGroups = useMemo(() => {
     const hardRows: ScheduledRow[] = [];
@@ -581,58 +708,11 @@ export default function TimetableReviewPage() {
         />
       ) : null}
 
-      {deconflicting ? (
-        <section className="status-card generation-panel review-deconflict-panel" style={{ marginTop: "1rem" }}>
-          <div className="generation-copy">
-            <div className="status-card-title">Auto-Deconflicting Schedule</div>
-            <p className="muted" style={{ margin: "4px 0 0" }}>
-              Running parallel solver to resolve hard conflicts while preserving valid placements...
-            </p>
-          </div>
-          <div className="solver-progress" aria-live="polite">
-            <div className="solver-progress-heading">
-              <span>
-                <Clock3 size={16} />
-                <strong>{formatGenerationDuration(deconflictElapsedSeconds)}</strong> elapsed
-              </span>
-              <span>
-                {(() => {
-                  const estimatedRemaining = Math.max(0, 30 - deconflictElapsedSeconds);
-                  return estimatedRemaining > 0
-                    ? `About ${formatGenerationDuration(estimatedRemaining)} remaining`
-                    : "Still solving";
-                })()}
-              </span>
-            </div>
-            <div
-              aria-label="Estimated auto deconflict progress"
-              aria-valuemax={100}
-              aria-valuemin={0}
-              aria-valuenow={
-                deconflictElapsedSeconds > 0
-                  ? Math.min(90, Math.max(4, Math.round((deconflictElapsedSeconds / 30) * 90)))
-                  : 0
-              }
-              className="solver-progress-track"
-              role="progressbar"
-            >
-              <span
-                className={`solver-progress-fill ${deconflictElapsedSeconds >= 30 ? "stalled" : ""}`}
-                style={{
-                  width: `${deconflictElapsedSeconds > 0 ? Math.min(90, Math.max(4, Math.round((deconflictElapsedSeconds / 30) * 90))) : 0}%`,
-                }}
-              />
-            </div>
-            <p>
-              Estimated progress{" "}
-              {deconflictElapsedSeconds > 0
-                ? Math.min(90, Math.max(4, Math.round((deconflictElapsedSeconds / 30) * 90)))
-                : 0}
-              %
-            </p>
-          </div>
-        </section>
-      ) : null}
+      <AutoDeconflictStatus
+        running={deconflicting}
+        elapsedSeconds={deconflictElapsedSeconds}
+        result={deconflictResult}
+      />
 
       {schedule && (
         <>
@@ -961,6 +1041,64 @@ export default function TimetableReviewPage() {
                 </span>
               </button>
             </div>
+            <div className="constraint-table-toolbar" aria-label="Constraint table controls">
+              <div className="constraint-table-summary">
+                <Filter size={18} />
+                <div>
+                  <strong>Constraint review</strong>
+                  <span>
+                    Showing {visibleViolations.length} of {violations.length} issue
+                    {violations.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+              </div>
+              <div className="constraint-table-controls">
+                <label>
+                  <span>Constraint type</span>
+                  <select
+                    value={constraintTypeFilter}
+                    onChange={(event) => setConstraintTypeFilter(event.target.value)}
+                  >
+                    <option value="all">All constraint types ({violations.length})</option>
+                    {constraintTypeOptions.map((option) => (
+                      <option key={option.code} value={option.code}>
+                        {option.label} ({option.count})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Sort by</span>
+                  <div className="constraint-sort-control">
+                    <ArrowUpDown size={15} />
+                    <select
+                      value={conflictSort}
+                      onChange={(event) => setConflictSort(event.target.value as ConflictSort)}
+                    >
+                      <option value="priority">Priority and issue count</option>
+                      <option value="type">Constraint type A-Z</option>
+                      <option value="class">Class A-Z</option>
+                      <option value="time">Day and time</option>
+                    </select>
+                  </div>
+                </label>
+                {(constraintTypeFilter !== "all" ||
+                  conflictSeverityFilter !== "all" ||
+                  conflictSort !== "priority") && (
+                  <button
+                    className="button secondary slim constraint-reset-button"
+                    onClick={() => {
+                      setConstraintTypeFilter("all");
+                      setConflictSeverityFilter("all");
+                      setConflictSort("priority");
+                    }}
+                    type="button"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
             {movingConflict && (
               <InlineActivity
                 kind="review"
@@ -977,7 +1115,7 @@ export default function TimetableReviewPage() {
             )}
             {conflictTab === "modules" ? (
               <div className="table-wrap">
-                <table>
+                <table className="constraint-class-table">
                   <thead>
                     <tr>
                       <th>Class</th>
@@ -1012,6 +1150,11 @@ export default function TimetableReviewPage() {
                           const hasHard = rowViolations.some((v) => v.severity === "HARD");
                           const quickFixKey = `session-${row.session_id}`;
                           const quickFixOpen = quickFixOpenKey === quickFixKey;
+                          const rowQuickFixState = resolveQuickFixState(
+                            quickFixSuggestions[quickFixKey],
+                            quickFixAvailability?.by_session_id[String(row.session_id)],
+                            quickFixAvailabilityStatus,
+                          );
                           const resolvingClass = applyingQuickFix?.startsWith(`${quickFixKey}-`)
                             ? "quick-fix-resolving"
                             : "";
@@ -1051,7 +1194,9 @@ export default function TimetableReviewPage() {
                                 </td>
                                 <td>
                                   <button
-                                    className={`button secondary slim quick-fix-toggle ${quickFixOpen ? "open" : ""}`}
+                                    className={`button secondary slim quick-fix-toggle ${quickFixOpen ? "open" : ""} ${rowQuickFixState}`}
+                                    disabled={rowQuickFixState !== "available" && !quickFixOpen}
+                                    title={quickFixButtonTitle(rowQuickFixState)}
                                     type="button"
                                     onClick={(event) => {
                                       event.stopPropagation();
@@ -1059,7 +1204,7 @@ export default function TimetableReviewPage() {
                                     }}
                                   >
                                     <Zap size={14} />
-                                    Quick Fix
+                                    {quickFixButtonLabel(rowQuickFixState)}
                                     <ChevronDown size={14} />
                                   </button>
                                 </td>
@@ -1097,8 +1242,40 @@ export default function TimetableReviewPage() {
                   void toggleQuickFix({ key: `conflict-${violation.id}`, conflictId: violation.id })
                 }
                 renderQuickFixTray={(violation) => renderQuickFixTray(`conflict-${violation.id}`)}
+                quickFixState={(violation) => {
+                  const key = `conflict-${violation.id}`;
+                  return resolveQuickFixState(
+                    quickFixSuggestions[key],
+                    quickFixAvailability?.by_conflict_id[String(violation.id)],
+                    quickFixAvailabilityStatus,
+                  );
+                }}
               />
             )}
+          </section>
+          <section className="status-card review-explanation-card">
+            <div className="section-heading">
+              <div>
+                <div className="status-card-title">Why This Schedule?</div>
+                <p>Placement explanations for the selected schedule run</p>
+              </div>
+            </div>
+            <div className="explanation-grid compact">
+              {explanations.slice(0, 4).map((item) => (
+                <article className="explanation-card" key={item.session_id}>
+                  <strong>{item.module_code ?? item.requirement_id ?? `Session ${item.session_id}`}</strong>
+                  <span>{item.placement}</span>
+                  <ul>
+                    {item.reasons.slice(0, 3).map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                </article>
+              ))}
+              {explanations.length === 0 && (
+                <div className="empty-state">No schedule explanations are available yet.</div>
+              )}
+            </div>
           </section>
         </>
       )}
@@ -1258,6 +1435,55 @@ function quickFixTypeLabel(type: QuickFixSuggestion["type"]) {
   if (type === "VENUE_CHANGE") return "Venue priority";
   if (type === "TIME_CHANGE") return "Time priority";
   return "Alternative best";
+}
+
+function resolveQuickFixState(
+  cachedSuggestions: QuickFixSuggestion[] | undefined,
+  available: boolean | undefined,
+  status: "idle" | "loading" | "ready" | "error",
+): QuickFixState {
+  if (cachedSuggestions) return cachedSuggestions.length > 0 ? "available" : "unavailable";
+  if (status === "error") return "error";
+  if (status !== "ready") return "checking";
+  return available === true ? "available" : "unavailable";
+}
+
+function quickFixButtonLabel(state: QuickFixState) {
+  if (state === "unavailable") return "No Fix";
+  if (state === "checking") return "Checking";
+  if (state === "error") return "Unavailable";
+  return "Quick Fix";
+}
+
+function quickFixButtonTitle(state: QuickFixState) {
+  if (state === "unavailable") return "No clean quick fix is available";
+  if (state === "checking") return "Checking for clean quick fixes";
+  if (state === "error") return "Quick fix availability could not be checked";
+  return undefined;
+}
+
+const conflictDayOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+function severityRank(severity: ConstraintViolation["severity"]) {
+  return severity === "HARD" ? 0 : 1;
+}
+
+function conflictRowLabel(row: ScheduledRow | undefined) {
+  return row?.module_code || row?.requirement_id || (row ? `Class ${row.session_id}` : "");
+}
+
+function compareScheduledTimes(left: ScheduledRow | undefined, right: ScheduledRow | undefined) {
+  if (!left && !right) return 0;
+  if (!left) return 1;
+  if (!right) return -1;
+  const leftDay = conflictDayOrder.indexOf(left.day);
+  const rightDay = conflictDayOrder.indexOf(right.day);
+  const dayDifference = (leftDay === -1 ? 99 : leftDay) - (rightDay === -1 ? 99 : rightDay);
+  return (
+    dayDifference ||
+    left.start_time.localeCompare(right.start_time) ||
+    conflictRowLabel(left).localeCompare(conflictRowLabel(right))
+  );
 }
 
 function matches(value: string | null, filter: string) {

@@ -14,8 +14,8 @@ Full-stack academic timetable scheduler for importing and editing requirements, 
 
 Prerequisites:
 
-- Python 3.10 or newer
-- Node.js 20 or newer, including npm
+- Python 3.10 through 3.14
+- Node.js 20.19+ or 22.12+, including npm
 
 From a fresh clone, double-click:
 
@@ -35,7 +35,7 @@ To start and verify both services without opening a browser:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\quicklaunch.ps1 -NoBrowser
 ```
 
-The quicklaunch script creates `backend\venv` when missing, synchronizes backend packages whenever `backend\requirements.txt` changes, installs frontend packages with `npm ci`, starts both servers, avoids ports already used by other processes, and opens the app in your browser. If the default ports are busy, it automatically tries the next available ports starting from:
+The quicklaunch script creates or repairs `backend\venv`, synchronizes the hashed production lock whenever `backend\requirements.txt` changes, installs frontend packages with `npm ci` whenever `package-lock.json` changes, starts both servers, avoids ports already used by other processes, and opens the app in your browser. If the default ports are busy, it automatically tries the next available ports starting from:
 
 - Backend: http://127.0.0.1:8001
 - Frontend: http://127.0.0.1:5174
@@ -52,7 +52,7 @@ Backend:
 cd backend
 python -m venv venv
 venv\Scripts\activate
-pip install -r requirements.txt
+pip install --require-hashes -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
@@ -133,10 +133,13 @@ On a new data directory, the backend seeds reference data and default time slots
 - `GET /api/schedules/compare`
 - `GET /api/schedules/latest`
 - `GET /api/schedules/{schedule_run_id}`
+- `POST /api/schedules/{schedule_run_id}/auto-deconflict`
 - `PUT /api/schedules/{schedule_run_id}/sessions/{session_id}`
+- `GET /api/schedules/{schedule_run_id}/quick-fix-availability`
 - `POST /api/schedules/{schedule_run_id}/suggest-fixes`
 - `POST /api/schedules/{schedule_run_id}/recheck`
 - `GET /api/schedules/{schedule_run_id}/violations`
+- `GET /api/schedules/{schedule_run_id}/explanations`
 - `GET /api/schedules/{schedule_run_id}/report`
 - `GET /api/schedules/{schedule_run_id}/report.pdf`
 - `GET /api/export/{schedule_run_id}/csv`
@@ -193,6 +196,8 @@ Post-solve soft warnings include long tutor gaps, short campus days, long consec
 The generation page begins with a default estimate of 25 seconds for Standard or 120 seconds for Reproducible mode, then averages the last five completed runs per mode. Estimated progress is capped below completion while the solver is running, remains stationary when the request appears stalled, and animates to 100% only after the backend returns.
 
 If the strict model is infeasible, the solver can run its relaxed recovery path so conflicts remain visible and actionable in the review workflow. Hard conflicts block export; soft warnings affect schedule quality but do not block export.
+
+Database lab sessions remain immovable. Lab-to-lab overlaps are recorded in every run report and resolved for the final timetable by excluding the smallest deterministic set of overlapping lab assignments; their database requirements and audit assignments are retained. Lab-to-normal-session clashes remain hard conflicts.
 
 ## Tests
 

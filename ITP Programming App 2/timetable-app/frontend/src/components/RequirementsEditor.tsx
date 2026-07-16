@@ -207,11 +207,11 @@ export default function RequirementsEditor({ refreshSignal = 0, onChanged }: Pro
         ...session,
         preferred_days: values.mode === "soft" ? values.preferred_days : "",
         avoid_days: values.mode === "soft" ? values.avoid_days : "",
-        scheduling_type: values.mode === "hard" ? "Fixed" : "Flexible",
-        fixed_day: values.mode === "hard" ? values.fixed_day : "",
-        fixed_start_time: values.mode === "hard" ? values.fixed_start_time : "",
-        fixed_end_time: values.mode === "hard" ? values.fixed_end_time : "",
-        priority: values.mode === "hard" ? "Hard" : "Normal",
+        scheduling_type: "Flexible",
+        fixed_day: "",
+        fixed_start_time: "",
+        fixed_end_time: "",
+        priority: "Normal",
       };
       await updateSession(session.id, payload);
       await afterMutation("Constraint settings applied.");

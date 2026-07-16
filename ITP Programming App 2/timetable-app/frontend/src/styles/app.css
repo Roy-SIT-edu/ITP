@@ -7789,6 +7789,109 @@ tr.conflict-active-row:hover {
   margin: -6px 0 16px;
 }
 
+.constraint-table-toolbar {
+  align-items: flex-end;
+  background: var(--color-muted-panel);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+}
+
+.constraint-table-summary {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-width: 180px;
+}
+
+.constraint-table-summary > svg {
+  color: var(--color-primary);
+}
+
+.constraint-table-summary > div {
+  display: grid;
+  gap: 2px;
+}
+
+.constraint-table-summary strong {
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.constraint-table-summary span,
+.constraint-table-controls label > span {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+}
+
+.constraint-table-controls {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  justify-content: flex-end;
+}
+
+.constraint-table-controls label {
+  display: grid;
+  gap: 4px;
+}
+
+.constraint-table-controls select {
+  min-height: 34px;
+  min-width: 210px;
+}
+
+.constraint-sort-control {
+  align-items: center;
+  display: flex;
+  position: relative;
+}
+
+.constraint-sort-control > svg {
+  color: var(--color-text-secondary);
+  left: 10px;
+  pointer-events: none;
+  position: absolute;
+}
+
+.constraint-sort-control select {
+  padding-left: 31px;
+}
+
+.constraint-reset-button {
+  min-height: 34px;
+}
+
+.constraint-class-table {
+  min-width: 1040px;
+}
+
+.constraint-class-table th:nth-child(4),
+.constraint-class-table td:nth-child(4) {
+  width: 145px;
+}
+
+.constraint-class-table th:last-child,
+.constraint-class-table td:last-child {
+  width: 126px;
+}
+
+@media (max-width: 900px) {
+  .constraint-table-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .constraint-table-controls {
+    justify-content: flex-start;
+  }
+}
+
 .report-clean-state {
   align-items: center;
   background: var(--color-success-soft);
