@@ -54,10 +54,7 @@ SOFT_CONSTRAINT_DEFINITIONS = [
 class SoftConstraintPriorityService:
     def list_priorities(self, db: DbSession) -> list[dict]:
         self._ensure_defaults(db)
-        rows = {
-            item.constraint_code: item
-            for item in db.query(SoftConstraintPriority).order_by(SoftConstraintPriority.rank).all()
-        }
+        rows = {item.constraint_code: item for item in db.query(SoftConstraintPriority).order_by(SoftConstraintPriority.rank).all()}
         priorities = []
         for definition in SOFT_CONSTRAINT_DEFINITIONS:
             row = rows[definition["constraint_code"]]
@@ -119,10 +116,7 @@ class SoftConstraintPriorityService:
         return self.list_priorities(db)
 
     def weights(self, db: DbSession) -> dict[str, int]:
-        return {
-            item["constraint_code"]: item["weight"] if item["is_active"] else 0
-            for item in self.list_priorities(db)
-        }
+        return {item["constraint_code"]: item["weight"] if item["is_active"] else 0 for item in self.list_priorities(db)}
 
     @staticmethod
     def weight_for_rank(rank: int, total: int) -> int:

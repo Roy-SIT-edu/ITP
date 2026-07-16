@@ -2,7 +2,7 @@
  * Displays hard and soft schedule constraint violations after generation.
  */
 
-import { ChevronDown, Zap } from "lucide-react";
+import { ChevronDown, ShieldAlert, Sparkles, Zap } from "lucide-react";
 import { Fragment, type ReactNode } from "react";
 import { conflictPresentation } from "../conflictPresentation";
 import type { ConstraintViolation } from "../types";
@@ -16,7 +16,10 @@ type Props = {
   onSelectConflict?: (violation: ConstraintViolation) => void;
   onToggleQuickFix?: (violation: ConstraintViolation) => void;
   renderQuickFixTray?: (violation: ConstraintViolation) => ReactNode;
+  quickFixState?: (violation: ConstraintViolation) => QuickFixState;
 };
+
+export type QuickFixState = "available" | "unavailable" | "checking" | "error";
 
 export default function ConflictTable({
   violations,
@@ -26,6 +29,7 @@ export default function ConflictTable({
   onSelectConflict,
   onToggleQuickFix,
   renderQuickFixTray,
+  quickFixState,
 }: Props) {
   if (violations.length === 0) {
     return <div className="empty-state">No generated timetable conflicts found.</div>;
@@ -65,16 +69,23 @@ export default function ConflictTable({
             <Fragment key={group.key}>
               <tr className={`conflict-group-row ${group.key}`}>
                 <td colSpan={columnCount}>
-                  <div>
-                    <strong>{group.label}</strong>
-                    <span>
-                      {group.items.length} issue{group.items.length === 1 ? "" : "s"} | {group.hint}
+                  <div className="conflict-group-heading">
+                    <span className={`conflict-group-indicator ${group.key}`}>
+                      {group.key === "hard" ? <ShieldAlert size={14} /> : <Sparkles size={14} />}
+                      {group.key === "hard" ? "Blocking" : "Optional"}
                     </span>
+                    <div className="conflict-group-copy">
+                      <strong>{group.label}</strong>
+                      <span>
+                        {group.items.length} issue{group.items.length === 1 ? "" : "s"} · {group.hint}
+                      </span>
+                    </div>
                   </div>
                 </td>
               </tr>
               {group.items.map((item) => {
                 const quickFixOpen = item.id === quickFixOpenId;
+                const itemQuickFixState = quickFixState?.(item) ?? "available";
                 const urgencyClass = item.severity === "HARD" ? "conflict-hard-row" : "conflict-soft-row";
                 const resolvingClass = item.id === resolvingConflictId ? "quick-fix-resolving" : "";
                 return (
@@ -101,7 +112,9 @@ export default function ConflictTable({
                       {hasQuickFix && (
                         <td>
                           <button
-                            className={`button secondary slim quick-fix-toggle ${quickFixOpen ? "open" : ""}`}
+                            className={`button secondary slim quick-fix-toggle ${quickFixOpen ? "open" : ""} ${itemQuickFixState}`}
+                            disabled={itemQuickFixState !== "available" && !quickFixOpen}
+                            title={quickFixStateTitle(itemQuickFixState)}
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
@@ -109,7 +122,7 @@ export default function ConflictTable({
                             }}
                           >
                             <Zap size={14} />
-                            Quick Fix
+                            {quickFixStateLabel(itemQuickFixState)}
                             <ChevronDown size={14} />
                           </button>
                         </td>
@@ -129,4 +142,18 @@ export default function ConflictTable({
       </table>
     </div>
   );
+}
+
+function quickFixStateLabel(state: QuickFixState) {
+  if (state === "unavailable") return "No Fix";
+  if (state === "checking") return "Checking";
+  if (state === "error") return "Unavailable";
+  return "Quick Fix";
+}
+
+function quickFixStateTitle(state: QuickFixState) {
+  if (state === "unavailable") return "No clean quick fix is available";
+  if (state === "checking") return "Checking for clean quick fixes";
+  if (state === "error") return "Quick fix availability could not be checked";
+  return undefined;
 }

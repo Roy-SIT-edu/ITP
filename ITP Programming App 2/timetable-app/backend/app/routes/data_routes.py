@@ -75,10 +75,7 @@ def time_slots(db: DbSession = Depends(get_db)):
 
 @router.get("/sessions")
 def sessions(db: DbSession = Depends(get_db)):
-    return [
-        session_to_dict(item)
-        for item in db.query(Session).filter(Session.is_lab_requirement.is_(False)).order_by(Session.id).all()
-    ]
+    return [session_to_dict(item) for item in db.query(Session).filter(Session.is_lab_requirement.is_(False)).order_by(Session.id).all()]
 
 
 @router.get("/sessions/{session_id}")
@@ -95,7 +92,14 @@ def dashboard(db: DbSession = Depends(get_db)):
     validation = ValidationService().validate_latest(db)
     latest_schedule = None
     if latest_run:
-        scheduled_count = db.query(ScheduledSession).filter_by(schedule_run_id=latest_run.id).count()
+        scheduled_count = (
+            db.query(ScheduledSession)
+            .filter(
+                ScheduledSession.schedule_run_id == latest_run.id,
+                ScheduledSession.included_in_final.is_(True),
+            )
+            .count()
+        )
         violations = db.query(ConstraintViolation).filter_by(schedule_run_id=latest_run.id).all()
         latest_schedule = {
             **schedule_run_to_dict(latest_run),
@@ -125,7 +129,14 @@ def availability(db: DbSession = Depends(get_db)):
     if not latest_run:
         return {"schedule_run_id": None, "slots": slots, "staff": [], "rooms": []}
 
-    scheduled = db.query(ScheduledSession).filter_by(schedule_run_id=latest_run.id).all()
+    scheduled = (
+        db.query(ScheduledSession)
+        .filter(
+            ScheduledSession.schedule_run_id == latest_run.id,
+            ScheduledSession.included_in_final.is_(True),
+        )
+        .all()
+    )
     staff_busy: dict[str, dict] = {}
     room_busy: dict[str, dict] = {}
     for item in scheduled:

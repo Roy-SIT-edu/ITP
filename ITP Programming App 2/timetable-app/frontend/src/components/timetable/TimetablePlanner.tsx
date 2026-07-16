@@ -236,9 +236,7 @@ export default function TimetablePlanner({
                     isPlacing ? "placing-mode" : ""
                   } ${draftSelected ? "highlight-draft" : ""} ${isConflictCell ? "conflict-current" : ""} ${
                     isAvailableCell ? "conflict-available" : ""
-                  } ${isSoftAvailableCell ? "conflict-soft-available" : ""} ${
-                    isBlockedCell ? "conflict-blocked" : ""
-                  }`}
+                  } ${isSoftAvailableCell ? "conflict-soft-available" : ""} ${isBlockedCell ? "conflict-blocked" : ""}`}
                   disabled={(isPlacing && isBlockedCell) || (!slotRows.length && !onSelectSlot && !isPlacing)}
                   key={key}
                   onClick={() => onSelectSlot?.(key, slotRows)}
@@ -259,6 +257,7 @@ export default function TimetablePlanner({
                   const labCount = event.rows.filter(isLabRequirement).length;
                   return (
                     <button
+                      aria-pressed={isSelected}
                       className={`calendar-event calendar-event-group ${labCount ? "lab-requirement" : ""} ${
                         hasConflict ? "conflict-current" : ""
                       } ${isSelected ? "selected" : ""}`}
@@ -296,6 +295,7 @@ export default function TimetablePlanner({
                 const slotRows = grouped.get(firstKey) ?? [event.row];
                 return (
                   <button
+                    aria-pressed={isSelected}
                     className={`calendar-event ${event.density} ${isLabRequirement(event.row) ? "lab-requirement" : ""} ${
                       hasConflict ? "conflict-current" : ""
                     } ${isSelected ? "selected" : ""}`}
@@ -469,7 +469,9 @@ function layoutEvents(
 
 function maxRowsInPlannerSlot(rows: ScheduledRow[], slots: PlannerSlot[]) {
   return slots.reduce((largest, slot) => {
-    const count = rows.filter((row) => intervalsOverlap(row.start_time, row.end_time, slot.start_time, slot.end_time)).length;
+    const count = rows.filter((row) =>
+      intervalsOverlap(row.start_time, row.end_time, slot.start_time, slot.end_time),
+    ).length;
     return Math.max(largest, count);
   }, 0);
 }

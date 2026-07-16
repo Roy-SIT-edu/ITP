@@ -62,7 +62,10 @@ class ExportService:
     def schedule_rows(self, db: DbSession, schedule_run_id: int) -> list[dict]:
         scheduled = (
             db.query(ScheduledSession)
-            .filter_by(schedule_run_id=schedule_run_id)
+            .filter(
+                ScheduledSession.schedule_run_id == schedule_run_id,
+                ScheduledSession.included_in_final.is_(True),
+            )
             .order_by(ScheduledSession.day, ScheduledSession.start_time)
             .all()
         )
@@ -115,7 +118,10 @@ class ExportService:
     def system_template_rows(self, db: DbSession, schedule_run_id: int) -> list[dict]:
         scheduled = (
             db.query(ScheduledSession)
-            .filter_by(schedule_run_id=schedule_run_id)
+            .filter(
+                ScheduledSession.schedule_run_id == schedule_run_id,
+                ScheduledSession.included_in_final.is_(True),
+            )
             .all()
         )
         rows = []

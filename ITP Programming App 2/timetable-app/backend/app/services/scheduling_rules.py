@@ -26,7 +26,12 @@ from app.services.compatibility import (
 
 
 def candidate_slot_allowed(session: Session, slot: TimeSlot, relax_fixed: bool = False) -> bool:
-    """Return whether a saved requirement can be assigned to a time slot."""
+    """Return whether a requirement can use a slot in the current workflow phase.
+
+    Initial generation honors built-in labs and uploaded rows with fixed
+    timing. Correction workflows may relax uploaded fixed rows, while callers
+    keep built-in labs out of their movable target set.
+    """
 
     if session.duration_minutes and slot.duration_minutes != session.duration_minutes:
         return False
@@ -47,7 +52,7 @@ def candidate_slot_allowed(session: Session, slot: TimeSlot, relax_fixed: bool =
     elif session_week in {"weekly", "odd", "even"} and session_week != slot_week:
         return False
 
-    if not relax_fixed and normalize_token(session.scheduling_type) == "fixed":
+    if not relax_fixed and session_is_initially_fixed(session):
         if session.fixed_day and slot.day != session.fixed_day:
             return False
         if session.fixed_start_time and slot.start_time != session.fixed_start_time:
@@ -59,6 +64,25 @@ def candidate_slot_allowed(session: Session, slot: TimeSlot, relax_fixed: bool =
         return False
 
     return True
+
+
+def session_is_immovable(session: Session) -> bool:
+    """Return whether automatic placement changes must preserve this session."""
+
+    return bool(session.is_lab_requirement)
+
+
+def session_is_initially_fixed(session: Session) -> bool:
+    """Return whether fresh generation must honor the saved fixed timing."""
+
+    has_complete_fixed_timing = bool(session.fixed_day and session.fixed_start_time and session.fixed_end_time)
+    return bool(session.is_lab_requirement or normalize_token(session.scheduling_type) == "fixed" or has_complete_fixed_timing)
+
+
+def effective_scheduling_type(session: Session) -> str:
+    """Expose the source scheduling intent shown to administrators."""
+
+    return "Fixed" if session_is_initially_fixed(session) else "Flexible"
 
 
 def candidate_room_allowed(session: Session, room: Room, relax_fixed: bool = False) -> bool:

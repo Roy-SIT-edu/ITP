@@ -88,9 +88,7 @@ def test_raw_data_workbook_seeds_matching_reference_tables(tmp_path):
                 }
             ]
         ).to_excel(writer, index=False, sheet_name="Campus Restrictions")
-        pd.DataFrame([{"Module Code": "AAI1001", "Term": 2520}]).to_excel(
-            writer, index=False, sheet_name="Module Code"
-        )
+        pd.DataFrame([{"Module Code": "AAI1001", "Term": 2520}]).to_excel(writer, index=False, sheet_name="Module Code")
         pd.DataFrame([{"Name": "AFIFAH BINTE ABDUL RAHMAN .", "Host Key": "A102199"}]).to_excel(
             writer, index=False, sheet_name="Staff Information"
         )
@@ -110,12 +108,7 @@ def test_raw_data_workbook_seeds_matching_reference_tables(tmp_path):
         assert db.query(Programme).filter_by(code="DSC").one().name == "Digital Supply Chain"
         assert db.query(Programme).filter_by(code="DSC").one().years == 3
         dsc = db.query(Programme).filter_by(code="DSC").one()
-        dsc_groups = (
-            db.query(StudentGroup)
-            .filter_by(programme_id=dsc.id)
-            .order_by(StudentGroup.year, StudentGroup.group_code)
-            .all()
-        )
+        dsc_groups = db.query(StudentGroup).filter_by(programme_id=dsc.id).order_by(StudentGroup.year, StudentGroup.group_code).all()
         assert [(item.group_code, item.year, item.size) for item in dsc_groups] == [
             ("DSC Y1 P1", 1, 40),
             ("DSC Y1 P2", 1, 40),

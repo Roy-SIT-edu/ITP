@@ -14,7 +14,6 @@ from app.services.compatibility import (
     delivery_room_compatible,
     intervals_overlap,
     is_online_mode,
-    normalize_token,
     session_weeks_conflict,
     time_to_minutes,
 )
@@ -66,7 +65,10 @@ class ConstraintService:
     def check_schedule(self, db: DbSession, schedule_run_id: int) -> list[dict]:
         scheduled = (
             db.query(ScheduledSession)
-            .filter_by(schedule_run_id=schedule_run_id)
+            .filter(
+                ScheduledSession.schedule_run_id == schedule_run_id,
+                ScheduledSession.included_in_final.is_(True),
+            )
             .order_by(ScheduledSession.day, ScheduledSession.start_time)
             .all()
         )
@@ -184,20 +186,6 @@ class ConstraintService:
                         "affected_session_ids": [item.session_id],
                     }
                 )
-            if normalize_token(item.session.scheduling_type) == "fixed":
-                if (
-                    item.session.fixed_day != item.day
-                    or item.session.fixed_start_time != item.start_time
-                    or item.session.fixed_end_time != item.end_time
-                ):
-                    violations.append(
-                        {
-                            "constraint_code": "INVALID_FIXED_TIME",
-                            "severity": "HARD",
-                            "message": f"Fixed session {self._module_label(item)} was not scheduled at its fixed day/time.",
-                            "affected_session_ids": [item.session_id],
-                        }
-                    )
 
     def _both_lab_requirements(self, left: ScheduledSession, right: ScheduledSession) -> bool:
         return bool(left.session and right.session and left.session.is_lab_requirement and right.session.is_lab_requirement)

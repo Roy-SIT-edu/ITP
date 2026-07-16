@@ -11,6 +11,7 @@ import type {
   DatabaseRow,
   DatabaseTypeInfo,
   ImportPreviewRow,
+  QuickFixAvailability,
   QuickFixResponse,
   Room,
   ScheduleComparison,
@@ -258,6 +259,10 @@ export function suggestScheduleFixes(
   });
 }
 
+export function getQuickFixAvailability(scheduleRunId: number) {
+  return request<QuickFixAvailability>(`/api/schedules/${scheduleRunId}/quick-fix-availability`);
+}
+
 export function recheckSchedule(scheduleRunId: number) {
   return request<{ message: string; schedule_run: ScheduleRun | null; violations: ConstraintViolation[] }>(
     `/api/schedules/${scheduleRunId}/recheck`,
@@ -267,10 +272,13 @@ export function recheckSchedule(scheduleRunId: number) {
   );
 }
 
-export function autoDeconflict(scheduleRunId: number) {
-  return request<ScheduleGenerateResult>(`/api/schedules/${scheduleRunId}/auto-deconflict`, {
-    method: "POST",
-  });
+export function autoDeconflict(scheduleRunId: number, timeoutSeconds = 30) {
+  return request<ScheduleGenerateResult>(
+    `/api/schedules/${scheduleRunId}/auto-deconflict?timeout_seconds=${encodeURIComponent(timeoutSeconds)}`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export function getViolations(scheduleRunId: number) {

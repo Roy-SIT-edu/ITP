@@ -13,7 +13,9 @@ from app.models.constraint_violation import ConstraintViolation
 from app.models.schedule_run import ScheduleRun
 from app.models.scheduled_session import ScheduledSession
 from app.services.compatibility import time_to_minutes
+from app.services.lab_overlap_service import LabOverlapService
 from app.services.schedule_quality_service import schedule_quality_from_violations
+from app.services.scheduling_rules import effective_scheduling_type
 from app.services.serializers import (
     schedule_run_to_dict,
     session_staff_items,
@@ -64,12 +66,14 @@ class ScheduleReportService:
         if not run:
             raise ValueError("Schedule run not found")
 
-        scheduled = (
+        all_scheduled = (
             db.query(ScheduledSession)
             .filter_by(schedule_run_id=schedule_run_id)
             .order_by(ScheduledSession.day, ScheduledSession.start_time)
             .all()
         )
+        scheduled = [item for item in all_scheduled if item.included_in_final]
+        lab_overlap_resolution = LabOverlapService().report_run(db, schedule_run_id)
         violations = db.query(ConstraintViolation).filter_by(schedule_run_id=schedule_run_id).all()
         quality = schedule_quality_from_violations(
             scheduled_count=len(scheduled),
@@ -112,6 +116,9 @@ class ScheduleReportService:
             "scheduled_count": len(session_rows),
             "uploaded_session_count": len(session_rows) - lab_count,
             "lab_session_count": lab_count,
+            "original_lab_session_count": sum(1 for item in all_scheduled if item.session.is_lab_requirement),
+            "excluded_lab_session_count": lab_overlap_resolution["excluded_session_count"],
+            "lab_overlap_pair_count": lab_overlap_resolution["detected_pair_count"],
             "programme_count": self._unique_count(session_rows, "programme"),
             "module_count": self._unique_count(session_rows, "module_code"),
             "student_group_count": self._unique_count(session_rows, "student_group_code"),
@@ -156,6 +163,7 @@ class ScheduleReportService:
                 ],
                 "items": conflicts,
             },
+            "lab_overlap_resolution": lab_overlap_resolution,
             "sessions": session_rows,
         }
 
@@ -214,6 +222,8 @@ class ScheduleReportService:
         story.append(PageBreak())
         story.extend(self._conflict_report(report, styles))
         story.append(PageBreak())
+        story.extend(self._lab_overlap_report(report, styles))
+        story.append(PageBreak())
         story.extend(self._detailed_schedule(report, styles))
 
         def page_footer(canvas, doc):
@@ -261,7 +271,7 @@ class ScheduleReportService:
             "end_week": session.end_week,
             "delivery_mode": session.delivery_mode,
             "campus_mode": session.campus_mode,
-            "scheduling_type": session.scheduling_type,
+            "scheduling_type": effective_scheduling_type(session),
             "exact_class_size": session.exact_class_size,
             "source_file": session.source_file,
             "is_lab_requirement": bool(session.is_lab_requirement),
@@ -347,6 +357,12 @@ class ScheduleReportService:
             ["Created", self._format_datetime(run.get("created_at")), "Export ready", "Yes" if quality["export_ready"] else "No"],
             ["Programmes", report["summary"]["programme_count"], "Modules", report["summary"]["module_count"]],
             ["Rooms used", report["summary"]["room_count"], "Staff assigned", report["summary"]["staff_count"]],
+            [
+                "Original lab bookings",
+                report["summary"]["original_lab_session_count"],
+                "Excluded from final timetable",
+                report["summary"]["excluded_lab_session_count"],
+            ],
         ]
         elements.append(self._key_value_table(details, styles))
         elements.append(Spacer(1, 4 * mm))
@@ -428,6 +444,60 @@ class ScheduleReportService:
         else:
             elements.append(Paragraph("No hard conflicts or soft warnings were recorded for this run.", styles["body"]))
         return elements
+
+    def _lab_overlap_report(self, report: dict, styles: dict) -> list:
+        resolution = report["lab_overlap_resolution"]
+        elements = [Paragraph("Fixed lab overlap resolution", styles["heading"])]
+        elements.append(
+            Paragraph(
+                f"Detected {resolution['detected_pair_count']} fixed lab overlap pair(s). "
+                f"The minimum exclusion plan removes {resolution['excluded_session_count']} lab session(s) "
+                "from the final timetable and exports while retaining their source requirements and run assignments.",
+                styles["body"],
+            )
+        )
+        elements.append(Spacer(1, 3 * mm))
+
+        if not resolution["overlaps"]:
+            elements.append(Paragraph("No fixed lab-to-lab resource overlaps were detected for this run.", styles["body"]))
+            return elements
+
+        rows = [["Placement", "Shared resources", "First lab", "Second lab", "Excluded from final"]]
+        for overlap in resolution["overlaps"]:
+            left = overlap["left"]
+            right = overlap["right"]
+            resources = overlap["resources"]
+            resource_parts = []
+            for label, values in (
+                ("Room", resources["rooms"]),
+                ("Staff", resources["staff"]),
+                ("Student group", resources["student_groups"]),
+            ):
+                if values:
+                    resource_parts.append(f"{label}: {', '.join(values)}")
+            excluded_labels = []
+            for side in (left, right):
+                if side["session_id"] in overlap["excluded_session_ids"]:
+                    excluded_labels.append(side["requirement_id"] or side["module_code"] or f"Session {side['session_id']}")
+            rows.append(
+                [
+                    self._cell(f"{left['day']}\n{left['start_time']}-{left['end_time']}\n{left['week_pattern']}", styles),
+                    self._cell("\n".join(resource_parts), styles),
+                    self._cell(self._lab_overlap_session_label(left), styles),
+                    self._cell(self._lab_overlap_session_label(right), styles),
+                    self._cell(", ".join(excluded_labels) or "Not resolved in final", styles),
+                ]
+            )
+        table = LongTable(rows, colWidths=[42 * mm, 64 * mm, 54 * mm, 54 * mm, 44 * mm], repeatRows=1)
+        table.setStyle(self._table_style(header=True, alternating=True))
+        elements.append(table)
+        return elements
+
+    @staticmethod
+    def _lab_overlap_session_label(item: dict) -> str:
+        identity = item["requirement_id"] or item["module_code"] or f"Session {item['session_id']}"
+        context = " / ".join(value for value in (item["programme"], item["student_group_code"], item["room"]) if value)
+        return f"{identity}\n{context}" if context else identity
 
     def _detailed_schedule(self, report: dict, styles: dict) -> list:
         elements = [Paragraph("Detailed schedule", styles["heading"])]

@@ -453,6 +453,11 @@ class RequirementInputService:
             partition = student_group_partition(group_code)
             if partition:
                 return student_group_code(programme_code, year, partition)
+        legacy_match = re.fullmatch(r"([A-Z][A-Z0-9]*)-Y(\d+)-G(\d+)", group_code.strip(), re.IGNORECASE)
+        if legacy_match and legacy_match.group(1).casefold() == programme_code.casefold():
+            legacy_year = int(legacy_match.group(2))
+            if legacy_year == year:
+                return student_group_code(programme_code, year, int(legacy_match.group(3)))
         return group_code
 
     def _class_size_from_group(self, group: StudentGroup | None, source_row_no: int, errors: list[dict]) -> int | None:

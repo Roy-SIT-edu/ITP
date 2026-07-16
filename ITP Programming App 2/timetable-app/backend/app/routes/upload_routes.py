@@ -35,6 +35,11 @@ DEMO_SAMPLES = {
         "filename": "sample_hard_constraints_20_rows.xlsx",
         "description": "Twenty fixed rows using valid day and time slots.",
     },
+    "mixed-constraints": {
+        "label": "Mixed constraints",
+        "filename": "sample_mixed_constraints_20_rows.xlsx",
+        "description": "Twenty rows combining flexible, preferred-day, avoided-day, and fixed-time requirements.",
+    },
 }
 
 

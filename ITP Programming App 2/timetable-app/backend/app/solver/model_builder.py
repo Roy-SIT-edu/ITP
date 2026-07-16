@@ -15,11 +15,11 @@ from app.models.room import Room
 from app.models.session import Session
 from app.models.time_slot import TimeSlot
 from app.services.compatibility import (
+    intervals_overlap,
     is_online_mode,
     normalize_token,
     parse_custom_weeks,
     parse_day_list,
-    intervals_overlap,
     session_weeks_conflict,
     time_to_minutes,
 )
@@ -58,7 +58,6 @@ class TimetableModelBuilder:
         rooms: list[Room],
         soft_constraint_weights: dict[str, int] | None = None,
         relax_hard_conflicts: bool = False,
-        hints: list[dict] | None = None,
     ) -> BuiltModel:
         model = cp_model.CpModel()
         variables: dict[tuple[int, int, int], cp_model.IntVar] = {}
@@ -72,18 +71,13 @@ class TimetableModelBuilder:
             if group.student_group is not None and group.student_group_id is not None
         }
 
-        hint_map = {}
-        if hints:
-            for h in hints:
-                hint_map[h["session_id"]] = (h["time_slot_id"], h["room_id"])
-
         for session in sessions:
             session_vars = []
             for slot in time_slots:
-                if not candidate_slot_allowed(session, slot, relax_fixed=relax_hard_conflicts):
+                if not candidate_slot_allowed(session, slot):
                     continue
                 for room in rooms:
-                    if not candidate_room_allowed(session, room, relax_fixed=relax_hard_conflicts):
+                    if not candidate_room_allowed(session, room):
                         continue
                     key = (session.id, slot.id, room.id)
                     # x_session_slot_room is true when the solver chooses this exact assignment.
@@ -97,15 +91,6 @@ class TimetableModelBuilder:
                     }
                     assignments.append(assignment)
                     session_vars.append(variable)
-
-
-                    if session.id in hint_map:
-                        if hint_map[session.id] == (slot.id, room.id):
-                            model.AddHint(variable, 1)
-                            # Light penalty if this previously assigned slot/room is NOT chosen
-                            soft_penalties.append(variable.Not() * 10)
-                        else:
-                            model.AddHint(variable, 0)
             if not session_vars:
                 label = session.requirement_id or (session.module.module_code if session.module else f"session {session.id}")
                 no_candidate_reasons.append(f"No feasible time slot and room combination is available for {label}.")
@@ -341,12 +326,7 @@ class TimetableModelBuilder:
         day = slot.day
         weeks = self._assignment_week_keys(assignment["session"], slot)
         segments = self._assignment_time_segments(slot)
-        return [
-            (resource_key, day, week, segment)
-            for resource_key in resource_keys
-            for week in weeks
-            for segment in segments
-        ]
+        return [(resource_key, day, week, segment) for resource_key in resource_keys for week in weeks for segment in segments]
 
     def _assignment_time_segments(self, slot: TimeSlot) -> list[int]:
         start = time_to_minutes(slot.start_time)

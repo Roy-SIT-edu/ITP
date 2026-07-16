@@ -28,6 +28,7 @@ from app.services.scheduling_rules import (
     fixed_sessions_conflict,
     required_room_codes,
     required_student_group_codes,
+    session_is_initially_fixed,
 )
 from app.solver.model_builder import TimetableModelBuilder
 from app.solver.result_parser import ResultParser
@@ -52,7 +53,6 @@ class CpSatTimetableSolver:
         max_seconds: float = 0.0,
         fast_mode: bool = False,
         reproducible: bool = False,
-        hints: list[dict] | None = None,
     ) -> dict:
         if not sessions:
             return {
@@ -62,7 +62,7 @@ class CpSatTimetableSolver:
                 "message": "No sessions are available to schedule.",
             }
 
-        if not hints and self._has_known_fixed_hard_clash(sessions):
+        if self._has_known_fixed_hard_clash(sessions):
             return self._greedy_fallback(
                 sessions,
                 time_slots,
@@ -71,30 +71,8 @@ class CpSatTimetableSolver:
                 "Fixed hard clashes are present; generated a reviewable timetable with conflict checks.",
             )
 
-        if hints:
-            # Auto Deconflict mode: go straight to the relaxed model.
-            # The relaxed model penalizes hard conflicts (100k) and changes (10), so it will
-            # aggressively deconflict the schedule without getting stuck in INFEASIBLE/UNKNOWN traps.
-            relaxed = self.model_builder.build(
-                sessions,
-                time_slots,
-                rooms,
-                soft_constraint_weights,
-                relax_hard_conflicts=True,
-                hints=hints,
-            )
-            relaxed_result = self._solve_built_model(relaxed, max_seconds, fast_mode=fast_mode, reproducible=reproducible)
-            if relaxed_result["solver_status"] in {"OPTIMAL", "FEASIBLE"}:
-                return relaxed_result
-            return self._greedy_fallback(
-                sessions,
-                time_slots,
-                rooms,
-                soft_constraint_weights,
-                "Solver timed out; generated a reviewable timetable with conflict checks.",
-            )
-
-        # Fresh Generation mode: start with the strict model to ensure 0 hard conflicts
+        # Fresh generation starts with the strict model. Relaxed fallback may
+        # expose resource conflicts for review but still preserves fixed times.
         built = self.model_builder.build(sessions, time_slots, rooms, soft_constraint_weights)
         if built.no_candidate_reasons:
             return {
@@ -210,7 +188,7 @@ class CpSatTimetableSolver:
         ordered_sessions = sorted(
             sessions,
             key=lambda session: (
-                0 if session.is_lab_requirement or normalize_token(session.scheduling_type) == "fixed" else 1,
+                0 if session_is_initially_fixed(session) else 1,
                 len(candidate_map[session.id]),
                 session.id,
             ),
@@ -234,10 +212,7 @@ class CpSatTimetableSolver:
         fixed = [
             session
             for session in sessions
-            if normalize_token(session.scheduling_type) == "fixed"
-            and session.fixed_day
-            and session.fixed_start_time
-            and session.fixed_end_time
+            if session_is_initially_fixed(session) and session.fixed_day and session.fixed_start_time and session.fixed_end_time
         ]
         for index, left in enumerate(fixed):
             for right in fixed[index + 1 :]:
@@ -278,14 +253,13 @@ class CpSatTimetableSolver:
             if candidate_room_allowed(session, room)
         ]
 
-    def _candidate_score(self, candidate: dict, occupied: dict[str, set], group_ids_by_code: dict[str, int], weights: dict[str, int]) -> int:
+    def _candidate_score(
+        self, candidate: dict, occupied: dict[str, set], group_ids_by_code: dict[str, int], weights: dict[str, int]
+    ) -> int:
         score = self._single_candidate_soft_penalty(candidate, weights)
         score += self._bucket_conflict_count(self._room_buckets(candidate), occupied["room"]) * GREEDY_CONFLICT_PENALTY
         score += self._bucket_conflict_count(self._staff_buckets(candidate), occupied["staff"]) * GREEDY_CONFLICT_PENALTY
-        score += (
-            self._bucket_conflict_count(self._group_buckets(candidate, group_ids_by_code), occupied["group"])
-            * GREEDY_CONFLICT_PENALTY
-        )
+        score += self._bucket_conflict_count(self._group_buckets(candidate, group_ids_by_code), occupied["group"]) * GREEDY_CONFLICT_PENALTY
         room = candidate["room"]
         session = candidate["session"]
         if session.exact_class_size and room.capacity:

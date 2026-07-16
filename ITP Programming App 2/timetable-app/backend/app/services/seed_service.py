@@ -8,8 +8,8 @@ intentionally not seeded.
 
 from __future__ import annotations
 
-import re
 import json
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -22,7 +22,11 @@ from app.models.staff import Staff
 from app.models.student_group import StudentGroup
 from app.models.time_slot import TimeSlot
 from app.services.compatibility import clean_text, minutes_to_time
-from app.services.student_group_service import ensure_programme_year_groups, normalize_student_group_ids, student_group_code
+from app.services.student_group_service import (
+    ensure_programme_year_groups,
+    normalize_student_group_ids,
+    student_group_code,
+)
 from sqlalchemy import func
 from sqlalchemy.orm import Session as DbSession
 

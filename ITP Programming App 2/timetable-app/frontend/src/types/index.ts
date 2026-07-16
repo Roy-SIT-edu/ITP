@@ -129,6 +129,9 @@ export type ScheduleGenerateResult = {
   moved_session_count?: number;
   unresolved_lab_session_ids?: number[];
   unresolved_fixed_session_ids?: number[];
+  lab_overlap_pair_count?: number;
+  excluded_lab_session_count?: number;
+  excluded_lab_session_ids?: number[];
   timed_out?: boolean;
   soft_warning_count?: number;
   soft_score: number;
@@ -192,6 +195,35 @@ export type ReportConflict = ConstraintViolation & {
   }>;
 };
 
+export type ReportLabOverlapSession = {
+  session_id: number;
+  scheduled_session_id: number;
+  requirement_id: string | null;
+  lab_requirement_id: number | null;
+  module_code: string | null;
+  programme: string | null;
+  student_group_code: string | null;
+  day: string;
+  start_time: string;
+  end_time: string;
+  week_pattern: string;
+  room: string | null;
+  included_in_final: boolean;
+};
+
+export type ReportLabOverlap = {
+  left: ReportLabOverlapSession;
+  right: ReportLabOverlapSession;
+  resource_types: Array<"ROOM" | "STAFF" | "STUDENT_GROUP">;
+  resources: {
+    rooms: string[];
+    staff: string[];
+    student_groups: string[];
+  };
+  excluded_session_ids: number[];
+  resolved_in_final: boolean;
+};
+
 export type ScheduleReport = {
   report_generated_at: string;
   run: ScheduleRun;
@@ -208,6 +240,9 @@ export type ScheduleReport = {
     scheduled_count: number;
     uploaded_session_count: number;
     lab_session_count: number;
+    original_lab_session_count: number;
+    excluded_lab_session_count: number;
+    lab_overlap_pair_count: number;
     programme_count: number;
     module_count: number;
     student_group_count: number;
@@ -233,6 +268,13 @@ export type ScheduleReport = {
     affected_session_count: number;
     by_constraint: Array<{ severity: "HARD" | "SOFT"; constraint_code: string; count: number }>;
     items: ReportConflict[];
+  };
+  lab_overlap_resolution: {
+    detected_pair_count: number;
+    excluded_session_count: number;
+    excluded_session_ids: number[];
+    excluded_sessions: ReportLabOverlapSession[];
+    overlaps: ReportLabOverlap[];
   };
   sessions: ReportSession[];
 };
@@ -321,6 +363,12 @@ export type QuickFixResponse = {
   severity: "HARD" | "SOFT";
   session_id: number;
   suggestions: QuickFixSuggestion[];
+};
+
+export type QuickFixAvailability = {
+  schedule_run_id: number;
+  by_session_id: Record<string, boolean>;
+  by_conflict_id: Record<string, boolean>;
 };
 
 export type SessionRow = {

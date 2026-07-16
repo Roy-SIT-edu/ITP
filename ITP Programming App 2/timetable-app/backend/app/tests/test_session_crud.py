@@ -75,7 +75,9 @@ def test_create_session(tmp_path):
     assert data["requirement_id"] == "REQ-CRUD-001"
     assert data["programme"] == "DSC"
     assert data["module_code"] == "DSC2204"
-    assert data["student_group_code"] == "DSC-Y1-G1"
+    # Legacy hyphenated codes remain accepted but are returned using the
+    # canonical programme/year/partition format used by current reference data.
+    assert data["student_group_code"] == "DSC Y1 P1"
     assert data["staff_name"] == "Dr Tan"
     assert data["class_type"] == "Tutorial"
     assert data["duration_minutes"] == 120

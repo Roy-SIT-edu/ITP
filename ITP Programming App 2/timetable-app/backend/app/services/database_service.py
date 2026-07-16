@@ -742,9 +742,7 @@ class DatabaseService:
             if row_id is not None:
                 query = query.filter(Staff.id != row_id)
             if query.first():
-                raise DatabaseValidationError(
-                    [{"row": 0, "field": "staff_name", "message": "A staff row with this name already exists."}]
-                )
+                raise DatabaseValidationError([{"row": 0, "field": "staff_name", "message": "A staff row with this name already exists."}])
             return
         filters = [getattr(config.model, field) == getattr(item, field) for field in config.key_fields]
         query = db.query(config.model).filter(*filters)

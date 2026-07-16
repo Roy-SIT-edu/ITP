@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Room, ScheduledRow, TimeSlot, SessionRow } from "../../types";
 import MoveControls from "./MoveControls";
 import TimetablePlanner from "./TimetablePlanner";
 import { days, type MoveDraft } from "./types";
-import { buildPlannerSlots, duration, getFirstOverlapKey, groupRowsBySlot, timeToMinutes } from "./timetableUtils";
+import { buildPlannerSlots, duration, groupRowsBySlot, timeToMinutes } from "./timetableUtils";
 import { getSession, updateSession, recheckSchedule } from "../../api/client";
 
 type Props = {
@@ -68,15 +68,14 @@ export default function TimetableGrid({
     [displayEndTime, displayStartTime, timeSlots, visibleRows],
   );
   const grouped = useMemo(() => groupRowsBySlot(visibleRows, slots), [visibleRows, slots]);
-  const [selectedSessionId, setSelectedSessionId] = useState<number | null>(visibleRows[0]?.session_id ?? null);
-  const [selectedSlotKey, setSelectedSlotKey] = useState<string | null>(
-    visibleRows[0] ? getFirstOverlapKey(visibleRows[0], slots) : null,
-  );
+  const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
+  const [selectedSlotKey, setSelectedSlotKey] = useState<string | null>(null);
   const [selectedRowsOverride, setSelectedRowsOverride] = useState<ScheduledRow[] | null>(null);
   const [slotDetailsAttention, setSlotDetailsAttention] = useState(0);
   const [isPlacing, setIsPlacing] = useState(false);
   const selectedRow = useMemo(
-    () => visibleRows.find((row) => row.session_id === selectedSessionId) ?? visibleRows[0] ?? null,
+    () =>
+      selectedSessionId === null ? null : (visibleRows.find((row) => row.session_id === selectedSessionId) ?? null),
     [visibleRows, selectedSessionId],
   );
   const selectedSlotRows = useMemo(
@@ -96,21 +95,37 @@ export default function TimetableGrid({
       .map(([id, name]) => ({ id, name }));
   }, [rows]);
 
+  const clearSelection = useCallback(() => {
+    setSelectedSessionId(null);
+    setSelectedSlotKey(null);
+    setSelectedRowsOverride(null);
+    setIsPlacing(false);
+    onSelectSession?.(null);
+  }, [onSelectSession]);
+
   useEffect(() => {
-    if (visibleRows.length === 0) {
-      setSelectedSessionId(null);
-      setSelectedSlotKey(null);
-      setSelectedRowsOverride(null);
+    if (selectedSessionId !== null && !visibleRows.some((row) => row.session_id === selectedSessionId)) {
+      clearSelection();
       return;
     }
-    if (!visibleRows.some((row) => row.session_id === selectedSessionId)) {
-      setSelectedSessionId(visibleRows[0].session_id);
-    }
-    if (!selectedSlotKey || !grouped.has(selectedSlotKey)) {
-      setSelectedSlotKey(getFirstOverlapKey(visibleRows[0], slots));
+    if (selectedSlotKey && !grouped.has(selectedSlotKey)) {
+      setSelectedSlotKey(null);
       setSelectedRowsOverride(null);
     }
-  }, [grouped, visibleRows, selectedSessionId, selectedSlotKey, slots]);
+  }, [clearSelection, grouped, visibleRows, selectedSessionId, selectedSlotKey]);
+
+  useEffect(() => {
+    if (selectedSessionId === null || isPlacing) return;
+
+    const clearOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element) || target.closest("[data-timetable-selection-surface]")) return;
+      clearSelection();
+    };
+
+    document.addEventListener("pointerdown", clearOnOutsidePointer, true);
+    return () => document.removeEventListener("pointerdown", clearOnOutsidePointer, true);
+  }, [clearSelection, isPlacing, selectedSessionId]);
 
   useEffect(() => {
     if (
@@ -381,7 +396,11 @@ function SlotSessionList({
   }, [attentionKey]);
 
   return (
-    <section className={`slot-detail-panel ${isHighlighted ? "attention" : ""}`} ref={panelRef}>
+    <section
+      className={`slot-detail-panel ${isHighlighted ? "attention" : ""}`}
+      data-timetable-selection-surface
+      ref={panelRef}
+    >
       <div className="schedule-edit-heading">
         <div>
           <strong>Slot Details</strong>
@@ -537,8 +556,8 @@ function SelectedSessionEditor({
 
   if (!row || !draft) {
     return (
-      <section className="schedule-edit-panel selected-session-panel">
-        <div className="empty-state">No sessions match the current filters.</div>
+      <section className="schedule-edit-panel selected-session-panel" data-timetable-selection-surface>
+        <div className="empty-state">Select a session from the timetable to view or edit it.</div>
       </section>
     );
   }
@@ -546,7 +565,7 @@ function SelectedSessionEditor({
   const isSaving = savingDetails || savingMove === row.session_id;
 
   return (
-    <section className="schedule-edit-panel selected-session-panel">
+    <section className="schedule-edit-panel selected-session-panel" data-timetable-selection-surface>
       <div className="schedule-edit-heading">
         <strong>Selected Session</strong>
         <small>{isLabRequirement(row) ? `Lab requirement ${row.requirement_id}` : row.requirement_id}</small>

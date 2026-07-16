@@ -32,9 +32,7 @@ class LabRequirementService:
     def active_requirement_ids(self, db: DbSession) -> set[str]:
         return {
             item.requirement_id
-            for item in db.query(LabRequirement.requirement_id)
-            .filter(LabRequirement.is_active.is_(True))
-            .all()
+            for item in db.query(LabRequirement.requirement_id).filter(LabRequirement.is_active.is_(True)).all()
             if item.requirement_id
         }
 
@@ -207,7 +205,9 @@ class LabRequirementService:
         if not text:
             return []
         codes = []
-        for match in re.findall(r"\b[A-Z]\d-[A-Z0-9]{2}-\d{2}\b|\b[A-Z]\d-[A-Z0-9]M-\d{2}\b|\bENG-EXTERNAL\b|\bEXTERNAL-LAB\b", text, flags=re.IGNORECASE):
+        for match in re.findall(
+            r"\b[A-Z]\d-[A-Z0-9]{2}-\d{2}\b|\b[A-Z]\d-[A-Z0-9]M-\d{2}\b|\bENG-EXTERNAL\b|\bEXTERNAL-LAB\b", text, flags=re.IGNORECASE
+        ):
             code = match.upper()
             if code not in codes:
                 codes.append(code)
@@ -311,9 +311,7 @@ class LabRequirementService:
 
         if partitions and programme_codes and requirement.year:
             codes.extend(
-                f"{programme_code} Y{requirement.year} P{partition}"
-                for programme_code in programme_codes
-                for partition in partitions
+                f"{programme_code} Y{requirement.year} P{partition}" for programme_code in programme_codes for partition in partitions
             )
         if not codes and primary_programme and requirement.year:
             suffix = clean_text(requirement.student_group) or "ALL"
