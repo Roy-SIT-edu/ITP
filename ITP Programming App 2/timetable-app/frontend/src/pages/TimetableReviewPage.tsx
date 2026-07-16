@@ -585,7 +585,9 @@ export default function TimetableReviewPage() {
         <section className="status-card generation-panel review-deconflict-panel" style={{ marginTop: "1rem" }}>
           <div className="generation-copy">
             <div className="status-card-title">Auto-Deconflicting Schedule</div>
-            <p className="muted" style={{ margin: "4px 0 0" }}>Running parallel solver to resolve hard conflicts while preserving valid placements...</p>
+            <p className="muted" style={{ margin: "4px 0 0" }}>
+              Running parallel solver to resolve hard conflicts while preserving valid placements...
+            </p>
           </div>
           <div className="solver-progress" aria-live="polite">
             <div className="solver-progress-heading">
@@ -606,16 +608,28 @@ export default function TimetableReviewPage() {
               aria-label="Estimated auto deconflict progress"
               aria-valuemax={100}
               aria-valuemin={0}
-              aria-valuenow={deconflictElapsedSeconds > 0 ? Math.min(90, Math.max(4, Math.round((deconflictElapsedSeconds / 30) * 90))) : 0}
+              aria-valuenow={
+                deconflictElapsedSeconds > 0
+                  ? Math.min(90, Math.max(4, Math.round((deconflictElapsedSeconds / 30) * 90)))
+                  : 0
+              }
               className="solver-progress-track"
               role="progressbar"
             >
               <span
                 className={`solver-progress-fill ${deconflictElapsedSeconds >= 30 ? "stalled" : ""}`}
-                style={{ width: `${deconflictElapsedSeconds > 0 ? Math.min(90, Math.max(4, Math.round((deconflictElapsedSeconds / 30) * 90))) : 0}%` }}
+                style={{
+                  width: `${deconflictElapsedSeconds > 0 ? Math.min(90, Math.max(4, Math.round((deconflictElapsedSeconds / 30) * 90))) : 0}%`,
+                }}
               />
             </div>
-            <p>Estimated progress {deconflictElapsedSeconds > 0 ? Math.min(90, Math.max(4, Math.round((deconflictElapsedSeconds / 30) * 90))) : 0}%</p>
+            <p>
+              Estimated progress{" "}
+              {deconflictElapsedSeconds > 0
+                ? Math.min(90, Math.max(4, Math.round((deconflictElapsedSeconds / 30) * 90)))
+                : 0}
+              %
+            </p>
           </div>
         </section>
       ) : null}

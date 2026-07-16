@@ -50,7 +50,11 @@ export function moveSoftPriority(priorities: SoftConstraintPriority[], index: nu
   return rankSoftPriorities(next, true);
 }
 
-export function setSoftPriorityActive(priorities: SoftConstraintPriority[], constraintCode: string, nextActive: boolean) {
+export function setSoftPriorityActive(
+  priorities: SoftConstraintPriority[],
+  constraintCode: string,
+  nextActive: boolean,
+) {
   const displayList = rankSoftPriorities(priorities, true).map((item) =>
     item.constraint_code === constraintCode ? { ...item, isActive: nextActive } : item,
   );

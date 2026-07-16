@@ -49,9 +49,7 @@ export default function DashboardPage() {
   const latest = dashboard.latest_schedule;
   const quality = latest?.quality;
   const scheduledCount = latest?.scheduled_count ?? 0;
-  const coveragePercent = dashboard.total_sessions
-    ? Math.round((scheduledCount / dashboard.total_sessions) * 100)
-    : 0;
+  const coveragePercent = dashboard.total_sessions ? Math.round((scheduledCount / dashboard.total_sessions) * 100) : 0;
   const hardConflicts = latest?.hard_violation_count ?? 0;
   const softWarnings = quality?.soft_warning_count ?? 0;
   const readiness = dashboardReadiness(dashboard);
@@ -65,7 +63,9 @@ export default function DashboardPage() {
       detail: latest ? `${coveragePercent}% of sessions placed` : "Generate a schedule to measure coverage",
       icon: CalendarCheck,
       tone: coveragePercent === 100 ? "success" : "blue",
-      badge: latest ? <StatusBadge label={`${coveragePercent}%`} tone={coveragePercent === 100 ? "good" : "info"} /> : null,
+      badge: latest ? (
+        <StatusBadge label={`${coveragePercent}%`} tone={coveragePercent === 100 ? "good" : "info"} />
+      ) : null,
     },
     {
       label: "Input errors",
@@ -86,7 +86,12 @@ export default function DashboardPage() {
       detail: latest ? "Blocking schedule issues" : "No generated schedule yet",
       icon: AlertTriangle,
       tone: hardConflicts > 0 ? "error" : "success",
-      badge: latest ? <StatusBadge label={hardConflicts > 0 ? "Blocked" : "Conflict-free"} tone={hardConflicts > 0 ? "bad" : "good"} /> : null,
+      badge: latest ? (
+        <StatusBadge
+          label={hardConflicts > 0 ? "Blocked" : "Conflict-free"}
+          tone={hardConflicts > 0 ? "bad" : "good"}
+        />
+      ) : null,
     },
     {
       label: "Soft warnings",
@@ -94,7 +99,9 @@ export default function DashboardPage() {
       detail: quality ? `${quality.affected_session_count} sessions affected` : "Measured after generation",
       icon: CalendarDays,
       tone: softWarnings > 0 ? "warning" : "teal",
-      badge: quality ? <StatusBadge label={softWarnings > 0 ? "Reviewable" : "Clear"} tone={softWarnings > 0 ? "warn" : "good"} /> : null,
+      badge: quality ? (
+        <StatusBadge label={softWarnings > 0 ? "Reviewable" : "Clear"} tone={softWarnings > 0 ? "warn" : "good"} />
+      ) : null,
     },
     {
       label: "Quality score",
@@ -184,10 +191,7 @@ export default function DashboardPage() {
               <div className="status-card-title">Attention Needed</div>
               <p>Highest-impact input and schedule issues, ordered by frequency</p>
             </div>
-            <a
-              className="button secondary slim"
-              href={dashboard.validation.error_count > 0 ? "#upload" : "#review"}
-            >
+            <a className="button secondary slim" href={dashboard.validation.error_count > 0 ? "#upload" : "#review"}>
               Open {dashboard.validation.error_count > 0 ? "input" : "review"}
               <ArrowRight size={15} />
             </a>
@@ -202,7 +206,10 @@ export default function DashboardPage() {
                     <strong>{formatIssueLabel(issue.code)}</strong>
                     <small>{issueSource(issue.code)} issue</small>
                   </div>
-                  <StatusBadge label={issue.severity === "HARD" ? "Hard" : "Soft"} tone={issue.severity === "HARD" ? "bad" : "warn"} />
+                  <StatusBadge
+                    label={issue.severity === "HARD" ? "Hard" : "Soft"}
+                    tone={issue.severity === "HARD" ? "bad" : "warn"}
+                  />
                   <strong className="dashboard-issue-count">{issue.count}</strong>
                 </div>
               ))}
@@ -245,7 +252,10 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="dashboard-quality-facts">
-                <QualityFact label="Sessions affected" value={`${quality.affected_session_count} (${quality.affected_session_percent}%)`} />
+                <QualityFact
+                  label="Sessions affected"
+                  value={`${quality.affected_session_count} (${quality.affected_session_percent}%)`}
+                />
                 <QualityFact label="Soft warnings" value={quality.soft_warning_count} />
                 <QualityFact label="Preference pressure" value={`${quality.soft_pressure_per_session}/session`} />
               </div>
@@ -261,7 +271,6 @@ export default function DashboardPage() {
           )}
         </article>
       </section>
-
     </div>
   );
 }
@@ -340,7 +349,10 @@ function issueSource(code: string) {
 }
 
 function formatStatus(status: string) {
-  return status.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return status
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function formatDate(value: string) {

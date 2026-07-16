@@ -12,4 +12,7 @@ dist/
 **/dist/
 *.log
 *.db
+*.db-shm
+*.db-wal
+**/database-backups/
 **/backend/data/Raw Data.xlsx

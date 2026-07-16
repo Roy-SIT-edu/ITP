@@ -11,10 +11,34 @@ type LogStep = {
 };
 
 const initialSteps: LogStep[] = [
-  { id: "s1", text: "Analyzing conflicts and unlocking fixed constraints...", icon: ServerCog, duration: 1500, status: "running" },
-  { id: "s2", text: "Attempt 1: Running CP-SAT solver (Campus Delivery)...", icon: Cpu, duration: 4000, status: "pending" },
-  { id: "s3", text: "Attempt 1 failed. Fallback: Converting non-lab modules to Online delivery...", icon: Globe2, duration: 1000, status: "pending" },
-  { id: "s4", text: "Attempt 2: Running CP-SAT solver (Online Delivery)...", icon: Cpu, duration: 3000, status: "pending" },
+  {
+    id: "s1",
+    text: "Analyzing conflicts and unlocking fixed constraints...",
+    icon: ServerCog,
+    duration: 1500,
+    status: "running",
+  },
+  {
+    id: "s2",
+    text: "Attempt 1: Running CP-SAT solver (Campus Delivery)...",
+    icon: Cpu,
+    duration: 4000,
+    status: "pending",
+  },
+  {
+    id: "s3",
+    text: "Attempt 1 failed. Fallback: Converting non-lab modules to Online delivery...",
+    icon: Globe2,
+    duration: 1000,
+    status: "pending",
+  },
+  {
+    id: "s4",
+    text: "Attempt 2: Running CP-SAT solver (Online Delivery)...",
+    icon: Cpu,
+    duration: 3000,
+    status: "pending",
+  },
   { id: "s5", text: "Validating optimal schedule...", icon: CheckCircle2, duration: 500, status: "pending" },
 ];
 
@@ -28,17 +52,16 @@ export default function LiveProgress() {
       if (currentStep >= initialSteps.length) return;
 
       const step = initialSteps[currentStep];
-      setSteps(prev => prev.map((s, i) =>
-        i === currentStep ? { ...s, status: "running" } :
-        i < currentStep ? { ...s, status: "done" } : s
-      ));
+      setSteps((prev) =>
+        prev.map((s, i) =>
+          i === currentStep ? { ...s, status: "running" } : i < currentStep ? { ...s, status: "done" } : s,
+        ),
+      );
 
       setTimeout(() => {
         currentStep++;
         if (currentStep <= initialSteps.length) {
-            setSteps(prev => prev.map((s, i) =>
-                i < currentStep ? { ...s, status: "done" } : s
-            ));
+          setSteps((prev) => prev.map((s, i) => (i < currentStep ? { ...s, status: "done" } : s)));
         }
         advance();
       }, step.duration);
@@ -65,7 +88,14 @@ export default function LiveProgress() {
                 {step.status === "running" ? <Loader2 className="spin" size={14} /> : <CheckCircle2 size={14} />}
               </div>
               <div className="live-progress-text">
-                <span className="live-progress-time">{new Date().toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+                <span className="live-progress-time">
+                  {new Date().toLocaleTimeString([], {
+                    hour12: false,
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  })}
+                </span>
                 <Icon size={14} className="live-progress-accent" />
                 {step.text}
               </div>

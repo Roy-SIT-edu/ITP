@@ -15,10 +15,7 @@ import { formatApiError } from "../api/errors";
 import ImportPreviewGrid from "../components/ImportPreviewGrid";
 import ImportSummary from "../components/ImportSummary";
 import InlineActivity from "../components/InlineActivity";
-import {
-  GenerationReadinessPanel,
-  SoftPreferenceTable,
-} from "../components/SoftConstraintWorkflow";
+import { GenerationReadinessPanel, SoftPreferenceTable } from "../components/SoftConstraintWorkflow";
 import { softConstraintHints } from "../components/softPreferenceHints";
 import UploadBox from "../components/UploadBox";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
@@ -123,7 +120,9 @@ export default function UploadPage() {
       if (nextSummary.rows_failed > 0) {
         setError("Edited rows still have validation issues. Check the highlighted cells and apply again.");
       } else {
-        setSuccess(`${nextSummary.rows_imported} edited requirement${nextSummary.rows_imported === 1 ? "" : "s"} imported.`);
+        setSuccess(
+          `${nextSummary.rows_imported} edited requirement${nextSummary.rows_imported === 1 ? "" : "s"} imported.`,
+        );
         notifyWorkflowProgressChange();
       }
       await loadReadiness();
@@ -174,9 +173,7 @@ export default function UploadPage() {
       {error && <div className="notice bad">{error}</div>}
       {success && <div className="notice good">{success}</div>}
       {summary && <ImportSummary summary={summary} />}
-      {summary && (
-        <ImportPreviewGrid applying={applyingEdits} summary={summary} onApply={handleApplyEditedRows} />
-      )}
+      {summary && <ImportPreviewGrid applying={applyingEdits} summary={summary} onApply={handleApplyEditedRows} />}
       {readinessError && <div className="notice bad">{readinessError}</div>}
       {readinessLoading && (
         <InlineActivity

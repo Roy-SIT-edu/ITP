@@ -78,11 +78,15 @@ function textValue(row: DatabaseRow, key: string) {
 }
 
 function listFromSet(values: Set<string>) {
-  return [...values].sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" }));
+  return [...values].sort((left, right) =>
+    left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" }),
+  );
 }
 
 function labProgramme(row: DatabaseRow) {
-  return textValue(row, "programme") || textValue(row, "raw_programme") || textValue(row, "source_sheet") || "Unassigned";
+  return (
+    textValue(row, "programme") || textValue(row, "raw_programme") || textValue(row, "source_sheet") || "Unassigned"
+  );
 }
 
 function labVenue(row: DatabaseRow) {
@@ -715,7 +719,12 @@ export default function DatabasePage({ dataType }: Props) {
                         <button className="button slim" disabled={busy} title="Save" type="submit">
                           <Save size={14} />
                         </button>
-                        <button className="button secondary slim" title="Cancel" type="button" onClick={() => setAdding(false)}>
+                        <button
+                          className="button secondary slim"
+                          title="Cancel"
+                          type="button"
+                          onClick={() => setAdding(false)}
+                        >
                           <X size={14} />
                         </button>
                       </div>
@@ -764,10 +773,20 @@ export default function DatabasePage({ dataType }: Props) {
                 <tr key={row.id}>
                   <td>
                     <div className="row-actions">
-                      <button className="button secondary slim" title="Edit" type="button" onClick={() => beginEdit(row)}>
+                      <button
+                        className="button secondary slim"
+                        title="Edit"
+                        type="button"
+                        onClick={() => beginEdit(row)}
+                      >
                         <Edit2 size={14} />
                       </button>
-                      <button className="button danger slim" title="Delete" type="button" onClick={() => removeRow(row)}>
+                      <button
+                        className="button danger slim"
+                        title="Delete"
+                        type="button"
+                        onClick={() => removeRow(row)}
+                      >
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -905,11 +924,7 @@ export default function DatabasePage({ dataType }: Props) {
         </div>
 
         {dataType === "lab-requirements" ? (
-          <LabUsageOverview
-            adding={adding}
-            rows={filteredRows}
-            renderLabRecords={renderLabRecords}
-          />
+          <LabUsageOverview adding={adding} rows={filteredRows} renderLabRecords={renderLabRecords} />
         ) : (
           renderRecordsTable(filteredRows, { showNewRow: adding })
         )}
