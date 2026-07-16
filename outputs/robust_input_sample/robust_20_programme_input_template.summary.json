@@ -1,0 +1,47 @@
+{
+  "required_rows": 116,
+  "optional_rows": 116,
+  "programmes": [
+    "AAI",
+    "ACC",
+    "ASE",
+    "ATM",
+    "BAC",
+    "CEG",
+    "CVE",
+    "DSC",
+    "EDE",
+    "EEE",
+    "EPE",
+    "ESE",
+    "FDT",
+    "ICT",
+    "MEC",
+    "NUR",
+    "RSE",
+    "SBE",
+    "SLT",
+    "TCE"
+  ],
+  "programme_count": 20,
+  "module_count": 104,
+  "class_types": [
+    "Laboratory",
+    "Lecture",
+    "Online",
+    "Tutorial",
+    "Workshop"
+  ],
+  "delivery_modes": [
+    "Face-to-face",
+    "Hybrid",
+    "Online"
+  ],
+  "venue_types": [
+    "Computer Lab",
+    "Lectorial",
+    "Seminar Room",
+    "Virtual"
+  ],
+  "common_rows": 16
+}
