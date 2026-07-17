@@ -208,8 +208,11 @@ function Test-FrontendAt {
     param([string]$Url)
 
     try {
-        $response = Invoke-RestMethod -Uri "$Url/health" -TimeoutSec 3
-        return Test-AppHealth $response
+        $response = Invoke-RestMethod -Uri "$Url/frontend-health" -TimeoutSec 3
+        if ($null -eq $response -or $response.status -ne "ok" -or $response.node_env -ne "development") {
+            return $false
+        }
+        return (Normalize-Path $response.app_root) -eq (Normalize-Path $FrontendDir)
     }
     catch {
         return $false
@@ -619,7 +622,7 @@ function Start-Frontend {
     $stdout = Join-Path $FrontendDir "quicklaunch-frontend-$FrontendPort.out.log"
     $stderr = Join-Path $FrontendDir "quicklaunch-frontend-$FrontendPort.err.log"
     $escapedNpmCommand = $NpmCommand.Replace("'", "''")
-    $command = "`$env:VITE_PROXY_TARGET = '$BackendUrl'; & '$escapedNpmCommand' run dev -- --host $HostName --port $FrontendPort --strictPort"
+    $command = "`$env:NODE_ENV = 'development'; `$env:VITE_PROXY_TARGET = '$BackendUrl'; & '$escapedNpmCommand' run dev -- --host $HostName --port $FrontendPort --strictPort --force"
 
     $process = Start-Process `
         -FilePath "powershell.exe" `

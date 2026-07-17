@@ -685,9 +685,9 @@
     "semantic_hash": "0ec81e439ad6b2e7ff27f4aa869c156a"
   },
   "ITP Programming App 2/timetable-app/frontend/vite.config.ts": {
-    "mtime": 1784197139.8066175,
-    "ast_hash": "c759aa5dec685879fb62fd5f49778adc",
-    "semantic_hash": "c759aa5dec685879fb62fd5f49778adc"
+    "mtime": 1784293358.1092725,
+    "ast_hash": "7178235b18c67f11a147d4b94ec934b2",
+    "semantic_hash": ""
   },
   "ITP Programming App 2/timetable-app/frontend/vitest.config.ts": {
     "mtime": 1784197139.8213165,
@@ -695,13 +695,13 @@
     "semantic_hash": "e9dc49ced9f64ad62549715f4df9016a"
   },
   "ITP Programming App 2/timetable-app/quicklaunch.ps1": {
-    "mtime": 1784292867.605435,
-    "ast_hash": "70faaf1489735c321655b4ff22cc1138",
+    "mtime": 1784293357.3716137,
+    "ast_hash": "7a91144156af4400df5fe65a2406fdad",
     "semantic_hash": ""
   },
   "ITP Programming App 2/timetable-app/scripts/windows-launcher-smoke.ps1": {
-    "mtime": 1784292868.339063,
-    "ast_hash": "4a11a28023202699a5f760077afbffb4",
+    "mtime": 1784293358.9285233,
+    "ast_hash": "c050e48c6a1b431a883bbb63edd4bb20",
     "semantic_hash": ""
   },
   "ITP Programming App 2/timetable-app/stop.ps1": {
@@ -792,16 +792,6 @@
   ".github/workflows/ci.yml": {
     "mtime": 1784196934.372585,
     "ast_hash": "4e16f6905aca81bcf5cde1fba77dab19",
-    "semantic_hash": ""
-  },
-  "1. Backend Python 3.10 and 3.14.txt": {
-    "mtime": 1784201096.7864027,
-    "ast_hash": "97b75f080916cba6b416a1ae4c7f5b46",
-    "semantic_hash": ""
-  },
-  "2. Future Timetable Additions.txt": {
-    "mtime": 1784289039.5885997,
-    "ast_hash": "0456a00add0b101bba82bff897f324e4",
     "semantic_hash": ""
   },
   "AGENTS.md": {

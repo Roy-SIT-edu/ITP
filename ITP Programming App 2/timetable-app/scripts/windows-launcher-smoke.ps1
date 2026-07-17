@@ -49,6 +49,17 @@ function Invoke-Launcher {
     }
 }
 
+function Assert-FrontendHealth {
+    param([string]$Url)
+
+    $health = Invoke-RestMethod -Uri "$Url/frontend-health" -TimeoutSec 5
+    $expectedRoot = [System.IO.Path]::GetFullPath((Join-Path $AppRoot "frontend")).TrimEnd("\")
+    $actualRoot = [System.IO.Path]::GetFullPath([string]$health.app_root).TrimEnd("\")
+    if ($health.status -ne "ok" -or $health.node_env -ne "development" -or $actualRoot -ne $expectedRoot) {
+        throw "Unexpected frontend health response from $Url."
+    }
+}
+
 try {
     & $Stopper
 
@@ -64,11 +75,11 @@ try {
 
     Invoke-Launcher
     Assert-AppHealth $BackendUrl
-    Assert-AppHealth $FrontendUrl
+    Assert-FrontendHealth $FrontendUrl
 
     Invoke-Launcher
     Assert-AppHealth $BackendUrl
-    Assert-AppHealth $FrontendUrl
+    Assert-FrontendHealth $FrontendUrl
 
     & $Stopper
     Start-Sleep -Seconds 2
