@@ -21,6 +21,7 @@ SPLIT_DATABASE_FILES = {
     "modules": "modules.db",
     "student_groups": "student_groups.db",
     "time_slots": "time_slots.db",
+    "calendar": "calendar.db",
     "requirements": "requirements.db",
     "schedule_state": "schedule_state.db",
 }
@@ -33,6 +34,8 @@ TABLE_DATABASE_NAMES = {
     "modules": "modules",
     "student_groups": "student_groups",
     "time_slots": "time_slots",
+    "academic_weeks": "calendar",
+    "public_holidays": "calendar",
     "sessions": "requirements",
     "session_staff": "requirements",
     "lab_requirements": "requirements",
@@ -40,6 +43,7 @@ TABLE_DATABASE_NAMES = {
     "scheduled_sessions": "schedule_state",
     "constraint_violations": "schedule_state",
     "soft_constraint_priorities": "schedule_state",
+    "session_occurrences": "schedule_state",
 }
 
 DATABASE_URL = f"sqlite:///{DATA_DIR / SPLIT_DATABASE_FILES['schedule_state']}"
@@ -74,14 +78,17 @@ def _build_engines(data_dir: Path = DATA_DIR) -> dict[str, object]:
 
 
 def _model_database_names():
+    from app.models.academic_week import AcademicWeek
     from app.models.constraint_violation import ConstraintViolation
     from app.models.lab_requirement import LabRequirement
     from app.models.module import Module
     from app.models.programme import Programme
+    from app.models.public_holiday import PublicHoliday
     from app.models.room import Room
     from app.models.schedule_run import ScheduleRun
     from app.models.scheduled_session import ScheduledSession
     from app.models.session import Session as Requirement
+    from app.models.session_occurrence import SessionOccurrence
     from app.models.session_staff import SessionStaff
     from app.models.soft_constraint_priority import SoftConstraintPriority
     from app.models.staff import Staff
@@ -95,6 +102,8 @@ def _model_database_names():
         Module: "modules",
         StudentGroup: "student_groups",
         TimeSlot: "time_slots",
+        AcademicWeek: "calendar",
+        PublicHoliday: "calendar",
         Requirement: "requirements",
         SessionStaff: "requirements",
         LabRequirement: "requirements",
@@ -102,6 +111,7 @@ def _model_database_names():
         ScheduledSession: "schedule_state",
         ConstraintViolation: "schedule_state",
         SoftConstraintPriority: "schedule_state",
+        SessionOccurrence: "schedule_state",
     }
 
 
@@ -189,6 +199,8 @@ def _ensure_split_schema(engines: dict[str, object]) -> None:
         "included_in_final",
         "BOOLEAN NOT NULL DEFAULT 1",
     )
+    _ensure_column(engines["schedule_state"], "schedule_runs", "academic_year", "TEXT")
+    _ensure_column(engines["schedule_state"], "schedule_runs", "trimester", "INTEGER")
     _ensure_session_lab_columns(engines["requirements"])
     _drop_column_if_exists(engines["modules"], "modules", "module_host_key")
     _drop_column_if_exists(engines["staff"], "staff", "staff_host_key")

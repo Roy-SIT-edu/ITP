@@ -41,6 +41,7 @@ from app.services.compatibility import (
     venue_room_compatible,
     weeks_conflict,
 )
+from app.services.scheduling_constants import SCHEDULING_DAY_END_TIME
 from app.services.student_group_service import student_group_code, student_group_partition
 from sqlalchemy import func
 from sqlalchemy.orm import Session as DbSession
@@ -588,6 +589,15 @@ class RequirementInputService:
         source_row_no: int,
         errors: list[dict],
     ) -> None:
+        if fixed_end > SCHEDULING_DAY_END_TIME:
+            errors.append(
+                self._issue(
+                    source_row_no,
+                    "Fixed End Time",
+                    f"Classes must end by {SCHEDULING_DAY_END_TIME}.",
+                )
+            )
+            return
         matches = (
             db.query(TimeSlot)
             .filter(

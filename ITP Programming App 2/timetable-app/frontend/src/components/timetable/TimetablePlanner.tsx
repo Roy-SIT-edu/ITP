@@ -1,8 +1,9 @@
 import { CalendarDays, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import type { ScheduledRow } from "../../types";
-import { days, type MoveDraft, type PlannerSlot } from "./types";
+import type { AcademicCalendarContext, ScheduledRow } from "../../types";
+import { days, type MoveDraft, type PlannerSlot, type TimetableIssueTone } from "./types";
 import { getFirstOverlapKey, intervalsOverlap, timeToMinutes } from "./timetableUtils";
+import { SCHEDULING_DAY_END_HOUR, SCHEDULING_DAY_END_TIME } from "../../schedulingHours";
 
 type Props = {
   rows?: ScheduledRow[];
@@ -10,6 +11,7 @@ type Props = {
   grouped: Map<string, ScheduledRow[]>;
   weekStart?: Date;
   weekNumber?: number;
+  calendarContext?: AcademicCalendarContext | null;
   displayStartTime?: string;
   displayEndTime?: string;
   onPreviousWeek?: () => void;
@@ -26,6 +28,7 @@ type Props = {
   availableSlotKeys?: Set<string>;
   softAvailableSlotKeys?: Set<string>;
   blockedSlotKeys?: Set<string>;
+  issueToneBySessionId?: Map<number, TimetableIssueTone>;
 };
 
 const HOUR_HEIGHT = 64;
@@ -61,8 +64,9 @@ export default function TimetablePlanner({
   grouped,
   weekStart,
   weekNumber,
+  calendarContext,
   displayStartTime = "08:00",
-  displayEndTime = "22:00",
+  displayEndTime = SCHEDULING_DAY_END_TIME,
   onPreviousWeek,
   onNextWeek,
   onWeekDateChange,
@@ -77,6 +81,7 @@ export default function TimetablePlanner({
   availableSlotKeys = new Set(),
   softAvailableSlotKeys = new Set(),
   blockedSlotKeys = new Set(),
+  issueToneBySessionId = new Map(),
 }: Props) {
   const safeWeekStart = weekStart ?? startOfWeek(new Date());
   const [showAmPm, setShowAmPm] = useState(true);
@@ -90,11 +95,16 @@ export default function TimetablePlanner({
   const rangeEnd = slots[slots.length - 1]
     ? timeToMinutes(slots[slots.length - 1].end_time)
     : timeToMinutes(displayEndTime);
+  const terminalTime = slots[slots.length - 1]?.end_time ?? displayEndTime;
   const calendarHeight = Math.max(HOUR_HEIGHT, ((rangeEnd - rangeStart) / 60) * HOUR_HEIGHT);
-  const dayHeadings = displayDays.map((day) => ({
-    day,
-    date: addDays(safeWeekStart, days.indexOf(day)),
-  }));
+  const dayHeadings = displayDays.map((day) => {
+    const date = addDays(safeWeekStart, days.indexOf(day));
+    return {
+      day,
+      date,
+      holiday: calendarContext?.holidays.find((item) => item.date === toDateInput(date)) ?? null,
+    };
+  });
   const events = useMemo(
     () => layoutEvents(rows, displayDays, rangeStart, rangeEnd, slots),
     [displayDays, rangeEnd, rangeStart, rows, slots],
@@ -139,7 +149,12 @@ export default function TimetablePlanner({
         </button>
         <div className="calendar-week-title">
           <strong>Week of {formatDateRange(safeWeekStart)}</strong>
-          <span>Academic week {weekNumber ?? 1}</span>
+          <span>
+            {calendarContext
+              ? `AY ${calendarContext.week.academic_year} · Trimester ${calendarContext.week.trimester} · Week ${calendarContext.week.week_number} · ${calendarContext.week.phase_label}${calendarContext.week.holiday_marker}`
+              : `Academic week ${weekNumber ?? 1}`}
+            {calendarContext?.week.is_provisional ? " · Provisional" : ""}
+          </span>
         </div>
         <button className="button secondary slim" onClick={onNextWeek} type="button">
           Next Week
@@ -162,7 +177,7 @@ export default function TimetablePlanner({
         <label>
           <span>Start Time</span>
           <select value={displayStartTime} onChange={(event) => updateStartTime(event.target.value)}>
-            {timeOptions(6, 22).map((time) => (
+            {timeOptions(6, SCHEDULING_DAY_END_HOUR - 1).map((time) => (
               <option key={time} value={time}>
                 {formatTime(time, showAmPm)}
               </option>
@@ -172,7 +187,7 @@ export default function TimetablePlanner({
         <label>
           <span>End Time</span>
           <select value={displayEndTime} onChange={(event) => updateEndTime(event.target.value)}>
-            {timeOptions(7, 23).map((time) => (
+            {timeOptions(7, SCHEDULING_DAY_END_HOUR).map((time) => (
               <option key={time} value={time}>
                 {formatTime(time, showAmPm)}
               </option>
@@ -185,19 +200,40 @@ export default function TimetablePlanner({
         </button>
       </div>
 
+      {calendarContext?.lessons_blocked && (
+        <div className="calendar-phase-notice" role="status">
+          <strong>{calendarContext.week.phase_label}</strong>
+          <span>No lessons are scheduled during this academic-calendar week.</span>
+        </div>
+      )}
+
+      {calendarContext && calendarContext.makeup_required_count > 0 && (
+        <div className="calendar-makeup-notice" role="status">
+          <strong>
+            {calendarContext.makeup_required_count} class{calendarContext.makeup_required_count === 1 ? "" : "es"} need
+            make-up sessions
+          </strong>
+          <span>
+            Public holiday: {Array.from(new Set(calendarContext.holidays.map((holiday) => holiday.name))).join(", ")}
+          </span>
+        </div>
+      )}
+
       <div
         className="calendar-board"
+        data-timetable-selection-surface
         role="grid"
         aria-label="Weekly timetable calendar"
         style={{ gridTemplateColumns: `70px repeat(${dayHeadings.length}, minmax(178px, 1fr))` }}
       >
         <div className="calendar-corner">Time</div>
-        {dayHeadings.map(({ day, date }) => (
-          <div className="calendar-day-heading" key={day}>
+        {dayHeadings.map(({ day, date, holiday }) => (
+          <div className={`calendar-day-heading ${holiday ? "public-holiday" : ""}`} key={day}>
             <strong>{day}</strong>
             <span>
               {date.getDate()} {MONTHS[date.getMonth()]}
             </span>
+            {holiday && <small title={holiday.name}>{holiday.name}</small>}
           </div>
         ))}
 
@@ -207,18 +243,34 @@ export default function TimetablePlanner({
               {formatTime(slot.start_time, showAmPm)}
             </div>
           ))}
+          <div
+            aria-label={`Timetable ends at ${formatTime(terminalTime, showAmPm)}`}
+            className="calendar-time-label calendar-time-label-terminal"
+            data-testid="calendar-terminal-time"
+          >
+            {formatTime(terminalTime, showAmPm)}
+          </div>
         </div>
 
-        {dayHeadings.map(({ day }) => (
-          <div className="calendar-day-column" key={day} style={{ height: calendarHeight }}>
+        {dayHeadings.map(({ day, holiday }) => (
+          <div
+            className={`calendar-day-column ${holiday ? "public-holiday" : ""}`}
+            key={day}
+            style={{ height: calendarHeight }}
+          >
             {slots.map((slot) => {
               const key = `${day}|${slot.start_time}|${slot.end_time}`;
               const slotRows = grouped.get(key) ?? [];
               const selected = key === selectedSlotKey;
               const isConflictCell = conflictSlotKeys.has(key);
-              const isSoftAvailableCell = softAvailableSlotKeys.has(key);
-              const isAvailableCell = availableSlotKeys.has(key) && !isSoftAvailableCell;
-              const isBlockedCell = blockedSlotKeys.has(key);
+              const calendarBlockReason = holiday
+                ? `${holiday.name}: classes require make-up`
+                : calendarContext?.lessons_blocked
+                  ? `${calendarContext.week.phase_label}: lessons are blocked`
+                  : null;
+              const isBlockedCell = blockedSlotKeys.has(key) || Boolean(calendarBlockReason);
+              const isSoftAvailableCell = !isBlockedCell && softAvailableSlotKeys.has(key);
+              const isAvailableCell = !isBlockedCell && availableSlotKeys.has(key) && !isSoftAvailableCell;
               const draftSelected =
                 selectedSessionDraft?.day === day &&
                 Boolean(selectedSessionDraft.start_time) &&
@@ -237,11 +289,13 @@ export default function TimetablePlanner({
                   } ${draftSelected ? "highlight-draft" : ""} ${isConflictCell ? "conflict-current" : ""} ${
                     isAvailableCell ? "conflict-available" : ""
                   } ${isSoftAvailableCell ? "conflict-soft-available" : ""} ${isBlockedCell ? "conflict-blocked" : ""}`}
-                  disabled={(isPlacing && isBlockedCell) || (!slotRows.length && !onSelectSlot && !isPlacing)}
+                  disabled={Boolean(calendarBlockReason) || (!slotRows.length && !onSelectSlot && !isPlacing)}
                   key={key}
                   onClick={() => onSelectSlot?.(key, slotRows)}
                   style={{ height: HOUR_HEIGHT }}
-                  title={isBlockedCell ? "Hard conflict blocked" : undefined}
+                  title={
+                    calendarBlockReason ? calendarBlockReason : isBlockedCell ? "Hard conflict blocked" : undefined
+                  }
                   type="button"
                 />
               );
@@ -255,12 +309,13 @@ export default function TimetablePlanner({
                 if (event.kind === "cluster") {
                   const firstKey = event.slotKeys[0] ?? getFirstOverlapKey(event.rows[0], slots);
                   const labCount = event.rows.filter(isLabRequirement).length;
+                  const issueToneClass = timetableIssueToneClass(event.rows, issueToneBySessionId);
                   return (
                     <button
                       aria-pressed={isSelected}
                       className={`calendar-event calendar-event-group ${labCount ? "lab-requirement" : ""} ${
                         hasConflict ? "conflict-current" : ""
-                      } ${isSelected ? "selected" : ""}`}
+                      } ${isSelected ? "selected" : ""} ${issueToneClass}`}
                       disabled={!onSelectSlot}
                       key={event.id}
                       onClick={() => {
@@ -293,12 +348,13 @@ export default function TimetablePlanner({
 
                 const firstKey = getFirstOverlapKey(event.row, slots);
                 const slotRows = grouped.get(firstKey) ?? [event.row];
+                const issueToneClass = timetableIssueToneClass([event.row], issueToneBySessionId);
                 return (
                   <button
                     aria-pressed={isSelected}
                     className={`calendar-event ${event.density} ${isLabRequirement(event.row) ? "lab-requirement" : ""} ${
                       hasConflict ? "conflict-current" : ""
-                    } ${isSelected ? "selected" : ""}`}
+                    } ${isSelected ? "selected" : ""} ${issueToneClass}`}
                     disabled={!onSelectSlot}
                     key={event.row.scheduled_session_id}
                     onClick={() => onSelectSlot?.(firstKey, slotRows)}
@@ -370,6 +426,13 @@ export default function TimetablePlanner({
       </div>
     </div>
   );
+}
+
+function timetableIssueToneClass(rows: ScheduledRow[], tones: Map<number, TimetableIssueTone>) {
+  const rowTones = rows.map((row) => tones.get(row.session_id));
+  if (rowTones.includes("hard")) return "issue-tone-hard";
+  if (rowTones.includes("soft")) return "issue-tone-soft";
+  return "issue-tone-clean";
 }
 
 function layoutEvents(

@@ -36,12 +36,15 @@ function Assert-AppHealth {
 function Invoke-Launcher {
     Push-Location ([System.IO.Path]::GetTempPath())
     try {
+        $previousNodeEnv = $env:NODE_ENV
+        $env:NODE_ENV = "production"
         & $Launcher -NoBrowser
         if ($LASTEXITCODE -ne 0) {
             throw "Launcher failed with exit code $LASTEXITCODE."
         }
     }
     finally {
+        $env:NODE_ENV = $previousNodeEnv
         Pop-Location
     }
 }

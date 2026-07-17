@@ -109,6 +109,8 @@ function Assert-NodeRuntime {
     if (-not $isSupported) {
         throw "Node.js 20.19+ or 22.12+ is required by the frontend tooling. Current version: $version"
     }
+
+    Write-Host "Using Node.js $version"
 }
 
 function Get-NpmCommand {
@@ -126,6 +128,54 @@ function Normalize-Path {
     param([string]$Path)
 
     return [System.IO.Path]::GetFullPath($Path).TrimEnd("\").ToLowerInvariant()
+}
+
+function Test-BackendDependencies {
+    param([string]$Python)
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    & $Python -c "import fastapi, uvicorn, sqlalchemy, pandas, openpyxl, ortools, multipart, reportlab" *> $null
+    $importExitCode = $LASTEXITCODE
+    if ($importExitCode -eq 0) {
+        & $Python -m pip check *> $null
+        $pipCheckExitCode = $LASTEXITCODE
+    }
+    else {
+        $pipCheckExitCode = 1
+    }
+    $ErrorActionPreference = $previousErrorActionPreference
+
+    return $importExitCode -eq 0 -and $pipCheckExitCode -eq 0
+}
+
+function Test-FrontendDependencies {
+    param([string]$NpmCommand)
+
+    foreach ($requiredPath in @(
+        (Join-Path $FrontendDir "node_modules\.bin\vite.cmd"),
+        (Join-Path $FrontendDir "node_modules\vite\package.json"),
+        (Join-Path $FrontendDir "node_modules\@vitejs\plugin-react\package.json"),
+        (Join-Path $FrontendDir "node_modules\react\package.json"),
+        (Join-Path $FrontendDir "node_modules\react-dom\package.json")
+    )) {
+        if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+            return $false
+        }
+    }
+
+    Push-Location $FrontendDir
+    try {
+        $previousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        & $NpmCommand ls --depth=0 --include=dev *> $null
+        $npmCheckExitCode = $LASTEXITCODE
+        $ErrorActionPreference = $previousErrorActionPreference
+        return $npmCheckExitCode -eq 0
+    }
+    finally {
+        Pop-Location
+    }
 }
 
 function Test-AppHealth {
@@ -366,11 +416,8 @@ function Ensure-BackendEnvironment {
         }
     }
 
-    $previousErrorActionPreference = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    & $python -c "import fastapi, uvicorn, sqlalchemy, pandas, openpyxl, ortools, multipart, reportlab" *> $null
-    $dependencyProbeExitCode = $LASTEXITCODE
-    $ErrorActionPreference = $previousErrorActionPreference
+    $venvVersionText = (& $python --version 2>&1 | Out-String).Trim()
+    Write-Host "Using backend $venvVersionText"
 
     $requirementsHash = (Get-FileHash -LiteralPath $requirements -Algorithm SHA256).Hash
     $installedHash = if (Test-Path $requirementsStamp) {
@@ -380,13 +427,20 @@ function Ensure-BackendEnvironment {
         ""
     }
 
-    if ($dependencyProbeExitCode -ne 0 -or $installedHash -ne $requirementsHash) {
+    $dependenciesHealthy = Test-BackendDependencies -Python $python
+    if (-not $dependenciesHealthy -or $installedHash -ne $requirementsHash) {
+        if (-not $dependenciesHealthy) {
+            Write-Host "The backend environment is incomplete or inconsistent; repairing it..." -ForegroundColor Yellow
+        }
         Write-Host "Synchronizing backend dependencies..."
         Push-Location $BackendDir
         try {
             & $python -m pip install --require-hashes -r requirements.txt | Out-Host
             if ($LASTEXITCODE -ne 0) {
                 throw "Backend dependency installation failed (exit code $LASTEXITCODE). Check the pip error above."
+            }
+            if (-not (Test-BackendDependencies -Python $python)) {
+                throw "Backend dependencies were installed, but their verification failed. Delete backend\venv and run the launcher again."
             }
             Set-Content -LiteralPath $requirementsStamp -Value $requirementsHash -Encoding ASCII
         }
@@ -488,18 +542,25 @@ function Ensure-FrontendEnvironment {
         ""
     }
 
-    if (-not (Test-Path $nodeModules) -or $installedHash -ne $dependencyHash) {
+    $dependenciesHealthy = Test-FrontendDependencies -NpmCommand $npm
+    if (-not (Test-Path $nodeModules) -or -not $dependenciesHealthy -or $installedHash -ne $dependencyHash) {
+        if ((Test-Path $nodeModules) -and -not $dependenciesHealthy) {
+            Write-Host "The frontend dependency folder is incomplete or was copied from another device; repairing it..." -ForegroundColor Yellow
+        }
         Write-Host "Synchronizing frontend dependencies..."
         Push-Location $FrontendDir
         try {
             if (Test-Path $lockFile) {
-                & $npm ci | Out-Host
+                & $npm ci --include=dev --no-audit --no-fund | Out-Host
             }
             else {
-                & $npm install | Out-Host
+                & $npm install --include=dev --no-audit --no-fund | Out-Host
             }
             if ($LASTEXITCODE -ne 0) {
                 throw "Frontend dependency installation failed (exit code $LASTEXITCODE). Check the npm error above."
+            }
+            if (-not (Test-FrontendDependencies -NpmCommand $npm)) {
+                throw "Frontend dependencies were installed, but Vite or another required package is still unavailable. Check antivirus, OneDrive, and npm configuration."
             }
             Set-Content -LiteralPath $dependencyStamp -Value $dependencyHash -Encoding ASCII
         }

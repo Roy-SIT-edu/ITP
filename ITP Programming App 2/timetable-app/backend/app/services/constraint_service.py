@@ -72,9 +72,21 @@ class ConstraintService:
             .order_by(ScheduledSession.day, ScheduledSession.start_time)
             .all()
         )
-        room_labels = {item.id: item.room_code for item in db.query(Room).all()}
-        group_ids_by_code = {item.group_code.lower(): item.id for item in db.query(StudentGroup).all()}
-        group_labels = {item.id: item.group_code for item in db.query(StudentGroup).all()}
+        rooms = db.query(Room).all()
+        groups = db.query(StudentGroup).all()
+        return self.check_assignments(scheduled, rooms, groups)
+
+    def check_assignments(
+        self,
+        scheduled: list[ScheduledSession],
+        rooms: list[Room],
+        groups: list[StudentGroup],
+    ) -> list[dict]:
+        """Check already-loaded assignments without querying or storing results."""
+
+        room_labels = {item.id: item.room_code for item in rooms}
+        group_ids_by_code = {item.group_code.lower(): item.id for item in groups}
+        group_labels = {item.id: item.group_code for item in groups}
         violations: list[dict] = []
         self._hard_double_booking_checks(scheduled, violations, room_labels, group_ids_by_code, group_labels)
         self._hard_staff_double_booking_checks(scheduled, violations)

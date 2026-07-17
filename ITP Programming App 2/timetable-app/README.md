@@ -35,7 +35,7 @@ To start and verify both services without opening a browser:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\quicklaunch.ps1 -NoBrowser
 ```
 
-The quicklaunch script creates or repairs `backend\venv`, synchronizes the hashed production lock whenever `backend\requirements.txt` changes, installs frontend packages with `npm ci` whenever `package-lock.json` changes, starts both servers, avoids ports already used by other processes, and opens the app in your browser. If the default ports are busy, it automatically tries the next available ports starting from:
+The quicklaunch script creates or repairs `backend\venv`, synchronizes the hashed production lock whenever `backend\requirements.txt` changes, and verifies the installed Python packages before startup. It installs all frontend runtime tooling with `npm ci --include=dev`, even when the device has `NODE_ENV=production`, and automatically repairs incomplete or copied `node_modules` folders. It then starts both servers, avoids ports already used by other processes, and opens the app in your browser. If the default ports are busy, it automatically tries the next available ports starting from:
 
 - Backend: http://127.0.0.1:8001
 - Frontend: http://127.0.0.1:5174

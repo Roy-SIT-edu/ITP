@@ -9,17 +9,15 @@ from app.models.schedule_run import ScheduleRun
 from app.models.scheduled_session import ScheduledSession
 from app.models.student_group import StudentGroup
 from app.models.time_slot import TimeSlot
+from app.services.academic_calendar_service import AcademicCalendarService
 from app.services.compatibility import intervals_overlap, session_weeks_conflict
 from app.services.constraint_service import ConstraintService
 from app.services.lab_overlap_service import LabOverlapService
 from app.services.schedule_quality_service import affected_session_count, schedule_quality_summary
+from app.services.scheduling_constants import SCHEDULING_DAY_END_TIME
 from app.services.scheduling_rules import candidate_room_allowed, candidate_slot_allowed, required_student_group_codes
 from app.services.soft_constraint_priority_service import SoftConstraintPriorityService
 from sqlalchemy.orm import Session as DbSession
-
-DEFAULT_AUTO_DECONFLICT_TIMEOUT_SECONDS = 30.0
-AUTO_DECONFLICT_MAX_ITERATIONS = 50
-
 
 class ScheduleRunNotFoundError(ValueError):
     """Raised when a requested schedule run does not exist."""
@@ -44,7 +42,7 @@ class AutoDeconflictService:
         """Create a derived run by moving only flexible sessions to reduce hard conflicts."""
 
         started_at = perf_counter()
-        effective_timeout = timeout if timeout is not None else DEFAULT_AUTO_DECONFLICT_TIMEOUT_SECONDS
+        effective_timeout = timeout
         source_run = db.query(ScheduleRun).filter_by(id=schedule_run_id).first()
         if source_run is None:
             raise ScheduleRunNotFoundError("Schedule run not found")
@@ -73,6 +71,8 @@ class AutoDeconflictService:
                 status="RUNNING",
                 solver_status=source_run.solver_status,
                 message=f"Auto-deconflict started from run #{schedule_run_id}",
+                academic_year=source_run.academic_year,
+                trimester=source_run.trimester,
             )
             db.add(run)
             db.flush()
@@ -80,16 +80,21 @@ class AutoDeconflictService:
             self._copy_assignments(db, source_assignments, new_run_id)
             lab_overlap_resolution = self.lab_overlap_service.resolve_run(db, new_run_id)
 
-            time_slots = db.query(TimeSlot).order_by(TimeSlot.day, TimeSlot.start_time, TimeSlot.id).all()
+            time_slots = (
+                db.query(TimeSlot)
+                .filter(TimeSlot.end_time <= SCHEDULING_DAY_END_TIME)
+                .order_by(TimeSlot.day, TimeSlot.start_time, TimeSlot.id)
+                .all()
+            )
             rooms = db.query(Room).order_by(Room.room_code, Room.id).all()
             group_ids_by_code = {group.group_code.lower(): group.id for group in db.query(StudentGroup).order_by(StudentGroup.id).all()}
             total_moves = 0
             timed_out = False
 
             def deadline_reached() -> bool:
-                return perf_counter() - started_at >= effective_timeout
+                return effective_timeout is not None and perf_counter() - started_at >= effective_timeout
 
-            for _ in range(AUTO_DECONFLICT_MAX_ITERATIONS):
+            while True:
                 if deadline_reached():
                     timed_out = True
                     break
@@ -157,10 +162,13 @@ class AutoDeconflictService:
                 f"Auto-deconflict from run #{schedule_run_id} moved {total_moves} session(s); "
                 f"{run.hard_violation_count} hard conflict(s) remain.{timeout_note}"
             )
+            AcademicCalendarService().sync_run_occurrences(db, run)
             db.commit()
 
             return {
                 "schedule_run_id": new_run_id,
+                "academic_year": run.academic_year,
+                "trimester": run.trimester,
                 "source_schedule_run_id": schedule_run_id,
                 "solver_status": run.solver_status or "UNKNOWN",
                 "hard_violation_count": run.hard_violation_count,

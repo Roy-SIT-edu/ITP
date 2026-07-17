@@ -1,0 +1,1017 @@
+{
+  ".codex/hooks.json": {
+    "mtime": 1784286780.6460793,
+    "ast_hash": "99046981ccca895d417b5b6f3bb5cb28",
+    "semantic_hash": "99046981ccca895d417b5b6f3bb5cb28"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/__init__.py": {
+    "mtime": 1784196935.9998384,
+    "ast_hash": "39e27dbc753372d7cf08dcb1ea2aba68",
+    "semantic_hash": "39e27dbc753372d7cf08dcb1ea2aba68"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/data/lab_requirements_seed.json": {
+    "mtime": 1784196936.0255148,
+    "ast_hash": "798fe1ab7b54da10b92d0979c43ded8f",
+    "semantic_hash": "798fe1ab7b54da10b92d0979c43ded8f"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/database.py": {
+    "mtime": 1784203362.1056242,
+    "ast_hash": "166c55d3109d6d1a3de79bbce9572dbb",
+    "semantic_hash": "166c55d3109d6d1a3de79bbce9572dbb"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/main.py": {
+    "mtime": 1784203495.270533,
+    "ast_hash": "94936c3d64643a2dce44655b47fd9fdc",
+    "semantic_hash": "94936c3d64643a2dce44655b47fd9fdc"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/models/__init__.py": {
+    "mtime": 1784203353.4278414,
+    "ast_hash": "9606ef0fe4e41784b6798a81deeb6c15",
+    "semantic_hash": "9606ef0fe4e41784b6798a81deeb6c15"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/models/academic_week.py": {
+    "mtime": 1784203350.162714,
+    "ast_hash": "f768a25c9adeac1ebd80d43dbe26a53a",
+    "semantic_hash": "f768a25c9adeac1ebd80d43dbe26a53a"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/models/constraint_violation.py": {
+    "mtime": 1784196936.0576973,
+    "ast_hash": "15e54b4172ac7d0765326a40727236c7",
+    "semantic_hash": "15e54b4172ac7d0765326a40727236c7"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/models/lab_requirement.py": {
+    "mtime": 1784196936.0737965,
+    "ast_hash": "882d2c59344519722e20e96a7a344814",
+    "semantic_hash": "882d2c59344519722e20e96a7a344814"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/models/module.py": {
+    "mtime": 1784196936.0909002,
+    "ast_hash": "a02ed06aa7e8f53fa9338a82318777ad",
+    "semantic_hash": "a02ed06aa7e8f53fa9338a82318777ad"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/models/programme.py": {
+    "mtime": 1784196936.1074204,
+    "ast_hash": "151a369eccfbb3aa8a646dcee31cfdc1",
+    "semantic_hash": "151a369eccfbb3aa8a646dcee31cfdc1"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/models/public_holiday.py": {
+    "mtime": 1784203350.9897032,
+    "ast_hash": "7f467e5922ca9fcdaf5b2701fb7c5e3f",
+    "semantic_hash": "7f467e5922ca9fcdaf5b2701fb7c5e3f"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/models/room.py": {
+    "mtime": 1784196936.1232822,
+    "ast_hash": "1c9bfc04f5db9023e70041cfcba83c3a",
+    "semantic_hash": "1c9bfc04f5db9023e70041cfcba83c3a"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/models/schedule_run.py": {
+    "mtime": 1784203352.623153,
+    "ast_hash": "faf134241d31ac30f46105c9f2afb580",
+    "semantic_hash": "faf134241d31ac30f46105c9f2afb580"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/models/scheduled_session.py": {
+    "mtime": 1784196936.1410077,
+    "ast_hash": "fd295ad098febe57f1c3d5fe03ec5337",
+    "semantic_hash": "fd295ad098febe57f1c3d5fe03ec5337"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/models/session.py": {
+    "mtime": 1784196936.1808114,
+    "ast_hash": "1d92c71136fa211bc335d4b242e4da40",
+    "semantic_hash": "1d92c71136fa211bc335d4b242e4da40"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/models/session_occurrence.py": {
+    "mtime": 1784203351.7968028,
+    "ast_hash": "59345fb59a233e8171d345980b4baaab",
+    "semantic_hash": "59345fb59a233e8171d345980b4baaab"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/models/session_staff.py": {
+    "mtime": 1784196936.1998446,
+    "ast_hash": "a7f5b4abd350975f3fb020b1060564a5",
+    "semantic_hash": "a7f5b4abd350975f3fb020b1060564a5"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/models/soft_constraint_priority.py": {
+    "mtime": 1784196936.2178423,
+    "ast_hash": "46fbfe16dbbc725db409a5e9c1553047",
+    "semantic_hash": "46fbfe16dbbc725db409a5e9c1553047"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/models/staff.py": {
+    "mtime": 1784196936.234421,
+    "ast_hash": "3c6f96126bf69d315b694f45ec50e203",
+    "semantic_hash": "3c6f96126bf69d315b694f45ec50e203"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/models/student_group.py": {
+    "mtime": 1784196936.2500875,
+    "ast_hash": "a6f82b5d80d63cb26c14ab1c221a0cb6",
+    "semantic_hash": "a6f82b5d80d63cb26c14ab1c221a0cb6"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/models/time_slot.py": {
+    "mtime": 1784196936.2670705,
+    "ast_hash": "99ca50392ccb8e0006ea3806e7dd81a7",
+    "semantic_hash": "99ca50392ccb8e0006ea3806e7dd81a7"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/routes/__init__.py": {
+    "mtime": 1784196936.656397,
+    "ast_hash": "3457493424a67b7fafff2b3841d7fcba",
+    "semantic_hash": "3457493424a67b7fafff2b3841d7fcba"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/routes/calendar_routes.py": {
+    "mtime": 1784282899.824862,
+    "ast_hash": "60d96b678f408fef07b64e8f050b1dd9",
+    "semantic_hash": "60d96b678f408fef07b64e8f050b1dd9"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/routes/data_routes.py": {
+    "mtime": 1784201850.688738,
+    "ast_hash": "dbb6323e88aaccd68999f2d91898279e",
+    "semantic_hash": "dbb6323e88aaccd68999f2d91898279e"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/routes/database_routes.py": {
+    "mtime": 1784196936.5427387,
+    "ast_hash": "e280a22d85d2a3120e52b13ad85ffff0",
+    "semantic_hash": "e280a22d85d2a3120e52b13ad85ffff0"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/routes/export_routes.py": {
+    "mtime": 1784196936.5744975,
+    "ast_hash": "322ccda81987ce795b0f567ef39a9ae0",
+    "semantic_hash": "322ccda81987ce795b0f567ef39a9ae0"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/routes/schedule_routes.py": {
+    "mtime": 1784292014.090168,
+    "ast_hash": "c0a2f15b16bcb641f83f0863a7e4bdb1",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/backend/app/routes/soft_constraint_routes.py": {
+    "mtime": 1784196936.608229,
+    "ast_hash": "539d99204fcae30f476b4ba2c4c9adb0",
+    "semantic_hash": "539d99204fcae30f476b4ba2c4c9adb0"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/routes/upload_routes.py": {
+    "mtime": 1784196936.6242442,
+    "ast_hash": "7ce9ef5ddf365f09407ec2204652e153",
+    "semantic_hash": "7ce9ef5ddf365f09407ec2204652e153"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/routes/validation_routes.py": {
+    "mtime": 1784196936.639971,
+    "ast_hash": "828a1bab584dc934dfb7d71d83b0cba7",
+    "semantic_hash": "828a1bab584dc934dfb7d71d83b0cba7"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/schemas/__init__.py": {
+    "mtime": 1784196936.816566,
+    "ast_hash": "6dcfac0e21869ce87c43dc6f9d0ce4a2",
+    "semantic_hash": "6dcfac0e21869ce87c43dc6f9d0ce4a2"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/schemas/session.py": {
+    "mtime": 1784196936.8011844,
+    "ast_hash": "596f5282fc97c1b38bf0e7782dc90605",
+    "semantic_hash": "596f5282fc97c1b38bf0e7782dc90605"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/academic_calendar_service.py": {
+    "mtime": 1784283024.5867715,
+    "ast_hash": "b50303d57b1416ea840e942e8d3d785a",
+    "semantic_hash": "b50303d57b1416ea840e942e8d3d785a"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/auto_deconflict_service.py": {
+    "mtime": 1784292013.3695743,
+    "ast_hash": "cc8c2266e4dbb5fbbf489e3c362983f1",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/compatibility.py": {
+    "mtime": 1784196936.8999298,
+    "ast_hash": "32c038de0936fe8cca7df7c824db492e",
+    "semantic_hash": "32c038de0936fe8cca7df7c824db492e"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/constraint_service.py": {
+    "mtime": 1784284994.3569465,
+    "ast_hash": "7638f31733bba039c0cccde6b8888d8b",
+    "semantic_hash": "7638f31733bba039c0cccde6b8888d8b"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/database_service.py": {
+    "mtime": 1784196936.932494,
+    "ast_hash": "1b713c220cd26b65dd4bf9c5c93be975",
+    "semantic_hash": "1b713c220cd26b65dd4bf9c5c93be975"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/export_service.py": {
+    "mtime": 1784196936.9471583,
+    "ast_hash": "78842e6dbd1b12e05b82c4849491497e",
+    "semantic_hash": "78842e6dbd1b12e05b82c4849491497e"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/import_service.py": {
+    "mtime": 1784196936.964522,
+    "ast_hash": "2b3fd7b543312fa0bb9c57b7a1fd2988",
+    "semantic_hash": "2b3fd7b543312fa0bb9c57b7a1fd2988"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/lab_overlap_service.py": {
+    "mtime": 1784196936.9810452,
+    "ast_hash": "1cad65b9d3973f33fadd8c5e5a965f84",
+    "semantic_hash": "1cad65b9d3973f33fadd8c5e5a965f84"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/lab_requirement_service.py": {
+    "mtime": 1784201897.5816925,
+    "ast_hash": "2509c21e7749ac625895b9fb2d8f572b",
+    "semantic_hash": "2509c21e7749ac625895b9fb2d8f572b"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/quick_fix_service.py": {
+    "mtime": 1784285700.6899376,
+    "ast_hash": "add3b30c3efec2e73d0a9fa7a1e0c845",
+    "semantic_hash": "add3b30c3efec2e73d0a9fa7a1e0c845"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/requirement_input_service.py": {
+    "mtime": 1784201896.0355556,
+    "ast_hash": "fbfc45cd6b17c6239c2cb8461fb1e24f",
+    "semantic_hash": "fbfc45cd6b17c6239c2cb8461fb1e24f"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/schedule_quality_service.py": {
+    "mtime": 1784196937.044029,
+    "ast_hash": "857d8e490805bedb4c59f2d3e4ad359d",
+    "semantic_hash": "857d8e490805bedb4c59f2d3e4ad359d"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/schedule_report_service.py": {
+    "mtime": 1784196937.0600336,
+    "ast_hash": "bc5a72fba1ab3cd8efce8c9a231d5531",
+    "semantic_hash": "bc5a72fba1ab3cd8efce8c9a231d5531"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/schedule_service.py": {
+    "mtime": 1784282901.3569796,
+    "ast_hash": "505504354252daf016bd99c51deb53e6",
+    "semantic_hash": "505504354252daf016bd99c51deb53e6"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/schedule_state_service.py": {
+    "mtime": 1784196937.092445,
+    "ast_hash": "e4afd54d59e55293952adcb74111fd5c",
+    "semantic_hash": "e4afd54d59e55293952adcb74111fd5c"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/scheduling_constants.py": {
+    "mtime": 1784201849.1677296,
+    "ast_hash": "a8ec327e46c09ea0a07bdf8d1e11c743",
+    "semantic_hash": "a8ec327e46c09ea0a07bdf8d1e11c743"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/scheduling_rules.py": {
+    "mtime": 1784196937.1252742,
+    "ast_hash": "48ad043ccb596d46f2b920a5295a998b",
+    "semantic_hash": "48ad043ccb596d46f2b920a5295a998b"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/seed_service.py": {
+    "mtime": 1784203440.99747,
+    "ast_hash": "8952703aa21746070d0c0253d55c79fe",
+    "semantic_hash": "8952703aa21746070d0c0253d55c79fe"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/serializers.py": {
+    "mtime": 1784203491.2001312,
+    "ast_hash": "e35f3ddaa4cb5e365529a2b023c0a709",
+    "semantic_hash": "e35f3ddaa4cb5e365529a2b023c0a709"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/soft_constraint_priority_service.py": {
+    "mtime": 1784196937.173917,
+    "ast_hash": "66c9c73a26629b320653dd8dc06c14f8",
+    "semantic_hash": "66c9c73a26629b320653dd8dc06c14f8"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/student_group_service.py": {
+    "mtime": 1784196937.1898353,
+    "ast_hash": "a80b893defb6433d6286368883078ecc",
+    "semantic_hash": "a80b893defb6433d6286368883078ecc"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/services/validation_service.py": {
+    "mtime": 1784201896.817548,
+    "ast_hash": "221c3f3c3aae0f9b1abfc33f345f3e76",
+    "semantic_hash": "221c3f3c3aae0f9b1abfc33f345f3e76"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/solver/__init__.py": {
+    "mtime": 1784196937.6198347,
+    "ast_hash": "3ecf66527e17c961876d1a477389253e",
+    "semantic_hash": "3ecf66527e17c961876d1a477389253e"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/solver/cp_sat_solver.py": {
+    "mtime": 1784196937.5698268,
+    "ast_hash": "e42b8957be351b2e90acc2c1207d8b65",
+    "semantic_hash": "e42b8957be351b2e90acc2c1207d8b65"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/solver/model_builder.py": {
+    "mtime": 1784196937.586347,
+    "ast_hash": "8a229aabba4baf20d7051ecb785e7243",
+    "semantic_hash": "8a229aabba4baf20d7051ecb785e7243"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/solver/result_parser.py": {
+    "mtime": 1784196937.60319,
+    "ast_hash": "c4f1f0c1c217a061ab75fe704f25d453",
+    "semantic_hash": "c4f1f0c1c217a061ab75fe704f25d453"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/tests/conftest.py": {
+    "mtime": 1784196937.7145247,
+    "ast_hash": "81bc210085a84932e5a421330ca5d1ee",
+    "semantic_hash": "81bc210085a84932e5a421330ca5d1ee"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/tests/test_academic_calendar.py": {
+    "mtime": 1784282921.3093874,
+    "ast_hash": "230171495b375e9975d0e8bff36800a9",
+    "semantic_hash": "230171495b375e9975d0e8bff36800a9"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/tests/test_auto_deconflict.py": {
+    "mtime": 1784292014.824613,
+    "ast_hash": "8b83d756cb83d18ec768fc47b69615ae",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/backend/app/tests/test_calendar_routes.py": {
+    "mtime": 1784283087.3964543,
+    "ast_hash": "951cbbd985614147765c4b5ec581fd5c",
+    "semantic_hash": "951cbbd985614147765c4b5ec581fd5c"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/tests/test_constraints.py": {
+    "mtime": 1784196937.7462108,
+    "ast_hash": "40746b82537445899072e46f7841e539",
+    "semantic_hash": "40746b82537445899072e46f7841e539"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/tests/test_database_routes.py": {
+    "mtime": 1784282919.7840135,
+    "ast_hash": "2e8b4d86c0d58d15d740a77099fe711b",
+    "semantic_hash": "2e8b4d86c0d58d15d740a77099fe711b"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/tests/test_export_routes.py": {
+    "mtime": 1783750057.2323527,
+    "ast_hash": "68c54949bd65631f441988a3349ad238",
+    "semantic_hash": "68c54949bd65631f441988a3349ad238"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/tests/test_export_service.py": {
+    "mtime": 1784196937.7778642,
+    "ast_hash": "40170443c4e408095c41aeeae4617079",
+    "semantic_hash": "40170443c4e408095c41aeeae4617079"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/tests/test_import_validation.py": {
+    "mtime": 1784196937.7934346,
+    "ast_hash": "4967cf3217c3821ad46a2d491d5deeba",
+    "semantic_hash": "4967cf3217c3821ad46a2d491d5deeba"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/tests/test_lab_overlap_service.py": {
+    "mtime": 1784196937.8097234,
+    "ast_hash": "956d8c62b0ace81ecbc82861f8413b76",
+    "semantic_hash": "956d8c62b0ace81ecbc82861f8413b76"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/tests/test_manual_move_routes.py": {
+    "mtime": 1784285199.182057,
+    "ast_hash": "dc18b2fe21cfae0c2fcbf095bba55b7e",
+    "semantic_hash": "dc18b2fe21cfae0c2fcbf095bba55b7e"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/tests/test_quick_fix_service.py": {
+    "mtime": 1784196937.8411314,
+    "ast_hash": "c1a1b80614b915a6b89b10902f44be72",
+    "semantic_hash": "c1a1b80614b915a6b89b10902f44be72"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/tests/test_schedule_report.py": {
+    "mtime": 1783750057.233877,
+    "ast_hash": "43304a25204e10af46e4a034f7578d6c",
+    "semantic_hash": "43304a25204e10af46e4a034f7578d6c"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/tests/test_session_crud.py": {
+    "mtime": 1784196937.8560317,
+    "ast_hash": "1649037438fceb7f3dc38d5d3dcbed96",
+    "semantic_hash": "1649037438fceb7f3dc38d5d3dcbed96"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/tests/test_soft_constraint_priorities.py": {
+    "mtime": 1784196937.8733308,
+    "ast_hash": "f9bc20ee4d918277a2c03d90a5441386",
+    "semantic_hash": "f9bc20ee4d918277a2c03d90a5441386"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/tests/test_solver.py": {
+    "mtime": 1784201954.8531106,
+    "ast_hash": "46886640133df67bbe077ef5ec2ad837",
+    "semantic_hash": "46886640133df67bbe077ef5ec2ad837"
+  },
+  "ITP Programming App 2/timetable-app/backend/app/tests/test_upload_routes.py": {
+    "mtime": 1784283024.5867715,
+    "ast_hash": "8e89f2b95b9667a8cafca388327d23fa",
+    "semantic_hash": "8e89f2b95b9667a8cafca388327d23fa"
+  },
+  "ITP Programming App 2/timetable-app/frontend/eslint.config.js": {
+    "mtime": 1784197139.5493517,
+    "ast_hash": "1fad3bc4d2e9975154842836375adcac",
+    "semantic_hash": "1fad3bc4d2e9975154842836375adcac"
+  },
+  "ITP Programming App 2/timetable-app/frontend/package.json": {
+    "mtime": 1784197139.6384423,
+    "ast_hash": "d1a8e536cf42b695021c47e8fc142f8d",
+    "semantic_hash": "d1a8e536cf42b695021c47e8fc142f8d"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/App.tsx": {
+    "mtime": 1784197364.1517694,
+    "ast_hash": "b42da8f36edd5c29d0d5c0e4491da8b8",
+    "semantic_hash": "b42da8f36edd5c29d0d5c0e4491da8b8"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/api/client.test.ts": {
+    "mtime": 1784197364.32416,
+    "ast_hash": "05211b24d51dd414b2f5c0321c49ed0a",
+    "semantic_hash": "05211b24d51dd414b2f5c0321c49ed0a"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/api/client.ts": {
+    "mtime": 1784292015.551844,
+    "ast_hash": "cfb9f72173b20f842577addaf8c3ccd2",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/api/errors.ts": {
+    "mtime": 1784197364.3582492,
+    "ast_hash": "fe95fce3b27e012cc904f8151a1ed0ee",
+    "semantic_hash": "fe95fce3b27e012cc904f8151a1ed0ee"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/AutoDeconflictStatus.test.tsx": {
+    "mtime": 1784292019.3038902,
+    "ast_hash": "db795e796eeb9d85c8d83dbbb713b740",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/AutoDeconflictStatus.tsx": {
+    "mtime": 1784292017.8160648,
+    "ast_hash": "7003e7f36c8a1446335006a462d46b67",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/ConflictTable.test.tsx": {
+    "mtime": 1784197364.4202318,
+    "ast_hash": "2d04f9faf320a3e8ed72602771608c99",
+    "semantic_hash": "2d04f9faf320a3e8ed72602771608c99"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/ConflictTable.tsx": {
+    "mtime": 1784197364.4357975,
+    "ast_hash": "9db3b6e45d464516336671be546cab69",
+    "semantic_hash": "9db3b6e45d464516336671be546cab69"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/ConstraintStudio.tsx": {
+    "mtime": 1784197364.4518807,
+    "ast_hash": "59a33c11eb0cab8081b4999a6cf855a3",
+    "semantic_hash": "59a33c11eb0cab8081b4999a6cf855a3"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/GenerationPeriodSelector.test.tsx": {
+    "mtime": 1784283015.3569536,
+    "ast_hash": "832114b11a0a0fed18324a1c3842a17d",
+    "semantic_hash": "832114b11a0a0fed18324a1c3842a17d"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/GenerationPeriodSelector.tsx": {
+    "mtime": 1784283027.5352094,
+    "ast_hash": "f582145faa9ba70005c2edcafe5a88ca",
+    "semantic_hash": "f582145faa9ba70005c2edcafe5a88ca"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/ImportPreviewGrid.tsx": {
+    "mtime": 1784197364.4657795,
+    "ast_hash": "64fa415d5522f358e6d0e5b477a88d19",
+    "semantic_hash": "64fa415d5522f358e6d0e5b477a88d19"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/ImportSummary.tsx": {
+    "mtime": 1784197364.4793043,
+    "ast_hash": "f709757d55fab4c0af174b271333863e",
+    "semantic_hash": "f709757d55fab4c0af174b271333863e"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/InlineActivity.tsx": {
+    "mtime": 1784197364.4946697,
+    "ast_hash": "5dac980e632c42a382b134df2069b2ae",
+    "semantic_hash": "5dac980e632c42a382b134df2069b2ae"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/Layout.tsx": {
+    "mtime": 1784197364.5081377,
+    "ast_hash": "6b0d93303f9c872b23ed1a03088dee9d",
+    "semantic_hash": "6b0d93303f9c872b23ed1a03088dee9d"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/LiveProgress.tsx": {
+    "mtime": 1784197364.540712,
+    "ast_hash": "ad9ac71e328f005ad1f5927753ab14a0",
+    "semantic_hash": "ad9ac71e328f005ad1f5927753ab14a0"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/OptimisedScoreInfo.test.tsx": {
+    "mtime": 1784197364.5552728,
+    "ast_hash": "fc732483fcdc02a3feb2f392b034af9a",
+    "semantic_hash": "fc732483fcdc02a3feb2f392b034af9a"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/OptimisedScoreInfo.tsx": {
+    "mtime": 1784197364.5692973,
+    "ast_hash": "ce3026837891bd5ee90472c34cd49971",
+    "semantic_hash": "ce3026837891bd5ee90472c34cd49971"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/RequirementFormModal.tsx": {
+    "mtime": 1784201933.9365141,
+    "ast_hash": "38f419f944f401820a242df8109fd5f4",
+    "semantic_hash": "38f419f944f401820a242df8109fd5f4"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/RequirementsEditor.tsx": {
+    "mtime": 1784197364.598025,
+    "ast_hash": "ec201ebee0eee26791a5bb941ba493c9",
+    "semantic_hash": "ec201ebee0eee26791a5bb941ba493c9"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/SoftConstraintWorkflow.tsx": {
+    "mtime": 1784291488.9532351,
+    "ast_hash": "c6715c0ac418a7fa8e3dfc57e9008ae2",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/StatusBadge.tsx": {
+    "mtime": 1784197364.6438003,
+    "ast_hash": "f55806ed131c7f7d315f80f7ccf5e812",
+    "semantic_hash": "f55806ed131c7f7d315f80f7ccf5e812"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/TimetableGrid.tsx": {
+    "mtime": 1784197364.6580133,
+    "ast_hash": "db32e8daea7708686f24717913d1b5b0",
+    "semantic_hash": "db32e8daea7708686f24717913d1b5b0"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/UploadBox.tsx": {
+    "mtime": 1784197364.6707559,
+    "ast_hash": "e7d50e4ff7bf708a1c75dd282c2cfa40",
+    "semantic_hash": "e7d50e4ff7bf708a1c75dd282c2cfa40"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/WorkflowProgress.tsx": {
+    "mtime": 1784197364.6870482,
+    "ast_hash": "e4e2128945358321d328dc3c2cf8f93d",
+    "semantic_hash": "e4e2128945358321d328dc3c2cf8f93d"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/database/DatabaseUploadWarning.tsx": {
+    "mtime": 1784197364.718552,
+    "ast_hash": "e3c4e77e4c50602270dc725145b58833",
+    "semantic_hash": "e3c4e77e4c50602270dc725145b58833"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/softPreferenceHints.ts": {
+    "mtime": 1784197364.6280012,
+    "ast_hash": "84d5dea05c96d4b7e167d4db0e7b9e83",
+    "semantic_hash": "84d5dea05c96d4b7e167d4db0e7b9e83"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/timetable/AcademicCalendarSettings.tsx": {
+    "mtime": 1784203899.5884717,
+    "ast_hash": "a9fbca207fa65020d9ccd73b66b0617e",
+    "semantic_hash": "a9fbca207fa65020d9ccd73b66b0617e"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/timetable/MoveControls.tsx": {
+    "mtime": 1784197364.7517242,
+    "ast_hash": "770e65933f3f6bdf73abfcb37c2c339b",
+    "semantic_hash": "770e65933f3f6bdf73abfcb37c2c339b"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/timetable/TimetableGrid.test.tsx": {
+    "mtime": 1784290628.2768786,
+    "ast_hash": "f92a636884c5b5ee5fe44553480edacb",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/timetable/TimetableGrid.tsx": {
+    "mtime": 1784290626.7832606,
+    "ast_hash": "de04cb357d8d9d97e913799e52fbe68e",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/timetable/TimetablePlanner.tsx": {
+    "mtime": 1784289303.2141597,
+    "ast_hash": "466a59bf61543958c59c31771e6c916b",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/timetable/timetableUtils.ts": {
+    "mtime": 1784197364.8192055,
+    "ast_hash": "fc6ce5f8ae3c81c960ea97aaccc2eae2",
+    "semantic_hash": "fc6ce5f8ae3c81c960ea97aaccc2eae2"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/timetable/types.ts": {
+    "mtime": 1784289299.4906416,
+    "ast_hash": "32eb262efb7289541918ee980de9e940",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/validation/ValidationQuickEditModal.tsx": {
+    "mtime": 1784197364.904578,
+    "ast_hash": "01a486ec37e17a56846a3ecb63298378",
+    "semantic_hash": "01a486ec37e17a56846a3ecb63298378"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/validation/ValidationStatusBoard.tsx": {
+    "mtime": 1784197364.9188235,
+    "ast_hash": "342d8bc1fde1f8c8e030f6295e38cf60",
+    "semantic_hash": "342d8bc1fde1f8c8e030f6295e38cf60"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/validation/types.ts": {
+    "mtime": 1784197364.8691006,
+    "ast_hash": "91e8c5b49b5617905ecdd214bab994fe",
+    "semantic_hash": "91e8c5b49b5617905ecdd214bab994fe"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/validation/validationDisplay.ts": {
+    "mtime": 1784197364.8879585,
+    "ast_hash": "994f654e177184da37658ed38a26e5f7",
+    "semantic_hash": "994f654e177184da37658ed38a26e5f7"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/conflictPresentation.ts": {
+    "mtime": 1784197364.1736605,
+    "ast_hash": "1edf2a0d903c9facd9ad1e550a62e182",
+    "semantic_hash": "1edf2a0d903c9facd9ad1e550a62e182"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/generationMode.ts": {
+    "mtime": 1784292017.0791974,
+    "ast_hash": "b97d6f2d71ade4e1cc659dfd86bcaa2c",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/main.tsx": {
+    "mtime": 1784197364.20442,
+    "ast_hash": "b17cc45e0c8553b2d114ef5dc699e2bb",
+    "semantic_hash": "b17cc45e0c8553b2d114ef5dc699e2bb"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/pages/DashboardPage.tsx": {
+    "mtime": 1784197364.9492576,
+    "ast_hash": "0dce81e2f4c6130ec99e7a8d499bf53e",
+    "semantic_hash": "0dce81e2f4c6130ec99e7a8d499bf53e"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/pages/DatabasePage.tsx": {
+    "mtime": 1784197364.9645224,
+    "ast_hash": "2d6828bf56733901d049b5c3e6f4f44b",
+    "semantic_hash": "2d6828bf56733901d049b5c3e6f4f44b"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/pages/ExportPage.tsx": {
+    "mtime": 1784197364.9794817,
+    "ast_hash": "14b5b756b0ec88a28ccbf8fb4004bf81",
+    "semantic_hash": "14b5b756b0ec88a28ccbf8fb4004bf81"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/pages/RunReportPage.tsx": {
+    "mtime": 1784197364.9955127,
+    "ast_hash": "080e401d11dbdf6d79506ef45315935e",
+    "semantic_hash": "080e401d11dbdf6d79506ef45315935e"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/pages/SettingsPage.tsx": {
+    "mtime": 1784197365.0099075,
+    "ast_hash": "042b218595eabe1f90ddc86d97396358",
+    "semantic_hash": "042b218595eabe1f90ddc86d97396358"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/pages/SoftConstraintsPage.tsx": {
+    "mtime": 1784283182.294493,
+    "ast_hash": "bfd6f923310c1aba9568e04f8c2a3d92",
+    "semantic_hash": "bfd6f923310c1aba9568e04f8c2a3d92"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/pages/TimetableReviewPage.tsx": {
+    "mtime": 1784292018.541757,
+    "ast_hash": "f5fabce94b9e04421fc0ee45ce031246",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/pages/UploadPage.tsx": {
+    "mtime": 1784197365.0578127,
+    "ast_hash": "ce09d93a691f662ade93bbd4d677d1da",
+    "semantic_hash": "ce09d93a691f662ade93bbd4d677d1da"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/pages/ValidationPage.tsx": {
+    "mtime": 1784197365.0747862,
+    "ast_hash": "c77fb44ad78f060c251802e3fe321f8f",
+    "semantic_hash": "c77fb44ad78f060c251802e3fe321f8f"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/schedulingHours.ts": {
+    "mtime": 1784201906.980787,
+    "ast_hash": "d1b8e5752374a5ad4b35bee3206cc32c",
+    "semantic_hash": "d1b8e5752374a5ad4b35bee3206cc32c"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/sessionState.ts": {
+    "mtime": 1784197364.2207491,
+    "ast_hash": "4fe463c244e15fd2c088b862670bc313",
+    "semantic_hash": "4fe463c244e15fd2c088b862670bc313"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/softPriorities.ts": {
+    "mtime": 1784197364.2398534,
+    "ast_hash": "05de104f3bc940b111b35221bb1aeb74",
+    "semantic_hash": "05de104f3bc940b111b35221bb1aeb74"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/test/setup.ts": {
+    "mtime": 1784197365.142923,
+    "ast_hash": "3549fab03e51d7263757806280a9569f",
+    "semantic_hash": "3549fab03e51d7263757806280a9569f"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/theme.ts": {
+    "mtime": 1784197364.2759979,
+    "ast_hash": "e023516f3168cdb5d373ee7ec548affc",
+    "semantic_hash": "e023516f3168cdb5d373ee7ec548affc"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/types/index.ts": {
+    "mtime": 1784292016.326672,
+    "ast_hash": "0cd4ad8acef1ed44ecbe24950cee361d",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/vite-env.d.ts": {
+    "mtime": 1784197364.2943418,
+    "ast_hash": "1a2952a4715634cc219e4435d4580f11",
+    "semantic_hash": "1a2952a4715634cc219e4435d4580f11"
+  },
+  "ITP Programming App 2/timetable-app/frontend/tsconfig.json": {
+    "mtime": 1784197139.779516,
+    "ast_hash": "b7875f7b6e9b5dec94b4f1c76e0a4753",
+    "semantic_hash": "b7875f7b6e9b5dec94b4f1c76e0a4753"
+  },
+  "ITP Programming App 2/timetable-app/frontend/tsconfig.node.json": {
+    "mtime": 1784197139.792021,
+    "ast_hash": "0ec81e439ad6b2e7ff27f4aa869c156a",
+    "semantic_hash": "0ec81e439ad6b2e7ff27f4aa869c156a"
+  },
+  "ITP Programming App 2/timetable-app/frontend/vite.config.ts": {
+    "mtime": 1784197139.8066175,
+    "ast_hash": "c759aa5dec685879fb62fd5f49778adc",
+    "semantic_hash": "c759aa5dec685879fb62fd5f49778adc"
+  },
+  "ITP Programming App 2/timetable-app/frontend/vitest.config.ts": {
+    "mtime": 1784197139.8213165,
+    "ast_hash": "e9dc49ced9f64ad62549715f4df9016a",
+    "semantic_hash": "e9dc49ced9f64ad62549715f4df9016a"
+  },
+  "ITP Programming App 2/timetable-app/quicklaunch.ps1": {
+    "mtime": 1784292867.605435,
+    "ast_hash": "70faaf1489735c321655b4ff22cc1138",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/scripts/windows-launcher-smoke.ps1": {
+    "mtime": 1784292868.339063,
+    "ast_hash": "4a11a28023202699a5f760077afbffb4",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/stop.ps1": {
+    "mtime": 1784196935.3635576,
+    "ast_hash": "f990274936f832843afde3f0519ad612",
+    "semantic_hash": "f990274936f832843afde3f0519ad612"
+  },
+  "ITP Programming App 2/timetable-app/test_solver.py": {
+    "mtime": 1783755021.0453098,
+    "ast_hash": "95dfa513072514d7d56a695e52af5dca",
+    "semantic_hash": "95dfa513072514d7d56a695e52af5dca"
+  },
+  "outputs/final_presentation_docs/build_project_documents.py": {
+    "mtime": 1784197365.4315243,
+    "ast_hash": "92d094735f91cd846c8a2fb629317cbe",
+    "semantic_hash": "92d094735f91cd846c8a2fb629317cbe"
+  },
+  "outputs/final_presentation_docs/build_technical_guidebook.py": {
+    "mtime": 1784197365.463904,
+    "ast_hash": "2ed50718e3e376587fb943772eb5e09c",
+    "semantic_hash": "2ed50718e3e376587fb943772eb5e09c"
+  },
+  "outputs/input-template-examples/build_examples.mjs": {
+    "mtime": 1784197365.4892592,
+    "ast_hash": "35610579af614d4bda7e2657b314bc15",
+    "semantic_hash": "35610579af614d4bda7e2657b314bc15"
+  },
+  "outputs/raw_data_cleaning/build_workbooks.mjs": {
+    "mtime": 1784197365.750944,
+    "ast_hash": "0639405e8a23fc736fe045b2d64c20c2",
+    "semantic_hash": "0639405e8a23fc736fe045b2d64c20c2"
+  },
+  "outputs/raw_data_cleaning/clean_raw_data.py": {
+    "mtime": 1784197365.8179972,
+    "ast_hash": "b9af472a02db04c10dbe204c015c939d",
+    "semantic_hash": "b9af472a02db04c10dbe204c015c939d"
+  },
+  "outputs/raw_data_cleaning/cleaned_raw_data.json": {
+    "mtime": 1784197365.7681088,
+    "ast_hash": "7170056b273b8da35a8cae134b101db8",
+    "semantic_hash": "7170056b273b8da35a8cae134b101db8"
+  },
+  "outputs/raw_data_cleaning/generated_files.json": {
+    "mtime": 1784197365.8337402,
+    "ast_hash": "95836cbf06a14d57f41f9a443da798fd",
+    "semantic_hash": "95836cbf06a14d57f41f9a443da798fd"
+  },
+  "outputs/raw_data_cleaning/load_cleaned_data_into_app.py": {
+    "mtime": 1784197365.8519838,
+    "ast_hash": "7927c837b49fd400c2c660d5c5cc5b5f",
+    "semantic_hash": "7927c837b49fd400c2c660d5c5cc5b5f"
+  },
+  "outputs/raw_data_cleaning/replace_app_data_with_raw_only.py": {
+    "mtime": 1784197365.901615,
+    "ast_hash": "0a1cf768ed5a2d29caf7b76761fe5991",
+    "semantic_hash": "0a1cf768ed5a2d29caf7b76761fe5991"
+  },
+  "outputs/raw_data_cleaning/verify_workbooks.mjs": {
+    "mtime": 1784197365.9447937,
+    "ast_hash": "96a3c33c6baf8f208d8f485a86b975b4",
+    "semantic_hash": "96a3c33c6baf8f208d8f485a86b975b4"
+  },
+  "outputs/robust_input_sample/build_robust_input_template.mjs": {
+    "mtime": 1782810868.1687322,
+    "ast_hash": "59f1e6c91b0bd85ca54e8e276fd5c681",
+    "semantic_hash": "59f1e6c91b0bd85ca54e8e276fd5c681"
+  },
+  "outputs/robust_input_sample/robust_20_programme_input_template.summary.json": {
+    "mtime": 1782810868.17125,
+    "ast_hash": "ad3e4f69d84e9b7c4b820be3d886f552",
+    "semantic_hash": "ad3e4f69d84e9b7c4b820be3d886f552"
+  },
+  "pyproject.toml": {
+    "mtime": 1784196872.844795,
+    "ast_hash": "8e19c0f55e9790608b4d0e2ad348c61e",
+    "semantic_hash": "8e19c0f55e9790608b4d0e2ad348c61e"
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/pages/timetableFilterTones.test.ts": {
+    "mtime": 1784289300.956583,
+    "ast_hash": "c93382398b0cb95aa60febdd06c4e3d5",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/pages/timetableFilterTones.ts": {
+    "mtime": 1784289300.2232819,
+    "ast_hash": "e94cbf440b1f776c73e92bffc515af44",
+    "semantic_hash": ""
+  },
+  ".github/workflows/ci.yml": {
+    "mtime": 1784196934.372585,
+    "ast_hash": "4e16f6905aca81bcf5cde1fba77dab19",
+    "semantic_hash": ""
+  },
+  "1. Backend Python 3.10 and 3.14.txt": {
+    "mtime": 1784201096.7864027,
+    "ast_hash": "97b75f080916cba6b416a1ae4c7f5b46",
+    "semantic_hash": ""
+  },
+  "2. Future Timetable Additions.txt": {
+    "mtime": 1784289039.5885997,
+    "ast_hash": "0456a00add0b101bba82bff897f324e4",
+    "semantic_hash": ""
+  },
+  "AGENTS.md": {
+    "mtime": 1784286780.6403234,
+    "ast_hash": "21ceb6533048be51308e69e7b74a35cf",
+    "semantic_hash": ""
+  },
+  "FULL_PROJECT_BRIEF.md": {
+    "mtime": 1784196872.8157103,
+    "ast_hash": "f341f4ff28fb3b5dd40e6a237f8d5fc3",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/README.md": {
+    "mtime": 1784292869.0843742,
+    "ast_hash": "146e3adcd311c318ceca4da677039e2e",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/backend/README.md": {
+    "mtime": 1784196935.5324273,
+    "ast_hash": "7f44f6f39d9487e6f18a99f97d3f55d3",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/backend/requirements-dev.txt": {
+    "mtime": 1784196935.557678,
+    "ast_hash": "4f597cc099301523127f1768197a91ca",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/backend/requirements.txt": {
+    "mtime": 1784196935.5826988,
+    "ast_hash": "8382afa4aa3a26ddd4014dcaf990fc17",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/frontend/README.md": {
+    "mtime": 1784197139.745396,
+    "ast_hash": "a58ad1f3fc530fd3374b03a7424d7281",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/frontend/index.html": {
+    "mtime": 1784197139.612007,
+    "ast_hash": "75bf3bf10e637dbbe988699dc089ac1c",
+    "semantic_hash": ""
+  },
+  "info.txt": {
+    "mtime": 1784196872.8299546,
+    "ast_hash": "c7499db53eb8213f3b762ffaae3211ef",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/output/pdf/timetable_run_1_admin_report.pdf": {
+    "mtime": 1784197365.2163746,
+    "ast_hash": "edc99ea191cbc891cde5ea0cbe474db4",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/refreshed-validation.png": {
+    "mtime": 1784196935.286209,
+    "ast_hash": "71059d59de1deb0824fb4d966e9eeabc",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/running-validation.png": {
+    "mtime": 1784196935.2999756,
+    "ast_hash": "71059d59de1deb0824fb4d966e9eeabc",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/sample-validation-valid.png": {
+    "mtime": 1784196935.3143013,
+    "ast_hash": "71059d59de1deb0824fb4d966e9eeabc",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/sample-working-valid.png": {
+    "mtime": 1784196935.3283224,
+    "ast_hash": "884ee95f42a5ef6c4281a41fa143f6b7",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/smoke-review.png": {
+    "mtime": 1784196935.343057,
+    "ast_hash": "4105d36dd4d505afde4d2071ebebc624",
+    "semantic_hash": ""
+  },
+  "outputs/input-template-examples/hard_conflicts_two_tab_input_template_Input_Template.png": {
+    "mtime": 1784197365.0,
+    "ast_hash": "24572951058fce149984e1b3a6d0f728",
+    "semantic_hash": ""
+  },
+  "outputs/input-template-examples/hard_conflicts_two_tab_input_template_README.png": {
+    "mtime": 1784197365.0,
+    "ast_hash": "1f335fd2282885b4c85d7a91ad26146a",
+    "semantic_hash": ""
+  },
+  "outputs/input-template-examples/hard_conflicts_two_tab_input_template_Remarks_(optional).png": {
+    "mtime": 1784197365.0,
+    "ast_hash": "99c707cea602b69f9c20740cc2a6fa15",
+    "semantic_hash": ""
+  },
+  "outputs/input-template-examples/soft_conflicts_two_tab_input_template_Input_Template.png": {
+    "mtime": 1784197365.0,
+    "ast_hash": "25a00f7fb293957c67754f06333f7ded",
+    "semantic_hash": ""
+  },
+  "outputs/input-template-examples/soft_conflicts_two_tab_input_template_README.png": {
+    "mtime": 1784197365.0,
+    "ast_hash": "1f335fd2282885b4c85d7a91ad26146a",
+    "semantic_hash": ""
+  },
+  "outputs/input-template-examples/soft_conflicts_two_tab_input_template_Remarks_(optional).png": {
+    "mtime": 1784197365.6390314,
+    "ast_hash": "c7267965939281152c7654b8aed01175",
+    "semantic_hash": ""
+  },
+  "outputs/input-template-examples/working_two_tab_input_template_Input_Template.png": {
+    "mtime": 1784197365.0,
+    "ast_hash": "9085d8bcdd2c688a38c3818b578e44a2",
+    "semantic_hash": ""
+  },
+  "outputs/input-template-examples/working_two_tab_input_template_README.png": {
+    "mtime": 1784197365.0,
+    "ast_hash": "1f335fd2282885b4c85d7a91ad26146a",
+    "semantic_hash": ""
+  },
+  "outputs/input-template-examples/working_two_tab_input_template_Remarks_(optional).png": {
+    "mtime": 1784197365.0,
+    "ast_hash": "143fad3a4d1469aedc32d6b2c48aa4e8",
+    "semantic_hash": ""
+  },
+  "outputs/raw_data_cleaning/cleanup_notes_preview.png": {
+    "mtime": 1784197365.799876,
+    "ast_hash": "a7adbcc95a39701cc380950195de43b1",
+    "semantic_hash": ""
+  },
+  "outputs/raw_data_cleaning/previews/cleanup_notes.png": {
+    "mtime": 1784197365.9725769,
+    "ast_hash": "8f64f319b1c92088f85c02db3a04538a",
+    "semantic_hash": ""
+  },
+  "outputs/raw_data_cleaning/previews/common_module_map.png": {
+    "mtime": 1784197366.0090923,
+    "ast_hash": "b9f85313f3894710406e855106e6da96",
+    "semantic_hash": ""
+  },
+  "outputs/raw_data_cleaning/previews/common_modules.png": {
+    "mtime": 1784197365.9884822,
+    "ast_hash": "887d396cf2e9807f514e6405fcbbe6c6",
+    "semantic_hash": ""
+  },
+  "outputs/raw_data_cleaning/previews/excluded_rows.png": {
+    "mtime": 1784197366.0290973,
+    "ast_hash": "6b655e597e1cb07cda8d62140fdaf14b",
+    "semantic_hash": ""
+  },
+  "outputs/raw_data_cleaning/previews/modules.png": {
+    "mtime": 1784197366.049248,
+    "ast_hash": "f9f92045363fa4194e8b81aac0b9bdbc",
+    "semantic_hash": ""
+  },
+  "outputs/raw_data_cleaning/previews/programmes.png": {
+    "mtime": 1784197366.069732,
+    "ast_hash": "fc02823ce7b56f95f374af963c3855ff",
+    "semantic_hash": ""
+  },
+  "outputs/raw_data_cleaning/previews/rooms.png": {
+    "mtime": 1784197366.089157,
+    "ast_hash": "06d5c9f9bca1fbbb52db4c4251fe10a0",
+    "semantic_hash": ""
+  },
+  "outputs/raw_data_cleaning/previews/staff.png": {
+    "mtime": 1784197366.1079252,
+    "ast_hash": "22eef990567ee948ec2cbaf09f7ff433",
+    "semantic_hash": ""
+  },
+  "outputs/robust_input_sample/preview_input_template.png": {
+    "mtime": 1782810868.1702454,
+    "ast_hash": "40f75412c3e1d15c67baa58b5c9a3c94",
+    "semantic_hash": ""
+  },
+  "outputs/robust_input_sample/preview_optional.png": {
+    "mtime": 1782810868.17125,
+    "ast_hash": "3f91e8d2bfb53e1ba6a8fe17e4fc001c",
+    "semantic_hash": ""
+  },
+  "outputs/robust_input_sample/preview_readme.png": {
+    "mtime": 1782810868.17125,
+    "ast_hash": "fb25f9ea8a8383d982a063dc698d8051",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/pages/TimetableReviewPage.test.ts": {
+    "mtime": 1784289669.5199442,
+    "ast_hash": "f3ac408fda424b025133008d33bd4e96",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/pages/timetableReviewFilters.ts": {
+    "mtime": 1784289668.0742884,
+    "ast_hash": "df5f4b87d256635fd17d28a9a1b3d99f",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/timetable/timetableWeeks.test.ts": {
+    "mtime": 1784290626.0305593,
+    "ast_hash": "e724f86910a3680f5d3e572d4e4fe7dd",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/timetable/timetableWeeks.ts": {
+    "mtime": 1784290625.2890515,
+    "ast_hash": "305b851663023caf731dc05c1e2c017f",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/components/SolverProgress.tsx": {
+    "mtime": 1784291488.217104,
+    "ast_hash": "c481463b89111d4dad6bf856e56fdc1b",
+    "semantic_hash": ""
+  },
+  "ITP Programming App 2/timetable-app/frontend/src/generationMode.test.ts": {
+    "mtime": 1784292075.978928,
+    "ast_hash": "88f8ad41553df2f77b94bee4908c4a3e",
+    "semantic_hash": ""
+  }
+}

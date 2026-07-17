@@ -23,6 +23,7 @@ from app.schemas.session import SessionInput
 from app.services.requirement_input_service import RequirementInputService, RequirementInputValidationError
 from app.services.schedule_quality_service import schedule_quality_from_violations
 from app.services.schedule_state_service import clear_schedule_state
+from app.services.scheduling_constants import SCHEDULING_DAY_END_TIME
 from app.services.serializers import (
     group_to_dict,
     module_to_dict,
@@ -70,7 +71,13 @@ def rooms(db: DbSession = Depends(get_db)):
 
 @router.get("/timeslots")
 def time_slots(db: DbSession = Depends(get_db)):
-    return [time_slot_to_dict(item) for item in db.query(TimeSlot).order_by(TimeSlot.day, TimeSlot.start_time, TimeSlot.week_pattern).all()]
+    items = (
+        db.query(TimeSlot)
+        .filter(TimeSlot.end_time <= SCHEDULING_DAY_END_TIME)
+        .order_by(TimeSlot.day, TimeSlot.start_time, TimeSlot.week_pattern)
+        .all()
+    )
+    return [time_slot_to_dict(item) for item in items]
 
 
 @router.get("/sessions")

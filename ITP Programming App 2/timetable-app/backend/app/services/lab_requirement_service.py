@@ -13,6 +13,7 @@ from app.models.session_staff import SessionStaff
 from app.models.staff import Staff
 from app.models.student_group import StudentGroup
 from app.services.compatibility import clean_text, parse_custom_weeks
+from app.services.scheduling_constants import SCHEDULING_DAY_END_TIME
 from app.services.seed_service import PROGRAMME_NAMES, PROGRAMME_YEARS
 from app.services.student_group_service import ensure_programme_year_groups
 from sqlalchemy import func
@@ -32,8 +33,8 @@ class LabRequirementService:
     def active_requirement_ids(self, db: DbSession) -> set[str]:
         return {
             item.requirement_id
-            for item in db.query(LabRequirement.requirement_id).filter(LabRequirement.is_active.is_(True)).all()
-            if item.requirement_id
+            for item in db.query(LabRequirement).filter(LabRequirement.is_active.is_(True)).all()
+            if item.requirement_id and self._can_schedule(item)
         }
 
     def sync_active_to_sessions(self, db: DbSession) -> set[str]:
@@ -120,6 +121,7 @@ class LabRequirementService:
             and requirement.fixed_day
             and requirement.fixed_start_time
             and requirement.fixed_end_time
+            and requirement.fixed_end_time <= SCHEDULING_DAY_END_TIME
             and requirement.duration_minutes
         )
 

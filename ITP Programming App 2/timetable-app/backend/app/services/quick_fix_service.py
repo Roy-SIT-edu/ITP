@@ -18,11 +18,110 @@ from app.services.compatibility import (
     session_weeks_conflict,
     time_to_minutes,
 )
-from app.services.scheduling_rules import candidate_room_allowed, required_student_group_codes
+from app.services.constraint_service import ConstraintService
+from app.services.scheduling_constants import SCHEDULING_DAY_END_TIME
+from app.services.scheduling_rules import candidate_room_allowed, candidate_slot_allowed, required_student_group_codes
 from sqlalchemy.orm import Session as DbSession
 
 
 class QuickFixService:
+    def move_options(self, db: DbSession, schedule_run_id: int, session_id: int, room_code: str) -> dict:
+        """Classify every time-only move using the same rules as final validation."""
+
+        target = (
+            db.query(ScheduledSession)
+            .filter(
+                ScheduledSession.schedule_run_id == schedule_run_id,
+                ScheduledSession.session_id == session_id,
+                ScheduledSession.included_in_final.is_(True),
+            )
+            .first()
+        )
+        if target is None:
+            raise ValueError("Scheduled session not found for this run.")
+
+        room = db.query(Room).filter_by(room_code=room_code).first()
+        if room is None:
+            raise ValueError("Room not found.")
+
+        scheduled = (
+            db.query(ScheduledSession)
+            .filter(
+                ScheduledSession.schedule_run_id == schedule_run_id,
+                ScheduledSession.included_in_final.is_(True),
+            )
+            .order_by(ScheduledSession.day, ScheduledSession.start_time)
+            .all()
+        )
+        rooms = db.query(Room).order_by(Room.room_code).all()
+        groups = db.query(StudentGroup).order_by(StudentGroup.group_code).all()
+        group_ids_by_code = {group.group_code.lower(): group.id for group in groups}
+        target_staff_ids = set(self._session_staff_ids(target))
+        target_group_ids = set(self._scheduled_group_ids(target, group_ids_by_code))
+        relevant_assignments = [
+            item
+            for item in scheduled
+            if item.id == target.id
+            or item.room_id == room.id
+            or target_staff_ids.intersection(self._session_staff_ids(item))
+            or target_group_ids.intersection(self._scheduled_group_ids(item, group_ids_by_code))
+        ]
+        duration = (time_to_minutes(target.end_time) or 0) - (time_to_minutes(target.start_time) or 0)
+        slots = (
+            db.query(TimeSlot)
+            .filter(
+                TimeSlot.duration_minutes == duration,
+                TimeSlot.week_pattern == target.week_pattern,
+                TimeSlot.end_time <= SCHEDULING_DAY_END_TIME,
+            )
+            .order_by(TimeSlot.day, TimeSlot.start_time, TimeSlot.id)
+            .all()
+        )
+
+        validator = ConstraintService()
+        original = self._placement(target)
+        options = []
+        try:
+            for slot in slots:
+                if self._same_placement(target, room, slot):
+                    options.append(self._move_option(slot, "CURRENT", []))
+                    continue
+
+                if target.session and target.session.is_lab_requirement:
+                    options.append(self._move_option(slot, "BLOCKED", ["Built-in lab bookings are fixed requirements."]))
+                    continue
+
+                if not candidate_slot_allowed(target.session, slot, relax_fixed=True):
+                    options.append(self._move_option(slot, "BLOCKED", ["Time slot violates a hard requirement."]))
+                    continue
+
+                if not candidate_room_allowed(target.session, room, relax_fixed=True):
+                    options.append(self._move_option(slot, "BLOCKED", ["Room does not meet this session's requirements."]))
+                    continue
+
+                self._apply_placement(target, slot, room)
+                with db.no_autoflush:
+                    violations = validator.check_assignments(relevant_assignments, rooms, groups)
+                affected = [item for item in violations if session_id in item["affected_session_ids"]]
+                hard = [item for item in affected if item["severity"] == "HARD"]
+                soft = [item for item in affected if item["severity"] == "SOFT"]
+                if hard:
+                    options.append(self._move_option(slot, "BLOCKED", [item["message"] for item in hard]))
+                elif soft:
+                    options.append(self._move_option(slot, "SOFT", [item["message"] for item in soft]))
+                else:
+                    options.append(self._move_option(slot, "AVAILABLE", []))
+                self._restore_placement(target, original)
+        finally:
+            self._restore_placement(target, original)
+
+        return {
+            "schedule_run_id": schedule_run_id,
+            "session_id": session_id,
+            "room_code": room_code,
+            "options": options,
+        }
+
     def availability(self, db: DbSession, schedule_run_id: int) -> dict:
         run = db.query(ScheduleRun).filter_by(id=schedule_run_id).first()
         if run is None:
@@ -44,7 +143,7 @@ class QuickFixService:
         targets = {item.session_id: item for item in scheduled if item.session_id in affected_session_ids}
         rooms = db.query(Room).order_by(Room.room_code).all()
         groups = db.query(StudentGroup).order_by(StudentGroup.group_code).all()
-        slots = db.query(TimeSlot).order_by(TimeSlot.day, TimeSlot.start_time).all()
+        slots = db.query(TimeSlot).filter(TimeSlot.end_time <= SCHEDULING_DAY_END_TIME).order_by(TimeSlot.day, TimeSlot.start_time).all()
         group_ids_by_code = {group.group_code.lower(): group.id for group in groups}
 
         by_session_id = {
@@ -98,7 +197,7 @@ class QuickFixService:
 
         rooms = db.query(Room).order_by(Room.room_code).all()
         groups = db.query(StudentGroup).order_by(StudentGroup.group_code).all()
-        slots = db.query(TimeSlot).order_by(TimeSlot.day, TimeSlot.start_time).all()
+        slots = db.query(TimeSlot).filter(TimeSlot.end_time <= SCHEDULING_DAY_END_TIME).order_by(TimeSlot.day, TimeSlot.start_time).all()
         suggestions = self._ranked_suggestions(target, scheduled, rooms, groups, slots)
         severity = violation.severity if violation is not None else self._target_severity(db, schedule_run_id, target.session_id)
 
@@ -334,6 +433,53 @@ class QuickFixService:
             "start_time": slot.start_time,
             "end_time": slot.end_time,
         }
+
+    @staticmethod
+    def _move_option(slot: TimeSlot, status: str, reasons: list[str]) -> dict:
+        return {
+            "day": slot.day,
+            "start_time": slot.start_time,
+            "end_time": slot.end_time,
+            "status": status,
+            "reasons": list(dict.fromkeys(reasons)),
+        }
+
+    @staticmethod
+    def _placement(item: ScheduledSession) -> tuple:
+        return (
+            item.room_id,
+            item.time_slot_id,
+            item.day,
+            item.start_time,
+            item.end_time,
+            item.week_pattern,
+            item.room,
+            item.time_slot,
+        )
+
+    @staticmethod
+    def _apply_placement(item: ScheduledSession, slot: TimeSlot, room: Room) -> None:
+        item.room_id = room.id
+        item.time_slot_id = slot.id
+        item.day = slot.day
+        item.start_time = slot.start_time
+        item.end_time = slot.end_time
+        item.week_pattern = slot.week_pattern
+        item.room = room
+        item.time_slot = slot
+
+    @staticmethod
+    def _restore_placement(item: ScheduledSession, placement: tuple) -> None:
+        (
+            item.room_id,
+            item.time_slot_id,
+            item.day,
+            item.start_time,
+            item.end_time,
+            item.week_pattern,
+            item.room,
+            item.time_slot,
+        ) = placement
 
     def _description(self, target: ScheduledSession, suggestion_type: str, room: Room, slot: TimeSlot) -> str:
         if suggestion_type == "VENUE_CHANGE":

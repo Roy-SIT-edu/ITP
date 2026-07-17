@@ -1,6 +1,7 @@
-import { ArrowDown, ArrowUp, ChevronDown, Clock3, Play, RefreshCw, Save, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, Play, RefreshCw, Save, Search } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import StatusBadge from "./StatusBadge";
+import SolverProgress from "./SolverProgress";
 import { formatGenerationDuration, generationModeLabel, type GenerationMode } from "../generationMode";
 import type { ScheduleGenerateResult, SessionRow, SoftConstraintPriority } from "../types";
 
@@ -98,12 +99,6 @@ export function GenerationActionPanel({
   saving: boolean;
   onGenerate: () => void;
 }) {
-  const estimatedProgress =
-    estimatedSeconds > 0 ? Math.min(90, Math.max(4, Math.round((elapsedSeconds / estimatedSeconds) * 90))) : 0;
-  const progress = completing ? 100 : generating && estimatedSeconds > 0 ? estimatedProgress : 0;
-  const estimatedRemaining = Math.max(0, estimatedSeconds - elapsedSeconds);
-  const stalled = generating && !completing && estimatedRemaining === 0;
-
   return (
     <section className="status-card generation-panel">
       <div className="generation-copy">
@@ -120,35 +115,12 @@ export function GenerationActionPanel({
         {dirty && <span className="muted">Unsaved ranking will be saved first.</span>}
       </div>
       {generating && estimatedSeconds > 0 && (
-        <div className="solver-progress" aria-live="polite">
-          <div className="solver-progress-heading">
-            <span>
-              <Clock3 size={16} />
-              <strong>{formatGenerationDuration(elapsedSeconds)}</strong> elapsed
-            </span>
-            <span>
-              {completing
-                ? "Schedule generated"
-                : estimatedRemaining > 0
-                  ? `About ${formatGenerationDuration(estimatedRemaining)} remaining`
-                  : "Still solving"}
-            </span>
-          </div>
-          <div
-            aria-label="Estimated timetable generation progress"
-            aria-valuemax={100}
-            aria-valuemin={0}
-            aria-valuenow={progress}
-            className="solver-progress-track"
-            role="progressbar"
-          >
-            <span
-              className={`solver-progress-fill ${stalled ? "stalled" : ""} ${completing ? "completing" : ""}`}
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          <p>Estimated progress {progress}%</p>
-        </div>
+        <SolverProgress
+          ariaLabel="Estimated timetable generation progress"
+          completing={completing}
+          elapsedSeconds={elapsedSeconds}
+          estimatedSeconds={estimatedSeconds}
+        />
       )}
       {generationResult && (
         <div className="result-strip">
@@ -159,6 +131,12 @@ export function GenerationActionPanel({
           )}
           <span>
             Run <strong>{generationResult.schedule_run_id}</strong>
+          </span>
+          <span>
+            Period{" "}
+            <strong>
+              AY {generationResult.academic_year}, Trimester {generationResult.trimester}
+            </strong>
           </span>
           <span>
             Solver <strong>{generationResult.solver_status}</strong>

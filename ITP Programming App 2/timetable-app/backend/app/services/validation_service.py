@@ -21,6 +21,7 @@ from app.services.compatibility import (
 )
 from app.services.lab_requirement_service import LabRequirementService
 from app.services.requirement_input_service import RequirementInputService
+from app.services.scheduling_constants import SCHEDULING_DAY_END_TIME
 from app.services.scheduling_rules import (
     candidate_room_allowed,
     fixed_sessions_conflict,
@@ -353,23 +354,32 @@ class ValidationService:
                     }
                 )
             if session.fixed_day and session.fixed_start_time and session.fixed_end_time:
-                match = (
-                    db.query(TimeSlot)
-                    .filter(
-                        TimeSlot.day == session.fixed_day,
-                        TimeSlot.start_time == session.fixed_start_time,
-                        TimeSlot.end_time == session.fixed_end_time,
-                    )
-                    .all()
-                )
-                if not any(weeks_conflict(slot.week_pattern, session.week_pattern) for slot in match):
+                if session.fixed_end_time > SCHEDULING_DAY_END_TIME:
                     errors.append(
                         {
                             "row": row,
-                            "field": "Fixed Start Time",
-                            "message": "No default time slot matches the fixed day, time, and week pattern",
+                            "field": "Fixed End Time",
+                            "message": f"Classes must end by {SCHEDULING_DAY_END_TIME}",
                         }
                     )
+                else:
+                    match = (
+                        db.query(TimeSlot)
+                        .filter(
+                            TimeSlot.day == session.fixed_day,
+                            TimeSlot.start_time == session.fixed_start_time,
+                            TimeSlot.end_time == session.fixed_end_time,
+                        )
+                        .all()
+                    )
+                    if not any(weeks_conflict(slot.week_pattern, session.week_pattern) for slot in match):
+                        errors.append(
+                            {
+                                "row": row,
+                                "field": "Fixed Start Time",
+                                "message": "No default time slot matches the fixed day, time, and week pattern",
+                            }
+                        )
 
         if (
             session.delivery_mode

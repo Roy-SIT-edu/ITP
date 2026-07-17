@@ -5,14 +5,21 @@
 
 import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { generateSchedule, getSoftConstraintPriorities, updateSoftConstraintPriorities } from "../api/client";
+import {
+  generateSchedule,
+  getAcademicYears,
+  getDefaultPlanningPeriod,
+  getSoftConstraintPriorities,
+  updateSoftConstraintPriorities,
+} from "../api/client";
+import GenerationPeriodSelector from "../components/GenerationPeriodSelector";
 import { GenerationActionPanel } from "../components/SoftConstraintWorkflow";
 import InlineActivity from "../components/InlineActivity";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
 import { estimateGenerationSeconds, getGenerationMode, rememberGenerationSeconds } from "../generationMode";
 import { useSessionState } from "../sessionState";
 import { rankSoftPriorities } from "../softPriorities";
-import type { ScheduleGenerateResult, SoftConstraintPriority } from "../types";
+import type { AcademicYearSummary, ScheduleGenerateResult, SoftConstraintPriority } from "../types";
 
 const COMPLETION_ANIMATION_MS = 650;
 
@@ -31,6 +38,9 @@ export default function SoftConstraintsPage() {
   const [generationStartedAt, setGenerationStartedAt] = useState<number | null>(null);
   const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
   const [generationEstimatedSeconds, setGenerationEstimatedSeconds] = useState(0);
+  const [academicYears, setAcademicYears] = useState<AcademicYearSummary[]>([]);
+  const [academicYear, setAcademicYear] = useState("");
+  const [trimester, setTrimester] = useState<number | "">("");
   const [dirty, setDirty] = useSessionState("soft.dirty", false);
   const generationMode = getGenerationMode();
 
@@ -38,6 +48,12 @@ export default function SoftConstraintsPage() {
     setLoading(true);
     setError(null);
     try {
+      const [yearRows, defaultPeriod] = await Promise.all([getAcademicYears(), getDefaultPlanningPeriod()]);
+      setAcademicYears(yearRows);
+      setAcademicYear((current) =>
+        current && yearRows.some((item) => item.academic_year === current) ? current : defaultPeriod.academic_year,
+      );
+      setTrimester((current) => current || defaultPeriod.trimester);
       if (!dirty) {
         const nextPriorities = await getSoftConstraintPriorities();
         setPriorities(rankSoftPriorities(nextPriorities));
@@ -51,10 +67,10 @@ export default function SoftConstraintsPage() {
   }, [dirty, setDirty, setError, setPriorities]);
 
   useEffect(() => {
-    if (!dirty && priorities.length === 0) {
+    if (academicYears.length === 0 || (!dirty && priorities.length === 0)) {
       void load();
     }
-  }, [dirty, load, priorities.length]);
+  }, [academicYears.length, dirty, load, priorities.length]);
 
   useEffect(() => {
     if (generationStartedAt === null) return;
@@ -65,7 +81,11 @@ export default function SoftConstraintsPage() {
   }, [generationStartedAt]);
 
   const isBusy = loading || saving || generating;
-  const canGenerate = !loading;
+  const canGenerate =
+    !loading &&
+    Boolean(academicYear) &&
+    Boolean(trimester) &&
+    academicYears.some((item) => item.academic_year === academicYear);
 
   const savePriorities = async () => {
     setSaving(true);
@@ -102,7 +122,14 @@ export default function SoftConstraintsPage() {
       setGenerationElapsedSeconds(0);
       setGenerationEstimatedSeconds(estimateGenerationSeconds(generationMode));
       setGenerationStartedAt(startedAt);
-      const result = await generateSchedule(generationMode);
+      if (!academicYear || !trimester) {
+        setError("Select an academic year and trimester before generating.");
+        return;
+      }
+      const result = await generateSchedule(generationMode, {
+        academic_year: academicYear,
+        trimester,
+      });
       const completedSeconds = result.generation_seconds ?? (Date.now() - startedAt) / 1000;
       setGenerationStartedAt(null);
       setGenerationElapsedSeconds(completedSeconds);
@@ -152,6 +179,14 @@ export default function SoftConstraintsPage() {
           steps={["Ordering preferences", "Updating weights", "Preparing solver"]}
         />
       )}
+      <GenerationPeriodSelector
+        academicYear={academicYear}
+        academicYears={academicYears}
+        disabled={isBusy}
+        trimester={trimester}
+        onAcademicYearChange={setAcademicYear}
+        onTrimesterChange={setTrimester}
+      />
       <GenerationActionPanel
         canGenerate={canGenerate}
         dirty={dirty}

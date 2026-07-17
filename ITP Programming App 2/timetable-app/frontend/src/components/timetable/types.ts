@@ -13,3 +13,5 @@ export type PlannerSlot = {
   end_time: string;
   label: string;
 };
+
+export type TimetableIssueTone = "hard" | "soft" | "clean";

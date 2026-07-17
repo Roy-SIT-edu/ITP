@@ -13,6 +13,7 @@ from app.models.scheduled_session import ScheduledSession
 from app.models.session import Session
 from app.models.staff import Staff
 from app.models.student_group import StudentGroup
+from app.models.time_slot import TimeSlot
 from app.services.schedule_service import ScheduleService
 from app.services.seed_service import seed_reference_data, seed_sample_sessions
 from app.services.student_group_service import normalize_student_group_ids
@@ -47,11 +48,36 @@ def _client_for(db) -> TestClient:
     return TestClient(app)
 
 
+def test_timeslot_api_hides_slots_ending_after_6pm(tmp_path):
+    db, engine = _route_db(tmp_path)
+    db.add(
+        TimeSlot(
+            day="Monday",
+            start_time="18:00",
+            end_time="19:00",
+            duration_minutes=60,
+            week_pattern="Weekly",
+        )
+    )
+    db.commit()
+    client = _client_for(db)
+    try:
+        response = client.get("/api/timeslots")
+        assert response.status_code == 200
+        assert response.json()
+        assert max(item["end_time"] for item in response.json()) == "18:00"
+    finally:
+        app.dependency_overrides.clear()
+        db.close()
+        engine.dispose()
+
+
 def test_split_database_files_are_created_and_seeded(tmp_path):
     data_dir = tmp_path / "data"
     create_db_and_seed(data_dir=data_dir, legacy_database_path=tmp_path / "missing.db")
 
     assert sorted(path.name for path in data_dir.glob("*.db")) == [
+        "calendar.db",
         "modules.db",
         "programmes.db",
         "requirements.db",
@@ -465,7 +491,7 @@ def test_schedule_generation_still_reads_core_data_after_split(tmp_path):
     SessionLocal, engines = create_session_factory(data_dir)
     db = SessionLocal()
     try:
-        result = ScheduleService().generate(db)
+        result = ScheduleService().generate(db, academic_year="2025/26", trimester=3)
         assert result["solver_status"] == "INFEASIBLE"
         assert result["message"] == "No sessions are available to schedule."
         assert result["soft_score"] == 0
@@ -480,7 +506,10 @@ def test_dashboard_reports_latest_scheduled_coverage(tmp_path):
     db, engine = _route_db(tmp_path)
     client = _client_for(db)
     try:
-        generation = client.post("/api/schedules/generate?mode=reproducible")
+        generation = client.post(
+            "/api/schedules/generate?mode=reproducible",
+            json={"academic_year": "2025/26", "trimester": 3},
+        )
         assert generation.status_code == 200
         assert generation.json()["generation_mode"] == "reproducible"
         assert generation.json()["solver_timeout_seconds"] == 300

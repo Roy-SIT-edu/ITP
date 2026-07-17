@@ -4,6 +4,10 @@
  */
 
 import type {
+  AcademicCalendarContext,
+  AcademicWeekInfo,
+  AcademicYearSummary,
+  CalendarHoliday,
   ConstraintViolation,
   Availability,
   ConstraintInsights,
@@ -11,6 +15,8 @@ import type {
   DatabaseRow,
   DatabaseTypeInfo,
   ImportPreviewRow,
+  MoveOptionsResponse,
+  PlanningPeriodDefault,
   QuickFixAvailability,
   QuickFixResponse,
   Room,
@@ -100,6 +106,52 @@ export function getTimeSlots() {
   return request<TimeSlot[]>("/api/timeslots");
 }
 
+export function getAcademicCalendarContext(date: string, scheduleRunId?: number) {
+  const params = new URLSearchParams({ date });
+  if (scheduleRunId) params.set("schedule_run_id", String(scheduleRunId));
+  return request<AcademicCalendarContext>(`/api/calendar/context?${params.toString()}`);
+}
+
+export function getAcademicYears() {
+  return request<AcademicYearSummary[]>("/api/calendar/academic-years");
+}
+
+export function getDefaultPlanningPeriod() {
+  return request<PlanningPeriodDefault>("/api/calendar/planning-period-default");
+}
+
+export function getCalendarWeeks(academicYear: string, trimester: number) {
+  const params = new URLSearchParams({ academic_year: academicYear, trimester: String(trimester) });
+  return request<AcademicWeekInfo[]>(`/api/calendar/weeks?${params.toString()}`);
+}
+
+export function updateCalendarWeek(
+  weekId: number,
+  data: Pick<AcademicWeekInfo, "start_date" | "end_date" | "phase" | "notes" | "is_provisional">,
+) {
+  return request<AcademicWeekInfo>(`/api/calendar/weeks/${weekId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export function getPublicHolidays() {
+  return request<CalendarHoliday[]>("/api/calendar/holidays");
+}
+
+export function createPublicHoliday(data: { date: string; name: string; is_observed: boolean }) {
+  return request<CalendarHoliday>("/api/calendar/holidays", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export function deletePublicHoliday(holidayId: number) {
+  return request<{ message: string }>(`/api/calendar/holidays/${holidayId}`, { method: "DELETE" });
+}
+
 export function getRooms() {
   return request<Room[]>("/api/rooms");
 }
@@ -172,9 +224,11 @@ export function getValidation() {
   return request<ValidationResult>("/api/validation/latest");
 }
 
-export function generateSchedule(mode: GenerationMode = "standard") {
+export function generateSchedule(mode: GenerationMode, planningPeriod: { academic_year: string; trimester: number }) {
   return request<ScheduleGenerateResult>(`/api/schedules/generate?mode=${encodeURIComponent(mode)}`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(planningPeriod),
   });
 }
 
@@ -248,6 +302,13 @@ export function moveScheduledSession(
   );
 }
 
+export function getScheduledSessionMoveOptions(scheduleRunId: number, sessionId: number, roomCode: string) {
+  const query = new URLSearchParams({ room_code: roomCode });
+  return request<MoveOptionsResponse>(
+    `/api/schedules/${scheduleRunId}/sessions/${sessionId}/move-options?${query.toString()}`,
+  );
+}
+
 export function suggestScheduleFixes(
   scheduleRunId: number,
   data: { conflict_id?: number | null; session_id?: number | null },
@@ -272,9 +333,10 @@ export function recheckSchedule(scheduleRunId: number) {
   );
 }
 
-export function autoDeconflict(scheduleRunId: number, timeoutSeconds = 30) {
+export function autoDeconflict(scheduleRunId: number, timeoutSeconds?: number) {
+  const timeoutQuery = timeoutSeconds === undefined ? "" : `?timeout_seconds=${encodeURIComponent(timeoutSeconds)}`;
   return request<ScheduleGenerateResult>(
-    `/api/schedules/${scheduleRunId}/auto-deconflict?timeout_seconds=${encodeURIComponent(timeoutSeconds)}`,
+    `/api/schedules/${scheduleRunId}/auto-deconflict${timeoutQuery}`,
     {
       method: "POST",
     },

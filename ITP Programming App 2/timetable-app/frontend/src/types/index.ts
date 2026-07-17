@@ -81,7 +81,71 @@ export type ScheduleRun = {
   hard_violation_count: number;
   soft_score: number;
   message: string | null;
+  academic_year?: string | null;
+  trimester?: number | null;
   quality?: ScheduleQuality;
+};
+
+export type AcademicWeekInfo = {
+  id: number;
+  academic_year: string;
+  trimester: number;
+  week_number: number;
+  start_date: string;
+  end_date: string;
+  phase: "STUDY" | "RECESS" | "FINAL_ASSESSMENT" | "TRIMESTER_BREAK";
+  phase_label: string;
+  is_provisional: boolean;
+  notes: string | null;
+  holiday_marker: string;
+};
+
+export type AcademicYearSummary = {
+  academic_year: string;
+  start_date: string;
+  end_date: string;
+  is_provisional: boolean;
+  trimesters: number[];
+};
+
+export type PlanningPeriodDefault = {
+  academic_year: string;
+  trimester: number;
+  start_date: string;
+  is_provisional: boolean;
+};
+
+export type CalendarHoliday = {
+  id: number;
+  date: string;
+  name: string;
+  day: string;
+  is_observed: boolean;
+  source: string;
+  is_manual_override: boolean;
+};
+
+export type SessionOccurrence = {
+  id: number;
+  schedule_run_id: number;
+  scheduled_session_id: number;
+  session_id: number;
+  date: string;
+  academic_year: string;
+  trimester: number;
+  week_number: number;
+  status: "SCHEDULED" | "MAKEUP_REQUIRED";
+  reason: string | null;
+  holiday_name: string | null;
+};
+
+export type AcademicCalendarContext = {
+  selected_date: string;
+  week: AcademicWeekInfo;
+  holidays: CalendarHoliday[];
+  occurrences: SessionOccurrence[];
+  makeup_required_count: number;
+  lessons_blocked: boolean;
 };
 
 export type ScheduleComparison = ScheduleRun & {
@@ -122,6 +186,8 @@ export type ScheduleResponse = {
 
 export type ScheduleGenerateResult = {
   schedule_run_id: number;
+  academic_year: string;
+  trimester: number;
   source_schedule_run_id?: number;
   solver_status: string;
   hard_violation_count: number;
@@ -138,7 +204,7 @@ export type ScheduleGenerateResult = {
   quality?: ScheduleQuality;
   generation_mode?: "standard" | "reproducible";
   generation_seconds?: number;
-  solver_timeout_seconds?: number;
+  solver_timeout_seconds?: number | null;
   message: string;
 };
 
@@ -369,6 +435,21 @@ export type QuickFixAvailability = {
   schedule_run_id: number;
   by_session_id: Record<string, boolean>;
   by_conflict_id: Record<string, boolean>;
+};
+
+export type MoveOption = {
+  day: string;
+  start_time: string;
+  end_time: string;
+  status: "CURRENT" | "AVAILABLE" | "SOFT" | "BLOCKED";
+  reasons: string[];
+};
+
+export type MoveOptionsResponse = {
+  schedule_run_id: number;
+  session_id: number;
+  room_code: string;
+  options: MoveOption[];
 };
 
 export type SessionRow = {

@@ -4,6 +4,7 @@ export type GenerationMode = "standard" | "reproducible";
 
 const GENERATION_MODE_STORAGE_KEY = "timetable.generationMode";
 const GENERATION_RUNTIME_STORAGE_KEY = "timetable.generationRuntimeHistory";
+const AUTO_DECONFLICT_RUNTIME_STORAGE_KEY = "timetable.autoDeconflictRuntimeHistory";
 const DEFAULT_GENERATION_SECONDS: Record<GenerationMode, number> = {
   standard: 25,
   reproducible: 120,
@@ -53,6 +54,33 @@ export function rememberGenerationSeconds(mode: GenerationMode, seconds: number)
     window.localStorage.setItem(GENERATION_RUNTIME_STORAGE_KEY, JSON.stringify(history));
   } catch {
     // Runtime learning is optional when browser storage is unavailable.
+  }
+}
+
+export function estimateAutoDeconflictSeconds() {
+  const samples = getAutoDeconflictRuntimeHistory();
+  if (samples.length === 0) return estimateGenerationSeconds("standard");
+  return Math.max(5, Math.round(samples.reduce((total, value) => total + value, 0) / samples.length));
+}
+
+export function rememberAutoDeconflictSeconds(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return;
+  try {
+    const samples = [...getAutoDeconflictRuntimeHistory(), seconds].slice(-5);
+    window.localStorage.setItem(AUTO_DECONFLICT_RUNTIME_STORAGE_KEY, JSON.stringify(samples));
+  } catch {
+    // Runtime learning is optional when browser storage is unavailable.
+  }
+}
+
+function getAutoDeconflictRuntimeHistory() {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(AUTO_DECONFLICT_RUNTIME_STORAGE_KEY) ?? "null") as
+      | number[]
+      | null;
+    return Array.isArray(stored) ? stored.filter(Number.isFinite).slice(-5) : [];
+  } catch {
+    return [];
   }
 }
 

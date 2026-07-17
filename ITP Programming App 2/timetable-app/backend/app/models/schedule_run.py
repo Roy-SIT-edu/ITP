@@ -24,6 +24,8 @@ class ScheduleRun(Base):
     hard_violation_count = Column(Integer, nullable=False, default=0)
     soft_score = Column(Integer, nullable=False, default=0)
     message = Column(String, nullable=True)
+    academic_year = Column(String, nullable=True)
+    trimester = Column(Integer, nullable=True)
 
     scheduled_sessions = relationship("ScheduledSession", back_populates="schedule_run")
     constraint_violations = relationship(

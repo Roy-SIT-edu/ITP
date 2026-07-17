@@ -1,20 +1,18 @@
-import { Clock3, RefreshCw } from "lucide-react";
-
-import { formatGenerationDuration } from "../generationMode";
 import type { ScheduleGenerateResult } from "../types";
+import SolverProgress from "./SolverProgress";
 
 type AutoDeconflictStatusProps = {
   running: boolean;
   elapsedSeconds: number;
+  estimatedSeconds: number;
   result: ScheduleGenerateResult | null;
-  timeoutSeconds?: number;
 };
 
 export default function AutoDeconflictStatus({
   running,
   elapsedSeconds,
+  estimatedSeconds,
   result,
-  timeoutSeconds = 30,
 }: AutoDeconflictStatusProps) {
   if (running) {
     return (
@@ -25,18 +23,11 @@ export default function AutoDeconflictStatus({
             Checking hard conflicts and trying safe moves for uploaded sessions. Built-in lab bookings remain fixed.
           </p>
         </div>
-        <div className="solver-progress" aria-live="polite">
-          <div className="solver-progress-heading">
-            <span>
-              <Clock3 size={16} />
-              <strong>{formatGenerationDuration(elapsedSeconds)}</strong> elapsed
-            </span>
-            <span>{timeoutSeconds}-second safety limit</span>
-          </div>
-          <p>
-            <RefreshCw className="spin" size={15} /> Searching deterministic compatible placements...
-          </p>
-        </div>
+        <SolverProgress
+          ariaLabel="Estimated auto deconflict progress"
+          elapsedSeconds={elapsedSeconds}
+          estimatedSeconds={estimatedSeconds}
+        />
       </section>
     );
   }

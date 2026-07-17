@@ -111,6 +111,7 @@ def test_auto_deconflict_moves_flexible_session_and_preserves_source(db_session)
     assert result["hard_violation_count"] == 0
     assert result["solver_status"] == "FEASIBLE"
     assert result["timed_out"] is False
+    assert result["solver_timeout_seconds"] is None
     assert _source_snapshot(db_session, run, sessions) == before
     assert not [item for item in ConstraintService().check_schedule(db_session, result["schedule_run_id"]) if item["severity"] == "HARD"]
 
@@ -138,7 +139,13 @@ def test_first_run_shows_excel_fixed_conflicts_before_auto_optimization(db_sessi
         session.fixed_end_time = "11:00"
     db_session.commit()
 
-    initial = ScheduleService().generate(db_session, timeout=10, reproducible=True)
+    initial = ScheduleService().generate(
+        db_session,
+        academic_year="2025/26",
+        trimester=3,
+        timeout=10,
+        reproducible=True,
+    )
     initial_assignments = (
         db_session.query(ScheduledSession)
         .filter_by(schedule_run_id=initial["schedule_run_id"])
@@ -304,7 +311,7 @@ def test_auto_deconflict_route_statuses_and_result(db_session):
     try:
         client = TestClient(app)
         missing = client.post("/api/schedules/999999/auto-deconflict")
-        result = client.post(f"/api/schedules/{run.id}/auto-deconflict?timeout_seconds=30")
+        result = client.post(f"/api/schedules/{run.id}/auto-deconflict")
         clean_run_id = result.json()["schedule_run_id"]
         clean = client.post(f"/api/schedules/{clean_run_id}/auto-deconflict")
     finally:
@@ -313,6 +320,7 @@ def test_auto_deconflict_route_statuses_and_result(db_session):
     assert missing.status_code == 404
     assert result.status_code == 200
     assert result.json()["source_schedule_run_id"] == run.id
+    assert result.json()["solver_timeout_seconds"] is None
     assert clean.status_code == 409
 
 

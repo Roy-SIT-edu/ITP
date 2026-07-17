@@ -1,5 +1,8 @@
 """Shared scheduling weights and thresholds."""
 
+SCHEDULING_DAY_START_TIME = "09:00"
+SCHEDULING_DAY_END_TIME = "18:00"
+
 DEFAULT_SOFT_CONSTRAINT_WEIGHTS = {
     "PREFERRED_DAY_MISMATCH": 15,
     "AVOID_DAY": 30,

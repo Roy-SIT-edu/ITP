@@ -13,10 +13,12 @@ from app.models.schedule_run import ScheduleRun
 from app.models.scheduled_session import ScheduledSession
 from app.models.session import Session
 from app.models.time_slot import TimeSlot
+from app.services.academic_calendar_service import AcademicCalendarService
 from app.services.constraint_service import ConstraintService
 from app.services.lab_overlap_service import LabOverlapService
 from app.services.lab_requirement_service import LabRequirementService
 from app.services.schedule_quality_service import affected_session_count, schedule_quality_summary
+from app.services.scheduling_constants import SCHEDULING_DAY_END_TIME
 from app.services.soft_constraint_priority_service import SoftConstraintPriorityService
 from app.services.validation_service import ValidationService
 from app.solver.cp_sat_solver import CpSatTimetableSolver
@@ -42,17 +44,22 @@ class ScheduleService:
     def generate(
         self,
         db: DbSession,
+        academic_year: str,
+        trimester: int,
         timeout: float | None = None,
         fast_mode: bool = False,
         reproducible: bool = False,
     ) -> dict:
         started_at = perf_counter()
         effective_timeout = timeout if timeout is not None else generation_timeout_seconds(reproducible)
+        calendar_service = AcademicCalendarService()
+        calendar_service.period_start(db, academic_year, trimester)
         active_lab_requirement_ids = self.lab_requirement_service.sync_active_to_sessions(db)
         db.commit()
 
         run = ScheduleRun(status="RUNNING", message="Solver started")
         db.add(run)
+        calendar_service.assign_run_period(db, run, academic_year, trimester)
         db.commit()
         db.refresh(run)
         run_id = run.id
@@ -62,7 +69,9 @@ class ScheduleService:
             for item in db.query(Session).order_by(Session.id).all()
             if not item.is_lab_requirement or item.requirement_id in active_lab_requirement_ids
         ]
-        time_slots = db.query(TimeSlot).order_by(TimeSlot.day, TimeSlot.start_time).all()
+        time_slots = (
+            db.query(TimeSlot).filter(TimeSlot.end_time <= SCHEDULING_DAY_END_TIME).order_by(TimeSlot.day, TimeSlot.start_time).all()
+        )
         rooms = db.query(Room).order_by(Room.room_code).all()
         soft_weights = self.priority_service.weights(db)
 
@@ -85,6 +94,8 @@ class ScheduleService:
             db.commit()
             return {
                 "schedule_run_id": run_id,
+                "academic_year": run.academic_year,
+                "trimester": run.trimester,
                 "solver_status": run.solver_status,
                 "hard_violation_count": 0,
                 "soft_warning_count": 0,
@@ -128,11 +139,14 @@ class ScheduleService:
                 f"{run.message} Excluded {lab_overlap_resolution['excluded_session_count']} fixed lab session(s) "
                 f"from the final timetable to resolve {lab_overlap_resolution['detected_pair_count']} overlap pair(s)."
             )
+        AcademicCalendarService().sync_run_occurrences(db, run)
         db.commit()
 
         final_scheduled_count = len(result["assignments"]) - lab_overlap_resolution["excluded_session_count"]
         return {
             "schedule_run_id": run_id,
+            "academic_year": run.academic_year,
+            "trimester": run.trimester,
             "solver_status": run.solver_status,
             "hard_violation_count": run.hard_violation_count,
             "soft_warning_count": check["soft_warning_count"],

@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import create_db_and_seed
 from app.routes import (
+    calendar_routes,
     data_routes,
     database_routes,
     export_routes,
@@ -45,6 +46,7 @@ app.add_middleware(
 app.include_router(upload_routes.router)
 app.include_router(validation_routes.router)
 app.include_router(data_routes.router)
+app.include_router(calendar_routes.router)
 app.include_router(database_routes.router)
 app.include_router(soft_constraint_routes.router)
 app.include_router(schedule_routes.router)

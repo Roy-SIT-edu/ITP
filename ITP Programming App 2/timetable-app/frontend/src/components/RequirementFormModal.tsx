@@ -1,4 +1,5 @@
 import type { FormEvent } from "react";
+import { SCHEDULING_DAY_END_TIME } from "../schedulingHours";
 import type { SessionRow } from "../types";
 
 export type RequirementFormData = Omit<SessionRow, "id">;
@@ -213,6 +214,7 @@ export default function RequirementFormModal({
                 Fixed End Time
                 <input
                   type="time"
+                  max={SCHEDULING_DAY_END_TIME}
                   value={formData.fixed_end_time || ""}
                   onChange={(event) => onUpdate("fixed_end_time", event.target.value)}
                 />

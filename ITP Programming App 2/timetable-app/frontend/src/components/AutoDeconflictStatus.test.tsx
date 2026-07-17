@@ -22,16 +22,20 @@ function result(overrides: Partial<ScheduleGenerateResult> = {}): ScheduleGenera
 }
 
 describe("AutoDeconflictStatus", () => {
-  it("shows truthful elapsed time while loading without invented progress estimates", () => {
-    render(<AutoDeconflictStatus running elapsedSeconds={4.2} result={null} />);
+  it("uses the same estimated solver progress display as timetable generation", () => {
+    render(<AutoDeconflictStatus running elapsedSeconds={4.2} estimatedSeconds={10} result={null} />);
 
     expect(screen.getByText("4s")).toBeInTheDocument();
-    expect(screen.getByText(/30-second safety limit/)).toBeInTheDocument();
-    expect(screen.queryByText(/remaining time|%/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/About 6s remaining/)).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "Estimated auto deconflict progress" })).toHaveAttribute(
+      "aria-valuenow",
+      "38",
+    );
+    expect(screen.getByText("Estimated progress 38%")).toBeInTheDocument();
   });
 
   it("reports successful moves and zero remaining hard conflicts", () => {
-    render(<AutoDeconflictStatus running={false} elapsedSeconds={0} result={result()} />);
+    render(<AutoDeconflictStatus running={false} elapsedSeconds={0} estimatedSeconds={10} result={result()} />);
 
     expect(screen.getByRole("status")).toHaveClass("good");
     expect(screen.getByText(/Moved sessions: 2/)).toBeInTheDocument();
@@ -43,6 +47,7 @@ describe("AutoDeconflictStatus", () => {
       <AutoDeconflictStatus
         running={false}
         elapsedSeconds={0}
+        estimatedSeconds={10}
         result={result({
           hard_violation_count: 1,
           remaining_hard_violation_count: 1,

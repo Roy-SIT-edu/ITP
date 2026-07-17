@@ -21,7 +21,8 @@ from app.models.session import Session
 from app.models.staff import Staff
 from app.models.student_group import StudentGroup
 from app.models.time_slot import TimeSlot
-from app.services.compatibility import clean_text, minutes_to_time
+from app.services.compatibility import clean_text, minutes_to_time, time_to_minutes
+from app.services.scheduling_constants import SCHEDULING_DAY_END_TIME, SCHEDULING_DAY_START_TIME
 from app.services.student_group_service import (
     ensure_programme_year_groups,
     normalize_student_group_ids,
@@ -117,21 +118,26 @@ def seed_defaults(
 
 
 def seed_reference_data(db: DbSession, raw_data_path: Path | None = None) -> None:
+    from app.services.academic_calendar_service import AcademicCalendarService
+
     if raw_data_path and raw_data_path.exists():
         seed_raw_data_workbook(db, raw_data_path)
     _apply_programme_years(db)
     ensure_programme_year_groups(db)
     normalize_student_group_ids(db)
     seed_time_slots(db)
+    AcademicCalendarService().seed(db)
 
 
 def seed_time_slots(db: DbSession) -> None:
+    day_start = time_to_minutes(SCHEDULING_DAY_START_TIME)
+    day_end = time_to_minutes(SCHEDULING_DAY_END_TIME)
     for day in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]:
         for week_pattern in ["Weekly", "Odd", "Even"]:
             for duration in [60, 90, 120, 150, 180, 240, 300]:
-                latest_start = 22 * 60 - duration
+                latest_start = day_end - duration
                 step = 30 if duration in {90, 150} else 60
-                for start in range(9 * 60, latest_start + 1, step):
+                for start in range(day_start, latest_start + 1, step):
                     end = start + duration
                     _get_or_create(
                         db,

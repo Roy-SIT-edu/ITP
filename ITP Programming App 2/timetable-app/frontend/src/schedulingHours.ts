@@ -1,0 +1,2 @@
+export const SCHEDULING_DAY_END_TIME = "18:00";
+export const SCHEDULING_DAY_END_HOUR = 18;

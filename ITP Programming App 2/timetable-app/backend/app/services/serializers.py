@@ -179,6 +179,8 @@ def schedule_run_to_dict(item: ScheduleRun) -> dict:
         "hard_violation_count": item.hard_violation_count,
         "soft_score": item.soft_score,
         "message": item.message,
+        "academic_year": item.academic_year,
+        "trimester": item.trimester,
     }
 
 

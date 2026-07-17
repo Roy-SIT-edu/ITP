@@ -173,7 +173,12 @@ def test_demo_sample_workbooks_import_expected_workflows(
         catalogue = client.get("/api/upload/demo-samples")
         response = client.post(f"/api/upload/demo-samples/{sample_id}/load")
         fixed_count = db.query(Session).filter(Session.scheduling_type == "Fixed").count()
-        generation = ScheduleService().generate(db, reproducible=True)
+        generation = ScheduleService().generate(
+            db,
+            academic_year="2025/26",
+            trimester=3,
+            reproducible=True,
+        )
     finally:
         app.dependency_overrides.clear()
         db.close()

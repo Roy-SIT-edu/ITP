@@ -84,8 +84,13 @@ def test_manual_move_blocks_hard_conflict_and_keeps_original_slot(db_session):
         yield db_session
 
     app.dependency_overrides[get_db] = override_db
+    client = TestClient(app)
     try:
-        response = TestClient(app).put(
+        options_response = client.get(
+            f"/api/schedules/{run.id}/sessions/{sessions[1].id}/move-options",
+            params={"room_code": room_b.room_code},
+        )
+        response = client.put(
             f"/api/schedules/{run.id}/sessions/{sessions[1].id}",
             json={
                 "day": blocked_slot.day,
@@ -94,11 +99,32 @@ def test_manual_move_blocks_hard_conflict_and_keeps_original_slot(db_session):
                 "room_code": room_b.room_code,
             },
         )
+
+        sessions[1].is_lab_requirement = True
+        db_session.commit()
+        lab_options_response = client.get(
+            f"/api/schedules/{run.id}/sessions/{sessions[1].id}/move-options",
+            params={"room_code": room_b.room_code},
+        )
     finally:
         app.dependency_overrides.clear()
 
+    assert options_response.status_code == 200
+    options = options_response.json()["options"]
+    blocked_option = next(
+        option for option in options if option["day"] == blocked_slot.day and option["start_time"] == blocked_slot.start_time
+    )
+    assert blocked_option["status"] == "BLOCKED"
+    assert any("Staff" in reason and "assigned to" in reason for reason in blocked_option["reasons"])
+    assert any(option["status"] in {"AVAILABLE", "SOFT"} for option in options)
+
     assert response.status_code == 409
     assert response.json()["detail"]["message"] == "Cannot move here: Staff member is double-booked."
+
+    assert lab_options_response.status_code == 200
+    lab_options = [option for option in lab_options_response.json()["options"] if option["status"] != "CURRENT"]
+    assert lab_options
+    assert all(option["status"] == "BLOCKED" for option in lab_options)
 
     db_session.expire_all()
     stored = db_session.query(ScheduledSession).filter_by(schedule_run_id=run.id, session_id=sessions[1].id).one()

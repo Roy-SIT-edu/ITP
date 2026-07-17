@@ -13,6 +13,7 @@ from app.models.room import Room
 from app.models.schedule_run import ScheduleRun
 from app.models.scheduled_session import ScheduledSession
 from app.models.time_slot import TimeSlot
+from app.services.academic_calendar_service import AcademicCalendarService
 from app.services.auto_deconflict_service import AutoDeconflictConflictError, ScheduleRunNotFoundError
 from app.services.compatibility import is_online_mode, parse_day_list
 from app.services.constraint_service import ConstraintService
@@ -22,7 +23,8 @@ from app.services.quick_fix_service import QuickFixService
 from app.services.schedule_quality_service import schedule_quality_from_violations
 from app.services.schedule_report_service import ScheduleReportService
 from app.services.schedule_service import ScheduleService
-from app.services.scheduling_rules import session_is_initially_fixed
+from app.services.scheduling_constants import SCHEDULING_DAY_END_TIME
+from app.services.scheduling_rules import candidate_room_allowed, candidate_slot_allowed, session_is_initially_fixed
 from app.services.serializers import schedule_run_to_dict, violation_to_dict
 from app.services.soft_constraint_priority_service import SoftConstraintPriorityService
 
@@ -41,19 +43,34 @@ class QuickFixInput(BaseModel):
     session_id: int | None = None
 
 
+class ScheduleGenerationInput(BaseModel):
+    academic_year: str
+    trimester: int
+
+
 @router.post("/generate")
 def generate_schedule(
+    data: ScheduleGenerationInput,
     mode: Literal["standard", "reproducible"] = Query(default="standard"),
     db: DbSession = Depends(get_db),
 ):
-    result = ScheduleService().generate(db, reproducible=mode == "reproducible")
-    return result
+    if data.trimester not in {1, 2, 3}:
+        raise HTTPException(status_code=400, detail="Trimester must be 1, 2, or 3.")
+    try:
+        return ScheduleService().generate(
+            db,
+            academic_year=data.academic_year,
+            trimester=data.trimester,
+            reproducible=mode == "reproducible",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/{schedule_run_id}/auto-deconflict")
 def auto_deconflict_schedule(
     schedule_run_id: int,
-    timeout_seconds: float = Query(default=30.0, ge=1.0, le=120.0),
+    timeout_seconds: float | None = Query(default=None, ge=1.0, le=120.0),
     db: DbSession = Depends(get_db),
 ):
     try:
@@ -127,6 +144,19 @@ def schedule(schedule_run_id: int, db: DbSession = Depends(get_db)):
     }
 
 
+@router.get("/{schedule_run_id}/sessions/{session_id}/move-options")
+def scheduled_session_move_options(
+    schedule_run_id: int,
+    session_id: int,
+    room_code: str = Query(..., min_length=1),
+    db: DbSession = Depends(get_db),
+):
+    try:
+        return QuickFixService().move_options(db, schedule_run_id, session_id, room_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.put("/{schedule_run_id}/sessions/{session_id}")
 def move_scheduled_session(schedule_run_id: int, session_id: int, data: ManualMoveInput, db: DbSession = Depends(get_db)):
     item = (
@@ -148,13 +178,23 @@ def move_scheduled_session(schedule_run_id: int, session_id: int, data: ManualMo
     room = db.query(Room).filter_by(room_code=data.room_code).first()
     if not room:
         raise HTTPException(status_code=400, detail="Room not found.")
+    if data.end_time > SCHEDULING_DAY_END_TIME:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Classes must end by {SCHEDULING_DAY_END_TIME}.",
+        )
     slot = (
         db.query(TimeSlot)
         .filter_by(day=data.day, start_time=data.start_time, end_time=data.end_time, week_pattern=item.week_pattern)
+        .filter(TimeSlot.end_time <= SCHEDULING_DAY_END_TIME)
         .first()
     )
     if not slot:
         raise HTTPException(status_code=400, detail="No matching time slot exists for that day, time, and week pattern.")
+    if not candidate_slot_allowed(item.session, slot, relax_fixed=True):
+        raise HTTPException(status_code=409, detail="Cannot move here: the time slot violates a hard requirement.")
+    if not candidate_room_allowed(item.session, room, relax_fixed=True):
+        raise HTTPException(status_code=409, detail="Cannot move here: the room does not meet this session's requirements.")
 
     item.room_id = room.id
     item.room = room
@@ -184,6 +224,7 @@ def move_scheduled_session(schedule_run_id: int, session_id: int, data: ManualMo
         run.hard_violation_count = check["hard_violation_count"]
         run.soft_score = check["weighted_soft_score"]
         run.status = "COMPLETED" if run.hard_violation_count == 0 else "COMPLETED_WITH_CONFLICTS"
+        AcademicCalendarService().sync_run_occurrences(db, run)
     db.commit()
     return {
         "message": "Scheduled session moved.",
@@ -219,6 +260,7 @@ def recheck_schedule(schedule_run_id: int, db: DbSession = Depends(get_db)):
     run.hard_violation_count = check["hard_violation_count"]
     run.soft_score = check["weighted_soft_score"]
     run.status = "COMPLETED" if run.hard_violation_count == 0 else "COMPLETED_WITH_CONFLICTS"
+    AcademicCalendarService().sync_run_occurrences(db, run)
     db.commit()
     return {
         "message": "Schedule rechecked.",

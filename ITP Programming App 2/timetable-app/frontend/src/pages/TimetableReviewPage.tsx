@@ -24,6 +24,7 @@ import {
   getSchedule,
   getScheduleExplanations,
   getScheduleRuns,
+  getScheduledSessionMoveOptions,
   getTimeSlots,
   getViolations,
   moveScheduledSession,
@@ -36,12 +37,27 @@ import InlineActivity from "../components/InlineActivity";
 import OptimisedScoreInfo from "../components/OptimisedScoreInfo";
 import StatusBadge from "../components/StatusBadge";
 import TimetableGrid from "../components/TimetableGrid";
+import AcademicCalendarSettings from "../components/timetable/AcademicCalendarSettings";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
-import { intervalsOverlap, timeToMinutes } from "../components/timetable/timetableUtils";
+import { timeToMinutes } from "../components/timetable/timetableUtils";
+import { firstOccurrenceWeek } from "../components/timetable/timetableWeeks";
 import { conflictPresentation, uniqueConflictTypes } from "../conflictPresentation";
+import { estimateAutoDeconflictSeconds, rememberAutoDeconflictSeconds } from "../generationMode";
 import { useSessionState } from "../sessionState";
+import {
+  buildFilterIssueToneMap,
+  buildSessionIssueToneMap,
+  filterIssueToneClass,
+  type FilterIssueTone,
+} from "./timetableFilterTones";
+import {
+  conflictSelectionFilters,
+  emptyTimetableReviewFilters,
+  type TimetableReviewFilters,
+} from "./timetableReviewFilters";
 import type {
   ConstraintViolation,
+  MoveOptionsResponse,
   QuickFixAvailability,
   QuickFixSuggestion,
   Room,
@@ -54,17 +70,7 @@ import type {
   TimeSlot,
 } from "../types";
 
-type Filters = {
-  source: string;
-  query: string;
-  issue: string;
-  classType: string;
-  programme: string;
-  group: string;
-  staff: string;
-  room: string;
-  day: string;
-};
+type Filters = TimetableReviewFilters;
 
 type MoveDraft = {
   day: string;
@@ -83,17 +89,7 @@ type ConflictSeverityFilter = "all" | "hard" | "soft";
 type ConflictSort = "priority" | "type" | "class" | "time";
 type RowIssueState = { hard: boolean; soft: boolean };
 
-const emptyFilters: Filters = {
-  source: "",
-  query: "",
-  issue: "",
-  classType: "",
-  programme: "",
-  group: "",
-  staff: "",
-  room: "",
-  day: "",
-};
+const emptyFilters = emptyTimetableReviewFilters;
 
 export default function TimetableReviewPage() {
   const [schedule, setSchedule] = useSessionState<ScheduleResponse | null>("review.schedule", null);
@@ -109,6 +105,9 @@ export default function TimetableReviewPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useSessionState<string | null>("review.error", null);
   const [activeSessionId, setActiveSessionId] = useSessionState<number | null>("review.activeSessionId", null);
+  const [selectionResetKey, setSelectionResetKey] = useState(0);
+  const [weekFocusRequest, setWeekFocusRequest] = useState<{ weekNumber: number; key: number } | null>(null);
+  const [moveOptions, setMoveOptions] = useState<MoveOptionsResponse | null>(null);
   const [movingConflict, setMovingConflict] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [conflictTab, setConflictTab] = useSessionState<"modules" | "issues">("review.conflictTab", "modules");
@@ -131,6 +130,9 @@ export default function TimetableReviewPage() {
   const [deconflicting, setDeconflicting] = useState(false);
   const [deconflictStartedAt, setDeconflictStartedAt] = useState<number | null>(null);
   const [deconflictElapsedSeconds, setDeconflictElapsedSeconds] = useState(0);
+  const [deconflictEstimatedSeconds, setDeconflictEstimatedSeconds] = useState(() =>
+    estimateAutoDeconflictSeconds(),
+  );
   const [deconflictResult, setDeconflictResult] = useState<ScheduleGenerateResult | null>(null);
 
   const load = useCallback(async () => {
@@ -216,6 +218,62 @@ export default function TimetableReviewPage() {
   }, [deconflictStartedAt]);
 
   const rows = useMemo(() => schedule?.scheduled_sessions ?? [], [schedule]);
+  const activeRow = useMemo(
+    () => rows.find((row) => row.session_id === activeSessionId) ?? null,
+    [activeSessionId, rows],
+  );
+  const activeMoveRoom = activeRow ? moveDrafts[activeRow.session_id]?.room_code || activeRow.room : null;
+
+  const selectConflictSession = useCallback(
+    (sessionId: number | null) => {
+      if (sessionId === null) {
+        setActiveSessionId(null);
+        return;
+      }
+      const row = rows.find((candidate) => candidate.session_id === sessionId);
+      if (row) {
+        setFilters(conflictSelectionFilters(row.programme));
+        const weekNumber = firstOccurrenceWeek(row);
+        if (weekNumber !== null) {
+          setWeekFocusRequest((current) => ({ weekNumber, key: (current?.key ?? 0) + 1 }));
+        }
+      }
+      setActiveSessionId(sessionId);
+    },
+    [rows, setActiveSessionId, setFilters],
+  );
+
+  const cancelConflictSelection = useCallback(() => {
+    setActiveSessionId(null);
+    setMoveOptions(null);
+    setSelectionResetKey((current) => current + 1);
+  }, [setActiveSessionId]);
+
+  useEffect(() => {
+    const scheduleRunId = schedule?.schedule_run.id;
+    if (!scheduleRunId || !activeRow || !activeMoveRoom) {
+      setMoveOptions(null);
+      return;
+    }
+
+    let cancelled = false;
+    setMoveOptions(null);
+    void getScheduledSessionMoveOptions(scheduleRunId, activeRow.session_id, activeMoveRoom)
+      .then((response) => {
+        if (!cancelled) setMoveOptions(response);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setMoveOptions(null);
+          setError(err instanceof Error ? err.message : "Could not check available timetable slots");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeMoveRoom, activeRow, schedule?.schedule_run.id, setError]);
+
   const labRowCount = useMemo(() => rows.filter(isLabRequirement).length, [rows]);
   const uploadedRowCount = rows.length - labRowCount;
   const sourceCounts = useMemo(
@@ -224,6 +282,29 @@ export default function TimetableReviewPage() {
   );
   const issueBySessionId = useMemo(() => issueStateBySessionId(violations), [violations]);
   const issueCounts = useMemo(() => countIssueStates(rows, issueBySessionId), [issueBySessionId, rows]);
+  const issueToneBySessionId = useMemo(
+    () => buildSessionIssueToneMap(rows, issueBySessionId),
+    [issueBySessionId, rows],
+  );
+  const filterIssueTones = useMemo(
+    () => ({
+      programme: buildFilterIssueToneMap(rows, issueBySessionId, (row) => [row.programme]),
+      group: buildFilterIssueToneMap(rows, issueBySessionId, (row) => [row.student_group_code]),
+      staff: buildFilterIssueToneMap(rows, issueBySessionId, staffLabels),
+      room: buildFilterIssueToneMap(rows, issueBySessionId, (row) => [row.room]),
+    }),
+    [issueBySessionId, rows],
+  );
+  const issueStatusTones = useMemo(
+    () =>
+      new Map<string, FilterIssueTone>([
+        ["any", issueCounts.hard > 0 ? "hard" : issueCounts.soft > 0 ? "soft" : "clean"],
+        ["hard", "hard"],
+        ["soft", "soft"],
+        ["clean", "clean"],
+      ]),
+    [issueCounts.hard, issueCounts.soft],
+  );
   const activeFilterCount = useMemo(() => Object.values(filters).filter(Boolean).length, [filters]);
   const filteredRows = useMemo(
     () =>
@@ -263,37 +344,31 @@ export default function TimetableReviewPage() {
     const available = new Set<string>();
     const softAvailable = new Set<string>();
     const blocked = new Set<string>();
-    if (!activeSessionId)
+    if (
+      !activeSessionId ||
+      !activeMoveRoom ||
+      !moveOptions ||
+      moveOptions.session_id !== activeSessionId ||
+      moveOptions.room_code !== activeMoveRoom
+    )
       return { availableSlotKeys: available, softAvailableSlotKeys: softAvailable, blockedSlotKeys: blocked };
 
-    const targetRow = rows.find((r) => r.session_id === activeSessionId);
-    if (!targetRow)
-      return { availableSlotKeys: available, softAvailableSlotKeys: softAvailable, blockedSlotKeys: blocked };
-
-    const draft = moveDrafts[activeSessionId];
-    const targetRoom = draft?.room_code || targetRow.room;
-    const rowDuration = timeToMinutes(targetRow.end_time) - timeToMinutes(targetRow.start_time);
-    const candidateSlots = timeSlots.filter(
-      (slot) => slot.duration_minutes === rowDuration && slot.week_pattern === targetRow.week_pattern,
-    );
-
-    for (const slot of candidateSlots) {
-      const key = slotDisplayKey(slot.day, slot.start_time);
-      if (isSamePlacement(targetRow, targetRoom, slot.day, slot.start_time, slot.end_time)) {
-        continue;
-      }
-      if (hasHardPlacementConflict(targetRow, rows, targetRoom, slot.day, slot.start_time, slot.end_time)) {
+    for (const option of moveOptions.options) {
+      const key = slotDisplayKey(option.day, option.start_time);
+      if (option.status === "BLOCKED") {
         blocked.add(key);
         continue;
       }
-      available.add(key);
-      if (hasSoftPlacementWarning(targetRow, slot.day)) {
+      if (option.status === "AVAILABLE" || option.status === "SOFT") {
+        available.add(key);
+      }
+      if (option.status === "SOFT") {
         softAvailable.add(key);
       }
     }
 
     return { availableSlotKeys: available, softAvailableSlotKeys: softAvailable, blockedSlotKeys: blocked };
-  }, [activeSessionId, moveDrafts, rows, timeSlots]);
+  }, [activeMoveRoom, activeSessionId, moveOptions]);
 
   const openRun = async (id: number) => {
     setError(null);
@@ -483,13 +558,16 @@ export default function TimetableReviewPage() {
 
   const handleAutoDeconflict = async () => {
     if (!schedule) return;
+    const startedAt = Date.now();
     setDeconflicting(true);
-    setDeconflictStartedAt(Date.now());
+    setDeconflictStartedAt(startedAt);
     setDeconflictElapsedSeconds(0);
+    setDeconflictEstimatedSeconds(estimateAutoDeconflictSeconds());
     setDeconflictResult(null);
     setError(null);
     try {
       const result = await autoDeconflict(schedule.schedule_run.id);
+      rememberAutoDeconflictSeconds(result.generation_seconds ?? (Date.now() - startedAt) / 1000);
       await load();
       setDeconflictResult(result);
     } catch (err) {
@@ -711,6 +789,7 @@ export default function TimetableReviewPage() {
       <AutoDeconflictStatus
         running={deconflicting}
         elapsedSeconds={deconflictElapsedSeconds}
+        estimatedSeconds={deconflictEstimatedSeconds}
         result={deconflictResult}
       />
 
@@ -867,14 +946,23 @@ export default function TimetableReviewPage() {
               <label className="review-filter-field review-filter-field--issue">
                 <span>Issue Status</span>
                 <select
+                  className={filterIssueToneClass(issueStatusTones.get(filters.issue))}
                   value={filters.issue}
                   onChange={(event) => setFilters({ ...filters, issue: event.target.value })}
                 >
                   <option value="">All ({rows.length})</option>
-                  <option value="any">Has issues ({issueCounts.any})</option>
-                  <option value="hard">Hard conflicts ({issueCounts.hard})</option>
-                  <option value="soft">Soft warnings ({issueCounts.soft})</option>
-                  <option value="clean">Clean ({issueCounts.clean})</option>
+                  <option className={filterIssueToneClass(issueStatusTones.get("any"))} value="any">
+                    Has issues ({issueCounts.any})
+                  </option>
+                  <option className={filterIssueToneClass("hard")} value="hard">
+                    Hard conflicts ({issueCounts.hard})
+                  </option>
+                  <option className={filterIssueToneClass("soft")} value="soft">
+                    Soft warnings ({issueCounts.soft})
+                  </option>
+                  <option className={filterIssueToneClass("clean")} value="clean">
+                    Clean ({issueCounts.clean})
+                  </option>
                 </select>
               </label>
               <FilterSelect
@@ -889,6 +977,7 @@ export default function TimetableReviewPage() {
                 label="Programme"
                 value={filters.programme}
                 values={unique(rows, "programme")}
+                toneByValue={filterIssueTones.programme}
                 onChange={(value) => setFilters({ ...filters, programme: value })}
               />
               <FilterSelect
@@ -896,6 +985,7 @@ export default function TimetableReviewPage() {
                 label="Group"
                 value={filters.group}
                 values={unique(rows, "student_group_code")}
+                toneByValue={filterIssueTones.group}
                 onChange={(value) => setFilters({ ...filters, group: value })}
               />
               <FilterSelect
@@ -903,6 +993,7 @@ export default function TimetableReviewPage() {
                 label="Staff"
                 value={filters.staff}
                 values={uniqueStaff(rows)}
+                toneByValue={filterIssueTones.staff}
                 onChange={(value) => setFilters({ ...filters, staff: value })}
               />
               <FilterSelect
@@ -910,6 +1001,7 @@ export default function TimetableReviewPage() {
                 label="Room"
                 value={filters.room}
                 values={unique(rows, "room")}
+                toneByValue={filterIssueTones.room}
                 onChange={(value) => setFilters({ ...filters, room: value })}
               />
               <FilterSelect
@@ -951,11 +1043,21 @@ export default function TimetableReviewPage() {
               availableSlotKeys={availableSlotKeys}
               softAvailableSlotKeys={softAvailableSlotKeys}
               blockedSlotKeys={blockedSlotKeys}
+              issueToneBySessionId={issueToneBySessionId}
+              selectionResetKey={selectionResetKey}
+              focusWeekNumber={weekFocusRequest?.weekNumber}
+              focusWeekRequestKey={weekFocusRequest?.key}
               onClickAvailableSlot={handleConflictMove}
               onBlockedSlot={(message) => setError(message)}
               onSelectSession={(sessionId) => setActiveSessionId(sessionId)}
               scheduleRunId={schedule.schedule_run.id}
+              academicYear={schedule.schedule_run.academic_year}
+              trimester={schedule.schedule_run.trimester}
               onRefresh={load}
+            />
+            <AcademicCalendarSettings
+              initialAcademicYear={schedule.schedule_run.academic_year}
+              initialTrimester={schedule.schedule_run.trimester}
             />
           </section>
           <section className="status-card data-section">
@@ -1108,9 +1210,14 @@ export default function TimetableReviewPage() {
             )}
             {activeSessionId && (
               <div className="conflict-resolution-banner">
+                <span className="conflict-resolution-copy">
                 Showing conflicts for Session <strong>{activeSessionId}</strong> — click a{" "}
                 <span className="green-label">green slot</span> or <span className="amber-label">amber slot</span> on
-                the timetable to move it.
+                  the timetable to move it.
+                </span>
+                <button className="button secondary slim" onClick={cancelConflictSelection} type="button">
+                  Cancel selection
+                </button>
               </div>
             )}
             {conflictTab === "modules" ? (
@@ -1163,7 +1270,7 @@ export default function TimetableReviewPage() {
                             <Fragment key={row.session_id}>
                               <tr
                                 className={`${urgencyClass} ${resolvingClass} ${isActive ? "conflict-active-row" : ""}`}
-                                onClick={() => setActiveSessionId(row.session_id)}
+                                onClick={() => selectConflictSession(row.session_id)}
                                 style={{ cursor: "pointer" }}
                               >
                                 <td>
@@ -1237,7 +1344,7 @@ export default function TimetableReviewPage() {
                 resolvingConflictId={
                   applyingQuickFix?.startsWith("conflict-") ? Number(applyingQuickFix.split("-")[1]) : null
                 }
-                onSelectConflict={(v) => setActiveSessionId(v?.affected_session_ids[0] ?? null)}
+                onSelectConflict={(v) => selectConflictSession(v?.affected_session_ids[0] ?? null)}
                 onToggleQuickFix={(violation) =>
                   void toggleQuickFix({ key: `conflict-${violation.id}`, conflictId: violation.id })
                 }
@@ -1320,21 +1427,27 @@ function FilterSelect({
   label,
   value,
   values,
+  toneByValue,
   onChange,
 }: {
   className?: string;
   label: string;
   value: string;
   values: string[];
+  toneByValue?: Map<string, FilterIssueTone>;
   onChange: (value: string) => void;
 }) {
   return (
     <label className={className}>
       <span>{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
+      <select
+        className={filterIssueToneClass(toneByValue?.get(value))}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
         <option value="">All</option>
         {values.map((item) => (
-          <option key={item} value={item}>
+          <option className={filterIssueToneClass(toneByValue?.get(item))} key={item} value={item}>
             {item}
           </option>
         ))}
@@ -1373,62 +1486,12 @@ function minutesToTime(minutes: number) {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
-function isSamePlacement(row: ScheduledRow, roomCode: string, day: string, startTime: string, endTime: string) {
-  return row.room === roomCode && row.day === day && row.start_time === startTime && row.end_time === endTime;
-}
-
-function hasHardPlacementConflict(
-  targetRow: ScheduledRow,
-  rows: ScheduledRow[],
-  roomCode: string,
-  day: string,
-  startTime: string,
-  endTime: string,
-) {
-  const targetStaffTokens = staffTokens(targetRow);
-  return rows.some((row) => {
-    if (row.session_id === targetRow.session_id) return false;
-    if (row.day !== day) return false;
-    if (!weekPatternsOverlap(row.week_pattern, targetRow.week_pattern)) return false;
-    if (!intervalsOverlap(startTime, endTime, row.start_time, row.end_time)) return false;
-
-    const sameRoom = normalizeToken(row.room) === normalizeToken(roomCode);
-    const sameGroup =
-      Boolean(row.student_group_code) &&
-      normalizeToken(row.student_group_code) === normalizeToken(targetRow.student_group_code);
-    const sameStaff = staffTokens(row).some((token) => targetStaffTokens.includes(token));
-    return sameRoom || sameGroup || sameStaff;
-  });
-}
-
-function hasSoftPlacementWarning(row: ScheduledRow, day: string) {
-  const deliveryMode = normalizeToken(row.delivery_mode);
-  return deliveryMode.includes("online") && !["monday", "tuesday"].includes(normalizeToken(day));
-}
-
-function staffTokens(row: ScheduledRow) {
-  return [row.staff_id, row.staff_name, row.co_teacher_ids, row.co_teacher_names]
-    .flatMap(splitTokens)
-    .map(normalizeToken)
-    .filter(Boolean);
-}
-
 function splitTokens(value: string | null | undefined) {
   return value ? value.split(",").map((item) => item.trim()) : [];
 }
 
 function staffLabels(row: ScheduledRow) {
   return [row.staff_name, row.co_teacher_names].flatMap(splitTokens).filter(Boolean);
-}
-
-function weekPatternsOverlap(left: string | null, right: string | null) {
-  const leftPattern = normalizeToken(left || "Weekly");
-  const rightPattern = normalizeToken(right || "Weekly");
-  return leftPattern === "weekly" || rightPattern === "weekly" || leftPattern === rightPattern;
-}
-
-function normalizeToken(value: string | null | undefined) {
-  return (value ?? "").trim().toLowerCase();
 }
 
 function quickFixTypeLabel(type: QuickFixSuggestion["type"]) {

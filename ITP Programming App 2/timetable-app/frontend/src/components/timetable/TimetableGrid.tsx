@@ -1,10 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Room, ScheduledRow, TimeSlot, SessionRow } from "../../types";
+import type { AcademicCalendarContext, Room, ScheduledRow, TimeSlot, SessionRow } from "../../types";
 import MoveControls from "./MoveControls";
 import TimetablePlanner from "./TimetablePlanner";
-import { days, type MoveDraft } from "./types";
+import { days, type MoveDraft, type TimetableIssueTone } from "./types";
 import { buildPlannerSlots, duration, groupRowsBySlot, timeToMinutes } from "./timetableUtils";
-import { getSession, updateSession, recheckSchedule } from "../../api/client";
+import { rowOccursInWeek } from "./timetableWeeks";
+import {
+  getAcademicCalendarContext,
+  getCalendarWeeks,
+  getSession,
+  updateSession,
+  recheckSchedule,
+} from "../../api/client";
+import { SCHEDULING_DAY_END_TIME } from "../../schedulingHours";
 
 type Props = {
   rows: ScheduledRow[];
@@ -20,10 +28,16 @@ type Props = {
   availableSlotKeys?: Set<string>;
   softAvailableSlotKeys?: Set<string>;
   blockedSlotKeys?: Set<string>;
+  issueToneBySessionId?: Map<number, TimetableIssueTone>;
+  selectionResetKey?: number;
+  focusWeekNumber?: number | null;
+  focusWeekRequestKey?: number;
   onClickAvailableSlot?: (day: string, startTime: string, endTime: string) => void;
   onBlockedSlot?: (message: string) => void;
   onSelectSession?: (sessionId: number | null) => void;
   scheduleRunId?: number;
+  academicYear?: string | null;
+  trimester?: number | null;
   onRefresh?: () => void;
 };
 
@@ -43,26 +57,45 @@ export default function TimetableGrid({
   availableSlotKeys = new Set(),
   softAvailableSlotKeys = new Set(),
   blockedSlotKeys = new Set(),
+  issueToneBySessionId = new Map(),
+  selectionResetKey = 0,
+  focusWeekNumber,
+  focusWeekRequestKey = 0,
   onClickAvailableSlot,
   onBlockedSlot,
   onSelectSession,
   scheduleRunId,
+  academicYear,
+  trimester,
   onRefresh,
 }: Props) {
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [baseWeekStart] = useState(() => startOfWeek(new Date()));
   const [displayStartTime, setDisplayStartTime] = useState("08:00");
-  const [displayEndTime, setDisplayEndTime] = useState("22:00");
+  const [displayEndTime, setDisplayEndTime] = useState(SCHEDULING_DAY_END_TIME);
+  const [calendarContext, setCalendarContext] = useState<AcademicCalendarContext | null>(null);
   const baseWeekRows = allRows ?? rows;
   const baseWeekNumber = useMemo(() => firstScheduledWeek(baseWeekRows), [baseWeekRows]);
-  const selectedWeekNumber = useMemo(
+  const fallbackWeekNumber = useMemo(
     () => Math.max(1, baseWeekNumber + Math.round((weekStart.getTime() - baseWeekStart.getTime()) / WEEK_MS)),
     [baseWeekNumber, baseWeekStart, weekStart],
   );
-  const visibleRows = useMemo(
-    () => rows.filter((row) => rowOccursInWeek(row, selectedWeekNumber)),
-    [rows, selectedWeekNumber],
-  );
+  const selectedWeekNumber = calendarContext?.week.week_number ?? fallbackWeekNumber;
+  const visibleRows = useMemo(() => {
+    const weeklyRows = rows.filter((row) => rowOccursInWeek(row, selectedWeekNumber));
+    if (!calendarContext) return weeklyRows;
+    if (calendarContext.lessons_blocked) return [];
+    if (scheduleRunId) {
+      const scheduledIds = new Set(
+        calendarContext.occurrences
+          .filter((occurrence) => occurrence.status === "SCHEDULED")
+          .map((occurrence) => occurrence.scheduled_session_id),
+      );
+      return weeklyRows.filter((row) => scheduledIds.has(row.scheduled_session_id));
+    }
+    const holidayDays = new Set(calendarContext.holidays.map((holiday) => holiday.day));
+    return weeklyRows.filter((row) => !holidayDays.has(row.day));
+  }, [calendarContext, rows, scheduleRunId, selectedWeekNumber]);
   const slots = useMemo(
     () => buildPlannerSlots(visibleRows, timeSlots, displayStartTime, displayEndTime),
     [displayEndTime, displayStartTime, timeSlots, visibleRows],
@@ -73,6 +106,40 @@ export default function TimetableGrid({
   const [selectedRowsOverride, setSelectedRowsOverride] = useState<ScheduledRow[] | null>(null);
   const [slotDetailsAttention, setSlotDetailsAttention] = useState(0);
   const [isPlacing, setIsPlacing] = useState(false);
+  const previousSelectionResetKey = useRef(selectionResetKey);
+
+  useEffect(() => {
+    if (!academicYear || !trimester) return;
+    let cancelled = false;
+    void getCalendarWeeks(academicYear, trimester)
+      .then((weeks) => {
+        if (cancelled || !weeks.length) return;
+        const requestedWeek = focusWeekNumber
+          ? weeks.find((week) => week.week_number === focusWeekNumber)
+          : undefined;
+        const targetWeek = requestedWeek ?? weeks.find((week) => week.phase === "STUDY") ?? weeks[0];
+        setWeekStart(startOfWeek(parseDateInput(targetWeek.start_date)));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [academicYear, focusWeekNumber, focusWeekRequestKey, scheduleRunId, trimester]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setCalendarContext(null);
+    void getAcademicCalendarContext(toDateInput(weekStart), scheduleRunId)
+      .then((context) => {
+        if (!cancelled) setCalendarContext(context);
+      })
+      .catch(() => {
+        if (!cancelled) setCalendarContext(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [scheduleRunId, weekStart]);
   const selectedRow = useMemo(
     () =>
       selectedSessionId === null ? null : (visibleRows.find((row) => row.session_id === selectedSessionId) ?? null),
@@ -102,6 +169,12 @@ export default function TimetableGrid({
     setIsPlacing(false);
     onSelectSession?.(null);
   }, [onSelectSession]);
+
+  useEffect(() => {
+    if (previousSelectionResetKey.current === selectionResetKey) return;
+    previousSelectionResetKey.current = selectionResetKey;
+    clearSelection();
+  }, [clearSelection, selectionResetKey]);
 
   useEffect(() => {
     if (selectedSessionId !== null && !visibleRows.some((row) => row.session_id === selectedSessionId)) {
@@ -146,6 +219,7 @@ export default function TimetableGrid({
             grouped={grouped}
             weekStart={weekStart}
             weekNumber={selectedWeekNumber}
+            calendarContext={calendarContext}
             displayStartTime={displayStartTime}
             displayEndTime={displayEndTime}
             onPreviousWeek={() => setWeekStart((current) => addDays(current, -7))}
@@ -163,8 +237,9 @@ export default function TimetableGrid({
             availableSlotKeys={availableSlotKeys}
             softAvailableSlotKeys={softAvailableSlotKeys}
             blockedSlotKeys={blockedSlotKeys}
+            issueToneBySessionId={issueToneBySessionId}
             onSelectSlot={(key, slotRows, options) => {
-              if (blockedSlotKeys?.has(key) && (isPlacing || slotRows.length === 0)) {
+              if (blockedSlotKeys?.has(key)) {
                 onBlockedSlot?.("Cannot move here: this slot creates a hard conflict.");
                 return;
               }
@@ -250,6 +325,7 @@ export default function TimetableGrid({
         grouped={grouped}
         weekStart={weekStart}
         weekNumber={selectedWeekNumber}
+        calendarContext={calendarContext}
         displayStartTime={displayStartTime}
         displayEndTime={displayEndTime}
         onPreviousWeek={() => setWeekStart((current) => addDays(current, -7))}
@@ -258,6 +334,7 @@ export default function TimetableGrid({
         onDisplayStartTimeChange={setDisplayStartTime}
         onDisplayEndTimeChange={setDisplayEndTime}
         onRefresh={onRefresh}
+        issueToneBySessionId={issueToneBySessionId}
       />
 
       <div className="table-wrap">
@@ -329,29 +406,6 @@ function firstScheduledWeek(rows: ScheduledRow[]) {
   return weeks.length ? Math.min(...weeks) : 1;
 }
 
-function rowOccursInWeek(row: ScheduledRow, weekNumber: number) {
-  if (row.start_week && weekNumber < row.start_week) return false;
-  if (row.end_week && weekNumber > row.end_week) return false;
-
-  const customWeeks = parseWeekList(row.custom_weeks);
-  if (customWeeks.length > 0) {
-    return customWeeks.includes(weekNumber);
-  }
-
-  const pattern = (row.week_pattern || "Weekly").trim().toLowerCase();
-  if (pattern === "odd") return weekNumber % 2 === 1;
-  if (pattern === "even") return weekNumber % 2 === 0;
-  return true;
-}
-
-function parseWeekList(value: string | null) {
-  if (!value) return [];
-  return value
-    .split(/[,\s;]+/)
-    .map((item) => Number.parseInt(item, 10))
-    .filter((item) => Number.isFinite(item) && item > 0);
-}
-
 function startOfWeek(date: Date) {
   const next = new Date(date);
   next.setHours(0, 0, 0, 0);
@@ -370,6 +424,13 @@ function parseDateInput(value: string) {
   const [year, month, day] = value.split("-").map((item) => Number.parseInt(item, 10));
   if (!year || !month || !day) return new Date();
   return new Date(year, month - 1, day);
+}
+
+function toDateInput(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function SlotSessionList({

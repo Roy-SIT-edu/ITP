@@ -22,6 +22,13 @@ def test_reproducible_mode_gets_a_longer_solver_budget():
     assert generation_timeout_seconds(True) == 300
 
 
+def test_seeded_time_slots_end_by_6pm(db_session):
+    slots = db_session.query(TimeSlot).all()
+
+    assert slots
+    assert max(slot.end_time for slot in slots) == "18:00"
+
+
 def test_feasible_sample_data_returns_solution(db_session):
     result = CpSatTimetableSolver().solve(
         db_session.query(Session).all(),
@@ -78,6 +85,19 @@ def test_fixed_session_with_no_matching_slot_returns_validation_error(db_session
 
     assert validation["is_valid"] is False
     assert any("No default time slot matches" in error["message"] for error in validation["errors"])
+
+
+def test_fixed_session_after_6pm_returns_cutoff_validation_error(db_session):
+    session = db_session.query(Session).first()
+    session.scheduling_type = "Fixed"
+    session.fixed_day = "Monday"
+    session.fixed_start_time = "18:00"
+    session.fixed_end_time = "19:00"
+
+    validation = ValidationService().validate_latest(db_session)
+
+    assert validation["is_valid"] is False
+    assert any(error["field"] == "Fixed End Time" and "end by 18:00" in error["message"] for error in validation["errors"])
 
 
 def test_fixed_staff_clash_is_reported_before_generation(db_session):
