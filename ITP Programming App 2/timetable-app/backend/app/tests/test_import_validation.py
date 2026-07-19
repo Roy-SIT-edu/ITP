@@ -36,6 +36,30 @@ def test_online_synchronous_delivery_mode_imports_as_online(db_session, tmp_path
     assert validation["is_valid"] is True
 
 
+def test_online_is_rejected_as_a_class_type(db_session, tmp_path):
+    path = write_template(
+        tmp_path / "input.xlsx",
+        [
+            valid_row(
+                **{
+                    "Class Type": "Online",
+                    "Delivery Mode": "Online",
+                    "Campus Mode": "Online",
+                    "Venue Type Required": "Virtual Room",
+                }
+            )
+        ],
+    )
+
+    summary = ImportService().import_input_template(db_session, path)
+
+    assert summary["rows_imported"] == 0
+    assert any(
+        error["field"] == "Class Type" and "cannot be Online" in error["message"]
+        for error in summary["errors"]
+    )
+
+
 def test_blank_source_row_no_falls_back_to_excel_row(db_session, tmp_path):
     path = write_template(tmp_path / "input.xlsx", [valid_row(**{"Source Row No": None})])
 

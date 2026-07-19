@@ -479,6 +479,13 @@ class DatabaseService:
             value = self._validated_column_value(column, value)
             data[column.key] = value
 
+        if config.id in {"requirements", "lab-requirements"}:
+            class_type = (clean_text(data.get("class_type")) or "").lower()
+            if class_type.startswith("online"):
+                raise ValueError(
+                    "Class Type cannot be Online. Use Delivery Mode for online delivery and choose the teaching activity, such as Lecture or Tutorial."
+                )
+
         if config.id == "student-groups":
             programme_code = clean_text(data.pop("programme", None))
             programme = self._lookup_programme(db, programme_code) if programme_code else None

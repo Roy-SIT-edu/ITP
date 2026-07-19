@@ -183,6 +183,31 @@ def _ensure_session_lab_columns(engine) -> None:
     _ensure_column(engine, "sessions", "lab_requirement_id", "INTEGER")
 
 
+def _normalize_online_class_types(engine) -> None:
+    """Move legacy Online activity labels to a real class type.
+
+    Online describes delivery, not the teaching activity. Older sample imports
+    used it in both fields, so normalize those rows during startup.
+    """
+    params = {"replacement": "Lecture", "invalid": "online"}
+    with engine.begin() as connection:
+        for table_name in ("sessions", "lab_requirements"):
+            columns = {
+                row[1]
+                for row in connection.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
+            }
+            if "class_type" not in columns:
+                continue
+            connection.execute(
+                text(
+                    f"UPDATE {table_name} "
+                    "SET class_type = :replacement "
+                    "WHERE lower(trim(class_type)) = :invalid"
+                ),
+                params,
+            )
+
+
 def _drop_column_if_exists(engine, table_name: str, column_name: str) -> None:
     with engine.begin() as connection:
         columns = {row[1] for row in connection.execute(text(f"PRAGMA table_info({table_name})")).fetchall()}
@@ -202,6 +227,7 @@ def _ensure_split_schema(engines: dict[str, object]) -> None:
     _ensure_column(engines["schedule_state"], "schedule_runs", "academic_year", "TEXT")
     _ensure_column(engines["schedule_state"], "schedule_runs", "trimester", "INTEGER")
     _ensure_session_lab_columns(engines["requirements"])
+    _normalize_online_class_types(engines["requirements"])
     _drop_column_if_exists(engines["modules"], "modules", "module_host_key")
     _drop_column_if_exists(engines["staff"], "staff", "staff_host_key")
 

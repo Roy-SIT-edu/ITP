@@ -168,6 +168,12 @@ class ValidationService:
         seen_pairs: set[tuple[str, int, int]] = set()
         for index, left in enumerate(fixed_sessions):
             for right in fixed_sessions[index + 1 :]:
+                # Built-in lab rows are resolved as a separate fixed overlay.
+                # Lab-to-lab overlaps are intentionally handled by
+                # LabOverlapService after generation, not blamed on uploaded
+                # teaching requirements during input validation.
+                if left.is_lab_requirement and right.is_lab_requirement:
+                    continue
                 if not fixed_sessions_conflict(left, right):
                     continue
                 shared_staff = self._shared_staff_ids(left, right)
@@ -218,6 +224,8 @@ class ValidationService:
             even = [session for session in group if normalize_token(session.week_pattern or "Weekly") == "even"]
             for overlapping in [weekly, weekly + odd, weekly + even]:
                 if len(overlapping) < 2:
+                    continue
+                if all(session.is_lab_requirement for session in overlapping):
                     continue
                 key = tuple(sorted(session.id for session in overlapping))
                 if key in seen_groups:

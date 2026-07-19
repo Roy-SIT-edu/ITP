@@ -118,6 +118,71 @@ def test_occurrences_skip_non_teaching_weeks_and_flag_holidays(db_session):
     assert {item.week_number for item in occurrences}.isdisjoint({7, 14, 15})
 
 
+def test_occurrence_sync_clears_rows_from_reused_scheduled_session_id(db_session):
+    session = db_session.query(Session).filter_by(requirement_id="REQ-DEMO-001").one()
+    slot = db_session.query(TimeSlot).filter_by(
+        day="Monday",
+        start_time="09:00",
+        end_time="11:00",
+        week_pattern="Weekly",
+    ).one()
+    room = db_session.query(Room).filter_by(room_code="SR-01").one()
+    service = AcademicCalendarService()
+
+    old_run = ScheduleRun(status="COMPLETED", academic_year="2025/26", trimester=3)
+    db_session.add(old_run)
+    db_session.flush()
+    old_assignment = ScheduledSession(
+        schedule_run_id=old_run.id,
+        session_id=session.id,
+        room_id=room.id,
+        time_slot_id=slot.id,
+        staff_id=session.staff_id,
+        day=slot.day,
+        start_time=slot.start_time,
+        end_time=slot.end_time,
+        week_pattern=slot.week_pattern,
+    )
+    db_session.add(old_assignment)
+    db_session.flush()
+    reused_id = old_assignment.id
+    service.sync_run_occurrences(db_session, old_run)
+    db_session.commit()
+
+    db_session.delete(old_assignment)
+    db_session.commit()
+    assert db_session.query(SessionOccurrence).filter_by(scheduled_session_id=reused_id).count() > 0
+
+    new_run = ScheduleRun(status="COMPLETED", academic_year="2025/26", trimester=3)
+    db_session.add(new_run)
+    db_session.flush()
+    new_assignment = ScheduledSession(
+        schedule_run_id=new_run.id,
+        session_id=session.id,
+        room_id=room.id,
+        time_slot_id=slot.id,
+        staff_id=session.staff_id,
+        day=slot.day,
+        start_time=slot.start_time,
+        end_time=slot.end_time,
+        week_pattern=slot.week_pattern,
+    )
+    db_session.add(new_assignment)
+    db_session.flush()
+    assert new_assignment.id == reused_id
+
+    service.sync_run_occurrences(db_session, new_run)
+
+    assert db_session.query(SessionOccurrence).filter_by(
+        schedule_run_id=old_run.id,
+        scheduled_session_id=reused_id,
+    ).count() == 0
+    assert db_session.query(SessionOccurrence).filter_by(
+        schedule_run_id=new_run.id,
+        scheduled_session_id=reused_id,
+    ).count() > 0
+
+
 def test_context_blocks_recess_assessment_and_break_weeks(db_session):
     service = AcademicCalendarService()
 

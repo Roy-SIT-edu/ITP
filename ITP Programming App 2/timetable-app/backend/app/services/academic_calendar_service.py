@@ -236,6 +236,15 @@ class AcademicCalendarService:
             )
             .all()
         )
+        assignment_ids = [assignment.id for assignment in assignments]
+        if assignment_ids:
+            # SQLite may reuse scheduled-session IDs after a reset. Remove
+            # occurrences left behind by the previous owner of a reused ID so
+            # the uniqueness constraint cannot reject the new timetable.
+            db.query(SessionOccurrence).filter(
+                SessionOccurrence.scheduled_session_id.in_(assignment_ids),
+                SessionOccurrence.schedule_run_id != run.id,
+            ).delete(synchronize_session=False)
         occurrences = []
         for assignment in assignments:
             day_offset = DAY_OFFSETS.get(assignment.day)

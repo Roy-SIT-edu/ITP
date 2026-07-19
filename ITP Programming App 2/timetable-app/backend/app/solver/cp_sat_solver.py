@@ -6,6 +6,8 @@ and return normalized assignment dictionaries for persistence.
 
 from __future__ import annotations
 
+from time import perf_counter
+
 from ortools.sat.python import cp_model
 
 from app.models.room import Room
@@ -71,6 +73,8 @@ class CpSatTimetableSolver:
                 "Fixed hard clashes are present; generated a reviewable timetable with conflict checks.",
             )
 
+        started_at = perf_counter()
+
         # Fresh generation starts with the strict model. Relaxed fallback may
         # expose resource conflicts for review but still preserves fixed times.
         built = self.model_builder.build(sessions, time_slots, rooms, soft_constraint_weights)
@@ -82,7 +86,17 @@ class CpSatTimetableSolver:
                 "message": " ".join(built.no_candidate_reasons),
             }
 
-        result = self._solve_built_model(built, max_seconds, fast_mode, reproducible)
+        remaining_seconds = self._remaining_seconds(started_at, max_seconds)
+        if max_seconds > 0 and remaining_seconds <= 0:
+            return self._greedy_fallback(
+                sessions,
+                time_slots,
+                rooms,
+                soft_constraint_weights,
+                "Solver budget was exhausted while preparing the model; generated a reviewable timetable instead.",
+            )
+
+        result = self._solve_built_model(built, remaining_seconds, fast_mode, reproducible)
         if result["solver_status"] in {"OPTIMAL", "FEASIBLE"}:
             return result
 
@@ -105,7 +119,21 @@ class CpSatTimetableSolver:
                 soft_constraint_weights,
                 relax_hard_conflicts=True,
             )
-            relaxed_result = self._solve_built_model(relaxed, max_seconds, fast_mode=True, reproducible=reproducible)
+            remaining_seconds = self._remaining_seconds(started_at, max_seconds)
+            if max_seconds > 0 and remaining_seconds <= 0:
+                return self._greedy_fallback(
+                    sessions,
+                    time_slots,
+                    rooms,
+                    soft_constraint_weights,
+                    "Solver budget was exhausted; generated a reviewable timetable with conflict checks.",
+                )
+            relaxed_result = self._solve_built_model(
+                relaxed,
+                remaining_seconds,
+                fast_mode=True,
+                reproducible=reproducible,
+            )
             if relaxed_result["solver_status"] in {"OPTIMAL", "FEASIBLE"}:
                 return relaxed_result
             return self._greedy_fallback(
@@ -117,6 +145,12 @@ class CpSatTimetableSolver:
             )
 
         return result
+
+    @staticmethod
+    def _remaining_seconds(started_at: float, max_seconds: float) -> float:
+        if max_seconds <= 0:
+            return max_seconds
+        return max(max_seconds - (perf_counter() - started_at), 0.0)
 
     @staticmethod
     def _configured_solver(max_seconds: float, fast_mode: bool, reproducible: bool) -> cp_model.CpSolver:

@@ -1,0 +1,39 @@
+{
+  "artifact": "realistic_validated_20_programme_input_template.xlsx",
+  "sha256": "B1FC9B7FBA3F94422F05B324DDC7ED287CD28092D18CBC4EE6D0A620BFC70279",
+  "workbook": {
+    "programme_count": 20,
+    "minimum_distinct_modules_per_programme": 5,
+    "module_count": 100,
+    "input_requirement_rows": 225,
+    "invalid_online_or_lab_class_type_rows": 0,
+    "lab_venue_rows": 0,
+    "p51_p55_rows": 0,
+    "formula_error_count": 0
+  },
+  "final_import_validation": {
+    "rows_imported": 225,
+    "rows_failed": 0,
+    "validation_errors": 0,
+    "validation_warnings": 0,
+    "student_groups_created": 0,
+    "modules_created": 0
+  },
+  "template_only_schedule": {
+    "solver_status": "FEASIBLE",
+    "uploaded_requirements_scheduled": 225,
+    "hard_violation_count": 0,
+    "stored_hard_conflict_count": 0,
+    "post_validation_hard_count": 0
+  },
+  "combined_with_fixed_labs_schedule": {
+    "solver_status": "FEASIBLE",
+    "uploaded_requirements_scheduled": 225,
+    "active_fixed_lab_session_count": 236,
+    "hard_violation_count": 0,
+    "stored_hard_conflict_count": 0,
+    "post_validation_hard_count": 0,
+    "excluded_fixed_lab_session_count": 30,
+    "note": "The application's lab-overlap resolver excluded fixed lab rows from the final view; a separate fixed-labs-only baseline also required exclusions. No uploaded teaching requirement was excluded."
+  }
+}

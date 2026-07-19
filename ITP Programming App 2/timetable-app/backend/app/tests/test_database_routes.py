@@ -6,6 +6,7 @@ import pandas as pd
 from app import models  # noqa: F401
 from app.database import Base, create_db_and_seed, create_session_factory, dispose_engines, get_db
 from app.main import app
+from app.models.lab_requirement import LabRequirement
 from app.models.programme import Programme
 from app.models.room import Room
 from app.models.schedule_run import ScheduleRun
@@ -93,6 +94,39 @@ def test_split_database_files_are_created_and_seeded(tmp_path):
     try:
         assert db.query(Room).count() == 0
         assert db.query(Staff).count() == 0
+    finally:
+        db.close()
+        dispose_engines(engines)
+
+
+def test_split_database_startup_normalizes_online_class_types(tmp_path):
+    data_dir = tmp_path / "data"
+    missing_legacy = tmp_path / "missing.db"
+    create_db_and_seed(data_dir=data_dir, legacy_database_path=missing_legacy)
+
+    SessionLocal, engines = create_session_factory(data_dir)
+    db = SessionLocal()
+    try:
+        db.add(Session(requirement_id="LEGACY-ONLINE", class_type="Online", delivery_mode="Online"))
+        db.add(
+            LabRequirement(
+                requirement_id="LEGACY-LAB-ONLINE",
+                module_code="LEGACY1001",
+                class_type="Online",
+                delivery_mode="Online",
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+        dispose_engines(engines)
+
+    create_db_and_seed(data_dir=data_dir, legacy_database_path=missing_legacy)
+    SessionLocal, engines = create_session_factory(data_dir)
+    db = SessionLocal()
+    try:
+        assert db.query(Session).filter_by(requirement_id="LEGACY-ONLINE").one().class_type == "Lecture"
+        assert db.query(LabRequirement).filter_by(requirement_id="LEGACY-LAB-ONLINE").one().class_type == "Lecture"
     finally:
         db.close()
         dispose_engines(engines)
@@ -186,6 +220,24 @@ def test_staff_database_uses_staff_id_without_host_key_column(tmp_path):
 
     frame = pd.read_excel(BytesIO(workbook_response.content))
     assert "staff_host_key" not in frame.columns
+
+
+def test_database_requirements_reject_online_as_class_type(tmp_path):
+    db, engine = _route_db(tmp_path)
+    client = _client_for(db)
+    try:
+        requirement = client.get("/api/database/requirements").json()[0]
+        response = client.put(
+            f"/api/database/requirements/{requirement['id']}",
+            json={"class_type": "Online"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+        db.close()
+        engine.dispose()
+
+    assert response.status_code == 400
+    assert "Class Type cannot be Online" in response.json()["detail"]
 
 
 def test_module_database_has_no_host_key_column(tmp_path):

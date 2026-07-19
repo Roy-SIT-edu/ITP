@@ -41,6 +41,30 @@ class ScheduleService:
         self.lab_requirement_service = LabRequirementService()
         self.lab_overlap_service = LabOverlapService()
 
+    @staticmethod
+    def fail_interrupted_runs(db: DbSession) -> int:
+        """Close runs that could not have survived a backend restart."""
+
+        interrupted = db.query(ScheduleRun).filter(ScheduleRun.status == "RUNNING").all()
+        for run in interrupted:
+            run.status = "FAILED"
+            run.solver_status = "INTERRUPTED"
+            run.message = "Schedule generation was interrupted before completion. Please generate again."
+        if interrupted:
+            db.commit()
+        return len(interrupted)
+
+    @staticmethod
+    def _mark_run_failed(db: DbSession, run_id: int, exc: Exception) -> None:
+        db.rollback()
+        failed_run = db.query(ScheduleRun).filter_by(id=run_id).one_or_none()
+        if failed_run is None:
+            return
+        failed_run.status = "FAILED"
+        failed_run.solver_status = "ERROR"
+        failed_run.message = f"Schedule generation failed: {exc}"[:1000]
+        db.commit()
+
     def generate(
         self,
         db: DbSession,
@@ -75,15 +99,19 @@ class ScheduleService:
         rooms = db.query(Room).order_by(Room.room_code).all()
         soft_weights = self.priority_service.weights(db)
 
-        result = self.solver.solve(
-            sessions,
-            time_slots,
-            rooms,
-            soft_constraint_weights=soft_weights,
-            max_seconds=effective_timeout,
-            fast_mode=fast_mode,
-            reproducible=reproducible,
-        )
+        try:
+            result = self.solver.solve(
+                sessions,
+                time_slots,
+                rooms,
+                soft_constraint_weights=soft_weights,
+                max_seconds=effective_timeout,
+                fast_mode=fast_mode,
+                reproducible=reproducible,
+            )
+        except Exception as exc:
+            self._mark_run_failed(db, run_id, exc)
+            raise
         run = db.query(ScheduleRun).filter_by(id=run_id).one()
         run.solver_status = result["solver_status"]
         run.soft_score = result["soft_score"]
@@ -113,34 +141,38 @@ class ScheduleService:
                 "message": run.message,
             }
 
-        for assignment in result["assignments"]:
-            db.add(
-                ScheduledSession(
-                    schedule_run_id=run_id,
-                    session_id=assignment["session_id"],
-                    room_id=assignment["room_id"],
-                    time_slot_id=assignment["time_slot_id"],
-                    staff_id=assignment["staff_id"],
-                    day=assignment["day"],
-                    start_time=assignment["start_time"],
-                    end_time=assignment["end_time"],
-                    week_pattern=assignment["week_pattern"],
+        try:
+            for assignment in result["assignments"]:
+                db.add(
+                    ScheduledSession(
+                        schedule_run_id=run_id,
+                        session_id=assignment["session_id"],
+                        room_id=assignment["room_id"],
+                        time_slot_id=assignment["time_slot_id"],
+                        staff_id=assignment["staff_id"],
+                        day=assignment["day"],
+                        start_time=assignment["start_time"],
+                        end_time=assignment["end_time"],
+                        week_pattern=assignment["week_pattern"],
+                    )
                 )
-            )
-        db.flush()
+            db.flush()
 
-        lab_overlap_resolution = self.lab_overlap_service.resolve_run(db, run_id)
-        check = self.constraint_service.check_and_store(db, run_id, soft_weights)
-        run.hard_violation_count = check["hard_violation_count"]
-        run.soft_score = int(run.soft_score or 0) + check["weighted_soft_score"]
-        run.status = "COMPLETED" if run.hard_violation_count == 0 else "COMPLETED_WITH_CONFLICTS"
-        if lab_overlap_resolution["excluded_session_count"]:
-            run.message = (
-                f"{run.message} Excluded {lab_overlap_resolution['excluded_session_count']} fixed lab session(s) "
-                f"from the final timetable to resolve {lab_overlap_resolution['detected_pair_count']} overlap pair(s)."
-            )
-        AcademicCalendarService().sync_run_occurrences(db, run)
-        db.commit()
+            lab_overlap_resolution = self.lab_overlap_service.resolve_run(db, run_id)
+            check = self.constraint_service.check_and_store(db, run_id, soft_weights)
+            run.hard_violation_count = check["hard_violation_count"]
+            run.soft_score = int(run.soft_score or 0) + check["weighted_soft_score"]
+            run.status = "COMPLETED" if run.hard_violation_count == 0 else "COMPLETED_WITH_CONFLICTS"
+            if lab_overlap_resolution["excluded_session_count"]:
+                run.message = (
+                    f"{run.message} Excluded {lab_overlap_resolution['excluded_session_count']} fixed lab session(s) "
+                    f"from the final timetable to resolve {lab_overlap_resolution['detected_pair_count']} overlap pair(s)."
+                )
+            AcademicCalendarService().sync_run_occurrences(db, run)
+            db.commit()
+        except Exception as exc:
+            self._mark_run_failed(db, run_id, exc)
+            raise
 
         final_scheduled_count = len(result["assignments"]) - lab_overlap_resolution["excluded_session_count"]
         return {

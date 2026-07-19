@@ -253,6 +253,14 @@ class RequirementInputService:
             )
 
         class_type = self._required_text(row, source_row_no, "Class Type", errors)
+        if normalize_token(class_type).startswith("online"):
+            errors.append(
+                self._issue(
+                    source_row_no,
+                    "Class Type",
+                    "Class Type cannot be Online. Use Delivery Mode for online delivery and choose the teaching activity, such as Lecture or Tutorial.",
+                )
+            )
         delivery_mode = self._delivery_mode(row, source_row_no, errors)
         campus_mode = self._campus_mode(row, source_row_no, errors, delivery_mode)
         venue_type = self._required_text(row, source_row_no, "Venue Type Required", errors)

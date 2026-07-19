@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.database import create_db_and_seed
+from app.database import SessionLocal, create_db_and_seed
 from app.routes import (
     calendar_routes,
     data_routes,
@@ -22,6 +22,7 @@ from app.routes import (
     upload_routes,
     validation_routes,
 )
+from app.services.schedule_service import ScheduleService
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 
@@ -29,6 +30,11 @@ APP_ROOT = Path(__file__).resolve().parents[1]
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     create_db_and_seed()
+    db = SessionLocal()
+    try:
+        ScheduleService.fail_interrupted_runs(db)
+    finally:
+        db.close()
     yield
 
 

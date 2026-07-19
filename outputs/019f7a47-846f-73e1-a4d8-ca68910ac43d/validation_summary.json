@@ -1,0 +1,93 @@
+{
+  "input_row_count": 100,
+  "programme_count": 20,
+  "programmes": [
+    "AAI",
+    "ACC",
+    "ASE",
+    "ATM",
+    "BAC",
+    "CEG",
+    "CVE",
+    "DSC",
+    "EDE",
+    "EEE",
+    "EPE",
+    "ESE",
+    "FDT",
+    "ICT",
+    "MEC",
+    "NUR",
+    "RSE",
+    "SBE",
+    "SLT",
+    "TCE"
+  ],
+  "modules_per_programme": {
+    "AAI": 5,
+    "ACC": 5,
+    "ASE": 5,
+    "ATM": 5,
+    "BAC": 5,
+    "CEG": 5,
+    "CVE": 5,
+    "DSC": 5,
+    "EDE": 5,
+    "EEE": 5,
+    "EPE": 5,
+    "ESE": 5,
+    "FDT": 5,
+    "ICT": 5,
+    "MEC": 5,
+    "NUR": 5,
+    "RSE": 5,
+    "SBE": 5,
+    "SLT": 5,
+    "TCE": 5
+  },
+  "class_types": [
+    "Lecture",
+    "Tutorial"
+  ],
+  "delivery_modes": [
+    "Face-to-face"
+  ],
+  "venue_types": [
+    "Lectorial",
+    "Seminar Room"
+  ],
+  "fixed_uploaded_rows": 0,
+  "online_class_type_rows": 0,
+  "lab_class_type_rows": 0,
+  "lab_venue_rows": 0,
+  "verification": {
+    "import": {
+      "rows_read": 100,
+      "rows_imported": 100,
+      "rows_failed": 0
+    },
+    "saved_data_validation": {
+      "is_valid": true,
+      "error_count": 0,
+      "warning_count": 0
+    },
+    "coverage": {
+      "programme_count": 20,
+      "minimum_distinct_modules_per_programme": 5,
+      "class_types": [
+        "Lecture",
+        "Tutorial"
+      ],
+      "delivery_modes": [
+        "Face-to-face"
+      ]
+    },
+    "schedule_generation": {
+      "solver_status": "OPTIMAL",
+      "hard_violation_count": 0,
+      "soft_warning_count": 23,
+      "excluded_lab_session_count": 31,
+      "schedule_validation_hard_count": 0
+    }
+  }
+}

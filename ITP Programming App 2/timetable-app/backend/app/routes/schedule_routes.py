@@ -61,6 +61,7 @@ def generate_schedule(
             db,
             academic_year=data.academic_year,
             trimester=data.trimester,
+            fast_mode=True,
             reproducible=mode == "reproducible",
         )
     except ValueError as exc:

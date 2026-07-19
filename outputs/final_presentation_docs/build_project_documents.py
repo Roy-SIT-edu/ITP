@@ -423,7 +423,7 @@ def technical_breakdown():
         ["Export Column", "Mapping Logic"],
         [
             ["Module", "Module code from the scheduled session."],
-            ["Class Type", "Lecture, Tutorial, Laboratory, Online, Workshop, etc."],
+            ["Class Type", "Teaching activity such as Lecture, Tutorial, Laboratory, or Workshop. Online belongs under Delivery Mode."],
             ["Template", "Grouped template number based on module, class type, staff, time, and teaching weeks."],
             ["Group", "All, L1, T1, W1, or generated group label depending on class type and cohort coverage."],
             ["Day / Start / End", "Short day label and compact 24-hour time strings such as Mon, 0900, 1100."],

@@ -131,7 +131,7 @@ activity_patterns = [
         "class_size": 30,
     },
     {
-        "class_type": "Online",
+        "class_type": "Lecture",
         "session_count": 1,
         "duration_hours": 1,
         "sessions_per_week": 1,
@@ -324,7 +324,7 @@ common_clusters = [
         "module": "UCS1001",
         "programmes": ["AAI", "ICT", "DSC", "CEG"],
         "shared_id": "COMMON-UCS1001-DIGITAL",
-        "class_type": "Online",
+        "class_type": "Lecture",
         "delivery_mode": "Online",
         "venue": "Virtual",
         "campus": "Virtual",
@@ -370,7 +370,7 @@ for cluster_index, cluster in enumerate(common_clusters, start=1):
     pattern = {
         "class_type": cluster["class_type"],
         "session_count": 1,
-        "duration_hours": 2 if cluster["class_type"] != "Online" else 1,
+        "duration_hours": 1 if cluster["delivery_mode"] == "Online" else 2,
         "sessions_per_week": 1,
         "delivery_mode": cluster["delivery_mode"],
         "venue": cluster["venue"],

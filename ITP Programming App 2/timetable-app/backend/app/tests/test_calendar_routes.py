@@ -3,6 +3,7 @@
 from app.database import get_db
 from app.main import app
 from app.models.schedule_run import ScheduleRun
+from app.services.schedule_service import ScheduleService
 from fastapi.testclient import TestClient
 
 
@@ -57,6 +58,28 @@ def test_generation_requires_and_persists_selected_planning_period(db_session):
         assert (run.academic_year, run.trimester) == ("2026/27", 1)
     finally:
         app.dependency_overrides.clear()
+
+
+def test_generation_api_stops_after_first_feasible_schedule(db_session, monkeypatch):
+    captured = {}
+
+    def fake_generate(self, db, **kwargs):
+        captured.update(kwargs)
+        return {"solver_status": "FEASIBLE", "schedule_run_id": 1}
+
+    monkeypatch.setattr(ScheduleService, "generate", fake_generate)
+    client = _client_for(db_session)
+    try:
+        response = client.post(
+            "/api/schedules/generate?mode=reproducible",
+            json={"academic_year": "2026/27", "trimester": 1},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert captured["fast_mode"] is True
+    assert captured["reproducible"] is True
 
 
 def test_calendar_week_and_holiday_overrides_are_editable(db_session):

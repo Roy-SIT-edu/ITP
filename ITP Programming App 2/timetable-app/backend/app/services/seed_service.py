@@ -462,7 +462,7 @@ def seed_sample_sessions(db: DbSession) -> None:
             "module": modules["UCS1001"],
             "group": groups["DSC Y1 P1"],
             "staff": staff["S003"],
-            "class_type": "Online",
+            "class_type": "Lecture",
             "delivery_mode": "Online",
             "venue_type_required": "virtual",
             "duration_minutes": 120,

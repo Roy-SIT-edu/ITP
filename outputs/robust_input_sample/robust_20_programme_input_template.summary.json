@@ -28,7 +28,6 @@
   "class_types": [
     "Laboratory",
     "Lecture",
-    "Online",
     "Tutorial",
     "Workshop"
   ],

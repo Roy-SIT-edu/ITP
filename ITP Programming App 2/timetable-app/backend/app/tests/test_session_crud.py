@@ -84,6 +84,31 @@ def test_create_session(tmp_path):
     db.close()
 
 
+def test_create_session_rejects_online_as_class_type(tmp_path):
+    db = _route_db(tmp_path)
+    client = _client_for(db)
+
+    try:
+        response = client.post(
+            "/api/sessions",
+            json=_valid_payload(
+                class_type="Online",
+                delivery_mode="Online",
+                campus_mode="Virtual",
+                venue_type_required="virtual",
+            ),
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 400
+    assert any(
+        error["field"] == "Class Type" and "cannot be Online" in error["message"]
+        for error in response.json()["detail"]
+    )
+    db.close()
+
+
 def test_get_session_by_id(tmp_path):
     db = _route_db(tmp_path)
     client = _client_for(db)
