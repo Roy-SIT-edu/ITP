@@ -90,10 +90,42 @@ function Get-SystemPython {
     throw "A supported Python runtime was not found. Install Python 3.10-3.14 from https://www.python.org/downloads/ and enable 'Add python.exe to PATH'."
 }
 
+function Refresh-PathFromRegistry {
+    $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $combined = @()
+    if ($machinePath) { $combined += $machinePath.Split(";", [StringSplitOptions]::RemoveEmptyEntries) }
+    if ($userPath) { $combined += $userPath.Split(";", [StringSplitOptions]::RemoveEmptyEntries) }
+    [Environment]::SetEnvironmentVariable("Path", ($combined -join ";"), "Process")
+}
+
+function Install-NodeRuntime {
+    $winget = Get-Command "winget" -ErrorAction SilentlyContinue
+    if (-not $winget) {
+        throw "Node.js was not found and winget is not available to install it automatically.`nInstall Node.js 22 LTS manually from https://nodejs.org/ (enable 'Add to PATH'), then run this launcher again."
+    }
+
+    Write-Host ""
+    Write-Host "Node.js was not found. Attempting automatic installation via winget..." -ForegroundColor Yellow
+    Write-Host ""
+
+    & $winget.Source install --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        throw "winget failed to install Node.js (exit code $LASTEXITCODE).`nInstall Node.js 22 LTS manually from https://nodejs.org/ (enable 'Add to PATH'), then run this launcher again."
+    }
+
+    Write-Host "Node.js installed successfully. Refreshing PATH..." -ForegroundColor Green
+    Refresh-PathFromRegistry
+}
+
 function Assert-NodeRuntime {
     $node = Get-Command "node" -ErrorAction SilentlyContinue
     if (-not $node) {
-        throw "Node.js was not found. Install Node.js 20.19+ or 22.12+ from https://nodejs.org/ and run this launcher again."
+        Install-NodeRuntime
+        $node = Get-Command "node" -ErrorAction SilentlyContinue
+        if (-not $node) {
+            throw "Node.js was installed but is still not found on PATH.`nClose and reopen a new terminal, then run this launcher again."
+        }
     }
 
     $version = & $node.Source --version 2>&1
@@ -119,7 +151,15 @@ function Get-NpmCommand {
         $npm = Get-Command "npm" -ErrorAction SilentlyContinue
     }
     if (-not $npm) {
-        throw "npm was not found. Reinstall Node.js 20+ with npm included, then run this launcher again."
+        # npm should have been installed with Node.js; refresh PATH and retry
+        Refresh-PathFromRegistry
+        $npm = Get-Command "npm.cmd" -ErrorAction SilentlyContinue
+        if (-not $npm) {
+            $npm = Get-Command "npm" -ErrorAction SilentlyContinue
+        }
+        if (-not $npm) {
+            throw "npm was not found. Reinstall Node.js 20+ with npm included, then run this launcher again."
+        }
     }
     return $npm.Source
 }
