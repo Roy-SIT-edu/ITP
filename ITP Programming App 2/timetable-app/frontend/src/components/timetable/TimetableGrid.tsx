@@ -32,6 +32,7 @@ type Props = {
   selectionResetKey?: number;
   focusWeekNumber?: number | null;
   focusWeekRequestKey?: number;
+  activeSessionId?: number | null;
   onClickAvailableSlot?: (day: string, startTime: string, endTime: string) => void;
   onBlockedSlot?: (message: string) => void;
   onSelectSession?: (sessionId: number | null) => void;
@@ -61,6 +62,7 @@ export default function TimetableGrid({
   selectionResetKey = 0,
   focusWeekNumber,
   focusWeekRequestKey = 0,
+  activeSessionId = null,
   onClickAvailableSlot,
   onBlockedSlot,
   onSelectSession,
@@ -102,6 +104,13 @@ export default function TimetableGrid({
   );
   const grouped = useMemo(() => groupRowsBySlot(visibleRows, slots), [visibleRows, slots]);
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (activeSessionId !== undefined) {
+      setSelectedSessionId(activeSessionId);
+    }
+  }, [activeSessionId]);
+
   const [selectedSlotKey, setSelectedSlotKey] = useState<string | null>(null);
   const [selectedRowsOverride, setSelectedRowsOverride] = useState<ScheduledRow[] | null>(null);
   const [slotDetailsAttention, setSlotDetailsAttention] = useState(0);
@@ -142,8 +151,8 @@ export default function TimetableGrid({
   }, [scheduleRunId, weekStart]);
   const selectedRow = useMemo(
     () =>
-      selectedSessionId === null ? null : (visibleRows.find((row) => row.session_id === selectedSessionId) ?? null),
-    [visibleRows, selectedSessionId],
+      selectedSessionId === null ? null : (rows.find((row) => row.session_id === selectedSessionId) ?? null),
+    [rows, selectedSessionId],
   );
   const selectedSlotRows = useMemo(
     () => selectedRowsOverride ?? grouped.get(selectedSlotKey ?? "") ?? [],
@@ -177,7 +186,7 @@ export default function TimetableGrid({
   }, [clearSelection, selectionResetKey]);
 
   useEffect(() => {
-    if (selectedSessionId !== null && !visibleRows.some((row) => row.session_id === selectedSessionId)) {
+    if (selectedSessionId !== null && !rows.some((row) => row.session_id === selectedSessionId)) {
       clearSelection();
       return;
     }
@@ -185,7 +194,7 @@ export default function TimetableGrid({
       setSelectedSlotKey(null);
       setSelectedRowsOverride(null);
     }
-  }, [clearSelection, grouped, visibleRows, selectedSessionId, selectedSlotKey]);
+  }, [clearSelection, grouped, rows, selectedSessionId, selectedSlotKey]);
 
   useEffect(() => {
     if (selectedSessionId === null || isPlacing) return;
@@ -598,7 +607,7 @@ function SelectedSessionEditor({
     setErrorDetails(null);
     try {
       if (isSessionDirty) {
-        await updateSession(row.session_id, sessionData);
+        await updateSession(row.session_id, sessionData, true);
       }
 
       const hasDraft = !!moveDrafts[row.session_id];
@@ -713,7 +722,7 @@ function SelectedSessionEditor({
                   }}
                 >
                   <option value="">-- Select --</option>
-                  <option value="Standard">Standard</option>
+                  <option value="Flexible">Flexible</option>
                   <option value="Fixed">Fixed</option>
                 </select>
               </label>
@@ -774,22 +783,19 @@ function SelectedSessionEditor({
 
               <label className="move-field">
                 <span>Room</span>
-                <input
-                  list={`room-options-${row.session_id}`}
+                <select
                   value={draft.room_code}
                   onChange={(e) => updateMove({ room_code: e.target.value })}
-                  placeholder="Select a room"
-                />
+                >
+                  <option value="">-- Select Room --</option>
+                  {rooms.map((room) => (
+                    <option key={room.id} value={room.room_code}>
+                      {room.room_code}
+                    </option>
+                  ))}
+                </select>
               </label>
             </div>
-
-            <datalist id={`room-options-${row.session_id}`}>
-              {rooms.map((room) => (
-                <option key={room.id} value={room.room_code}>
-                  {room.room_code}
-                </option>
-              ))}
-            </datalist>
           </div>
         )}
       </div>

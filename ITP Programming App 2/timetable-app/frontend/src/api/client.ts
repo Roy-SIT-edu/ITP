@@ -359,8 +359,9 @@ export function createSession(data: Omit<SessionRow, "id">) {
   });
 }
 
-export function updateSession(id: number, data: Partial<SessionRow>) {
-  return request<SessionRow>(`/api/sessions/${id}`, {
+export function updateSession(id: number, data: Partial<SessionRow>, preserveSchedule = false) {
+  const url = preserveSchedule ? `/api/sessions/${id}?preserve_schedule=true` : `/api/sessions/${id}`;
+  return request<SessionRow>(url, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),

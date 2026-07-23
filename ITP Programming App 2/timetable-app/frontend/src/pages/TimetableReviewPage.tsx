@@ -1047,6 +1047,7 @@ export default function TimetableReviewPage() {
               selectionResetKey={selectionResetKey}
               focusWeekNumber={weekFocusRequest?.weekNumber}
               focusWeekRequestKey={weekFocusRequest?.key}
+              activeSessionId={activeSessionId}
               onClickAvailableSlot={handleConflictMove}
               onBlockedSlot={(message) => setError(message)}
               onSelectSession={(sessionId) => setActiveSessionId(sessionId)}

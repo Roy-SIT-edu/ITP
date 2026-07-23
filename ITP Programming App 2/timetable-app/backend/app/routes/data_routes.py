@@ -236,7 +236,12 @@ def reset_sessions(db: DbSession = Depends(get_db)):
 
 
 @router.put("/sessions/{session_id}")
-def update_session(session_id: int, data: SessionInput, db: DbSession = Depends(get_db)):
+def update_session(
+    session_id: int, 
+    data: SessionInput, 
+    preserve_schedule: bool = False, 
+    db: DbSession = Depends(get_db)
+):
     session = db.query(Session).filter_by(id=session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -248,7 +253,8 @@ def update_session(session_id: int, data: SessionInput, db: DbSession = Depends(
         raise validation_http_error(exc) from exc
 
     service.apply_data(session, session_data)
-    clear_schedule_state(db)
+    if not preserve_schedule:
+        clear_schedule_state(db)
     db.commit()
     db.refresh(session)
     return session_to_dict(session)
