@@ -545,6 +545,7 @@ def test_schedule_generation_still_reads_core_data_after_split(tmp_path):
     try:
         result = ScheduleService().generate(db, academic_year="2025/26", trimester=3)
         assert result["solver_status"] == "INFEASIBLE"
+        assert result["solver_method"] == "strict"
         assert result["message"] == "No sessions are available to schedule."
         assert result["soft_score"] == 0
         assert result["quality"]["label"] == "No Schedule"
@@ -564,6 +565,7 @@ def test_dashboard_reports_latest_scheduled_coverage(tmp_path):
         )
         assert generation.status_code == 200
         assert generation.json()["generation_mode"] == "reproducible"
+        assert generation.json()["solver_method"] == "strict"
         assert generation.json()["solver_timeout_seconds"] == 300
 
         response = client.get("/api/dashboard")

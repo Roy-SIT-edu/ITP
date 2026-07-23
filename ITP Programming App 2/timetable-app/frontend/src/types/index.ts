@@ -198,6 +198,7 @@ export type ScheduleGenerateResult = {
   trimester: number;
   source_schedule_run_id?: number;
   solver_status: string;
+  solver_method?: "strict" | "relaxed" | "greedy";
   hard_violation_count: number;
   remaining_hard_violation_count?: number;
   moved_session_count?: number;

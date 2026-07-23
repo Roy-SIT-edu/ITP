@@ -48,6 +48,7 @@ def test_strict_and_relaxed_solves_share_one_total_budget(monkeypatch):
     result = solver.solve([Session(id=1)], [], [], max_seconds=100)
 
     assert result["solver_status"] == "FEASIBLE"
+    assert result["solver_method"] == "relaxed"
     assert solve_budgets == [90.0, 75.0]
 
 
@@ -136,6 +137,7 @@ def test_feasible_sample_data_returns_solution(db_session):
     )
 
     assert result["solver_status"] in {"FEASIBLE", "OPTIMAL"}
+    assert result["solver_method"] == "strict"
     assert len(result["assignments"]) == db_session.query(Session).count()
 
 
@@ -167,6 +169,7 @@ def test_unavoidable_resource_clash_still_returns_reviewable_schedule(db_session
     result = CpSatTimetableSolver().solve(sessions, [slot], [room], max_seconds=5)
 
     assert result["solver_status"] in {"FEASIBLE", "OPTIMAL"}
+    assert result["solver_method"] == "relaxed"
     assert len(result["assignments"]) == 2
     assert {assignment["room_id"] for assignment in result["assignments"]} == {room.id}
     assert {assignment["time_slot_id"] for assignment in result["assignments"]} == {slot.id}

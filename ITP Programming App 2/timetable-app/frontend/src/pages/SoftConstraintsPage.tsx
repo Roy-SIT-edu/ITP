@@ -18,6 +18,7 @@ import InlineActivity from "../components/InlineActivity";
 import { notifyWorkflowProgressChange } from "../components/WorkflowProgress";
 import { estimateGenerationSeconds, getGenerationMode, rememberGenerationSeconds } from "../generationMode";
 import { useSessionState } from "../sessionState";
+import { solverMethodNotice } from "../solverMethod";
 import { rankSoftPriorities } from "../softPriorities";
 import type { AcademicYearSummary, ScheduleGenerateResult, SoftConstraintPriority } from "../types";
 
@@ -137,7 +138,7 @@ export default function SoftConstraintsPage() {
       setGenerationCompleting(true);
       await new Promise((resolve) => window.setTimeout(resolve, COMPLETION_ANIMATION_MS));
       setGenerationResult(result);
-      setSuccess(result.message);
+      setSuccess(solverMethodNotice(result));
       notifyWorkflowProgressChange();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed");

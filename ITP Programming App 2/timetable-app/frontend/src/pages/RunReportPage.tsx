@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   Clock3,
   Download,
-  FileText,
   FlaskConical,
   History,
   RefreshCw,
@@ -17,6 +16,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getScheduleReport, scheduleReportPdfUrl } from "../api/client";
+import timetableSchedulerLogo from "../assets/timetable-scheduler-logo.png";
 import StatusBadge from "../components/StatusBadge";
 import type { ReportBreakdownItem, ReportSession, ReportWorkloadItem, ScheduleReport } from "../types";
 import { consolidateReportConflicts, type ConsolidatedConflictGroup } from "./reportConflictGrouping";
@@ -100,11 +100,8 @@ export default function RunReportPage() {
     <div className="run-report-page">
       <header className="report-topbar">
         <div className="report-topbar-brand">
-          <FileText size={21} />
-          <div>
-            <strong>Timetable Scheduler</strong>
-            <span>Administration report</span>
-          </div>
+          <img alt="Timetable Scheduler" className="report-brand-logo" src={timetableSchedulerLogo} />
+          <span>Administration report</span>
         </div>
         <div className="report-actions">
           <a className="button secondary" href="#review">

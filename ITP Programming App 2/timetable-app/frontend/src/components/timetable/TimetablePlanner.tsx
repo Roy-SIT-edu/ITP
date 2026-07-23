@@ -31,7 +31,7 @@ type Props = {
   issueToneBySessionId?: Map<number, TimetableIssueTone>;
 };
 
-const HOUR_HEIGHT = 64;
+const HOUR_HEIGHT = 72;
 const MAX_DETAILED_LANES = 2;
 const MAX_DETAILED_EVENTS_PER_SLOT = 2;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -95,7 +95,6 @@ export default function TimetablePlanner({
   const rangeEnd = slots[slots.length - 1]
     ? timeToMinutes(slots[slots.length - 1].end_time)
     : timeToMinutes(displayEndTime);
-  const terminalTime = slots[slots.length - 1]?.end_time ?? displayEndTime;
   const calendarHeight = Math.max(HOUR_HEIGHT, ((rangeEnd - rangeStart) / 60) * HOUR_HEIGHT);
   const dayHeadings = displayDays.map((day) => {
     const date = addDays(safeWeekStart, days.indexOf(day));
@@ -243,13 +242,6 @@ export default function TimetablePlanner({
               {formatTime(slot.start_time, showAmPm)}
             </div>
           ))}
-          <div
-            aria-label={`Timetable ends at ${formatTime(terminalTime, showAmPm)}`}
-            className="calendar-time-label calendar-time-label-terminal"
-            data-testid="calendar-terminal-time"
-          >
-            {formatTime(terminalTime, showAmPm)}
-          </div>
         </div>
 
         {dayHeadings.map(({ day, holiday }) => (

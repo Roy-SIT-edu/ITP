@@ -91,7 +91,7 @@ describe("TimetableGrid session selection", () => {
   it("shows 6:00 PM as the timetable endpoint without adding a later slot", () => {
     render(<TimetableGrid rows={[row]} />);
 
-    expect(screen.getByTestId("calendar-terminal-time")).toHaveTextContent("6:00PM");
+    expect(screen.queryByTestId("calendar-terminal-time")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Monday 6:00PM slot")).not.toBeInTheDocument();
   });
 
@@ -102,13 +102,7 @@ describe("TimetableGrid session selection", () => {
     ]);
 
     render(
-      <TimetableGrid
-        academicYear="2026/27"
-        focusWeekNumber={5}
-        focusWeekRequestKey={1}
-        rows={[row]}
-        trimester={1}
-      />,
+      <TimetableGrid academicYear="2026/27" focusWeekNumber={5} focusWeekRequestKey={1} rows={[row]} trimester={1} />,
     );
 
     await waitFor(() => expect(screen.getByLabelText("Show Week Of")).toHaveValue("2026-09-28"));
@@ -249,7 +243,12 @@ describe("TimetableGrid session selection", () => {
     };
     const { container } = render(
       <TimetableGrid
-        issueToneBySessionId={new Map([[row.session_id, "hard"], [softRow.session_id, "soft"]])}
+        issueToneBySessionId={
+          new Map([
+            [row.session_id, "hard"],
+            [softRow.session_id, "soft"],
+          ])
+        }
         rows={[row, softRow]}
         timeSlots={placementSlots}
       />,

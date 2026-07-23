@@ -4,6 +4,7 @@ import StatusBadge from "./StatusBadge";
 import SolverProgress from "./SolverProgress";
 import { formatGenerationDuration, generationModeLabel, type GenerationMode } from "../generationMode";
 import type { ScheduleGenerateResult, SessionRow, SoftConstraintPriority } from "../types";
+import { solverMethodLabel } from "../solverMethod";
 
 export type RankedSoftPriority = SoftConstraintPriority & {
   rank: number;
@@ -139,7 +140,7 @@ export function GenerationActionPanel({
             </strong>
           </span>
           <span>
-            Solver <strong>{generationResult.solver_status}</strong>
+            Method <strong>{solverMethodLabel(generationResult)}</strong>
           </span>
           {typeof generationResult.generation_seconds === "number" && (
             <span>

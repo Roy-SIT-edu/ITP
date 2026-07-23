@@ -5,7 +5,6 @@
  */
 
 import {
-  CalendarClock,
   ChevronDown,
   Database,
   Download,
@@ -17,6 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
+import timetableSchedulerLogo from "../assets/timetable-scheduler-logo.png";
 import { useSessionState } from "../sessionState";
 import WorkflowProgress from "./WorkflowProgress";
 
@@ -68,12 +68,8 @@ export default function Layout({ route, onNavigate, children }: Props) {
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label="Application navigation">
-        <div className="brand">
-          <CalendarClock size={24} />
-          <div>
-            <strong>Timetable</strong>
-            <span>Scheduler</span>
-          </div>
+        <div className="brand app-brand">
+          <img alt="Timetable Scheduler" className="app-brand-logo" src={timetableSchedulerLogo} />
         </div>
         <nav className="sidebar-nav">
           <a

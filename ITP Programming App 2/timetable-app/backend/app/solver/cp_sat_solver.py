@@ -59,6 +59,7 @@ class CpSatTimetableSolver:
         if not sessions:
             return {
                 "solver_status": "INFEASIBLE",
+                "solver_method": "strict",
                 "assignments": [],
                 "soft_score": 0,
                 "message": "No sessions are available to schedule.",
@@ -81,6 +82,7 @@ class CpSatTimetableSolver:
         if built.no_candidate_reasons:
             return {
                 "solver_status": "INFEASIBLE",
+                "solver_method": "strict",
                 "assignments": [],
                 "soft_score": 0,
                 "message": " ".join(built.no_candidate_reasons),
@@ -97,6 +99,7 @@ class CpSatTimetableSolver:
             )
 
         result = self._solve_built_model(built, remaining_seconds, fast_mode, reproducible)
+        result["solver_method"] = "strict"
         if result["solver_status"] in {"OPTIMAL", "FEASIBLE"}:
             return result
 
@@ -134,6 +137,7 @@ class CpSatTimetableSolver:
                 fast_mode=True,
                 reproducible=reproducible,
             )
+            relaxed_result["solver_method"] = "relaxed"
             if relaxed_result["solver_status"] in {"OPTIMAL", "FEASIBLE"}:
                 return relaxed_result
             return self._greedy_fallback(
@@ -212,6 +216,7 @@ class CpSatTimetableSolver:
             ]
             return {
                 "solver_status": "INFEASIBLE",
+                "solver_method": "greedy",
                 "assignments": [],
                 "soft_score": 0,
                 "message": "No feasible time slot and room combination is available for " + ", ".join(missing[:5]) + ".",
@@ -237,6 +242,7 @@ class CpSatTimetableSolver:
 
         return {
             "solver_status": "FEASIBLE",
+            "solver_method": "greedy",
             "assignments": [self._assignment_dict(item) for item in selected],
             "soft_score": 0,
             "message": message,
