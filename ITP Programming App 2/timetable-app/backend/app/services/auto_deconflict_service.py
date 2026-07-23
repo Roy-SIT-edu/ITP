@@ -13,11 +13,13 @@ from app.services.academic_calendar_service import AcademicCalendarService
 from app.services.compatibility import intervals_overlap, session_weeks_conflict
 from app.services.constraint_service import ConstraintService
 from app.services.lab_overlap_service import LabOverlapService
+from app.services.schedule_change_service import placement_snapshot, record_schedule_change
 from app.services.schedule_quality_service import affected_session_count, schedule_quality_summary
 from app.services.scheduling_constants import SCHEDULING_DAY_END_TIME
 from app.services.scheduling_rules import candidate_room_allowed, candidate_slot_allowed, required_student_group_codes
 from app.services.soft_constraint_priority_service import SoftConstraintPriorityService
 from sqlalchemy.orm import Session as DbSession
+
 
 class ScheduleRunNotFoundError(ValueError):
     """Raised when a requested schedule run does not exist."""
@@ -131,6 +133,21 @@ class AutoDeconflictService:
                         self._apply_placement(target, slot, room)
                         db.flush()
                         if len(self._hard_violations(db, new_run_id)) < current_hard_count:
+                            record_schedule_change(
+                                db,
+                                schedule_run_id=new_run_id,
+                                source_schedule_run_id=schedule_run_id,
+                                session_id=target.session_id,
+                                change_source="AUTO_DECONFLICT",
+                                before={
+                                    "day": previous[2],
+                                    "start_time": previous[3],
+                                    "end_time": previous[4],
+                                    "week_pattern": previous[5],
+                                    "room_code": previous[7].room_code,
+                                },
+                                after=placement_snapshot(target),
+                            )
                             total_moves += 1
                             moved = True
                             break

@@ -184,6 +184,14 @@ export type ScheduleResponse = {
   scheduled_sessions: ScheduledRow[];
 };
 
+export type ExportPreviewCell = string | number | null;
+
+export type ExportPreview = {
+  schedule_run_id: number;
+  columns: string[];
+  rows: Array<Record<string, ExportPreviewCell>>;
+};
+
 export type ScheduleGenerateResult = {
   schedule_run_id: number;
   academic_year: string;
@@ -290,6 +298,29 @@ export type ReportLabOverlap = {
   resolved_in_final: boolean;
 };
 
+export type ReportChangePlacement = {
+  day: string;
+  start_time: string;
+  end_time: string;
+  room_code: string;
+  week_pattern: string;
+};
+
+export type ReportChange = {
+  id: number | null;
+  change_source: "AUTO_DECONFLICT" | "QUICK_FIX" | "MANUAL_CHANGE" | string;
+  source_label: string;
+  source_schedule_run_id: number | null;
+  created_at: string | null;
+  session_id: number;
+  module_code: string | null;
+  requirement_id: string | null;
+  before: ReportChangePlacement;
+  after: ReportChangePlacement;
+  changed_fields: string[];
+  is_inferred: boolean;
+};
+
 export type ScheduleReport = {
   report_generated_at: string;
   run: ScheduleRun;
@@ -300,7 +331,18 @@ export type ScheduleReport = {
     soft_warning_deduction: number;
     affected_session_deduction: number;
     preference_pressure_deduction: number;
+    factor_deduction_total: number;
+    score_before_cap: number;
     hard_conflict_cap_applied: boolean;
+    hard_conflict_cap_deduction: number;
+    factors: Array<{
+      key: "hard_conflicts" | "soft_warnings" | "affected_sessions" | "preference_pressure";
+      label: string;
+      observed: string;
+      calculation: string;
+      deduction: number;
+      maximum_deduction: number;
+    }>;
   };
   summary: {
     scheduled_count: number;
@@ -318,6 +360,13 @@ export type ScheduleReport = {
     hard_conflict_count: number;
     soft_warning_count: number;
     affected_session_count: number;
+  };
+  changes: {
+    count: number;
+    auto_deconflict_count: number;
+    quick_fix_count: number;
+    manual_change_count: number;
+    items: ReportChange[];
   };
   breakdowns: {
     by_source: ReportBreakdownItem[];

@@ -11,6 +11,7 @@ from app.models.module import Module
 from app.models.programme import Programme
 from app.models.public_holiday import PublicHoliday
 from app.models.room import Room
+from app.models.schedule_change_log import ScheduleChangeLog
 from app.models.schedule_run import ScheduleRun
 from app.models.scheduled_session import ScheduledSession
 from app.models.session import Session
@@ -29,6 +30,7 @@ __all__ = [
     "Programme",
     "PublicHoliday",
     "Room",
+    "ScheduleChangeLog",
     "ScheduleRun",
     "ScheduledSession",
     "Session",

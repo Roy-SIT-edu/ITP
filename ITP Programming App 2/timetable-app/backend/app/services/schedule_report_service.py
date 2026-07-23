@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from datetime import UTC, datetime
 from io import BytesIO
@@ -10,10 +11,13 @@ from xml.sax.saxutils import escape
 
 import reportlab
 from app.models.constraint_violation import ConstraintViolation
+from app.models.schedule_change_log import ScheduleChangeLog
 from app.models.schedule_run import ScheduleRun
 from app.models.scheduled_session import ScheduledSession
+from app.models.session import Session as RequirementSession
 from app.services.compatibility import time_to_minutes
 from app.services.lab_overlap_service import LabOverlapService
+from app.services.schedule_change_service import changed_placement_fields, placement_snapshot
 from app.services.schedule_quality_service import schedule_quality_from_violations
 from app.services.scheduling_rules import effective_scheduling_type
 from app.services.serializers import (
@@ -90,6 +94,7 @@ class ScheduleReportService:
         session_rows = [self._session_row(item, issue_by_session.get(item.session_id, [])) for item in scheduled]
         session_rows.sort(key=self._session_sort_key)
         session_by_id = {item["session_id"]: item for item in session_rows}
+        changes = self._report_changes(db, run, session_by_id)
 
         conflicts = []
         conflict_groups: dict[tuple[str, str], int] = defaultdict(int)
@@ -136,6 +141,7 @@ class ScheduleReportService:
             "quality": quality,
             "quality_breakdown": self._quality_breakdown(quality, len(session_rows)),
             "summary": summary,
+            "changes": changes,
             "breakdowns": {
                 "by_source": self._breakdown(
                     "Lab requirements" if item["is_lab_requirement"] else "Uploaded requirements" for item in session_rows
@@ -218,6 +224,7 @@ class ScheduleReportService:
         story.append(Spacer(1, 6 * mm))
 
         story.extend(self._run_overview(report, styles))
+        story.extend(self._changes_applied(report, styles))
         story.extend(self._scheduling_breakdown(report, styles))
         story.append(PageBreak())
         story.extend(self._conflict_report(report, styles))
@@ -283,26 +290,92 @@ class ScheduleReportService:
         }
 
     def _quality_breakdown(self, quality: dict, scheduled_count: int) -> dict:
-        if scheduled_count <= 0:
-            return {
-                "starting_score": 100,
-                "hard_conflict_deduction": 0,
-                "soft_warning_deduction": 0,
-                "affected_session_deduction": 0,
-                "preference_pressure_deduction": 0,
-                "hard_conflict_cap_applied": False,
-            }
+        scheduled = max(0, int(scheduled_count or 0))
         hard = quality["hard_issue_count"]
         soft = quality["soft_warning_count"]
-        affected_rate = quality["affected_session_count"] / scheduled_count
-        pressure_per_session = quality["raw_soft_score"] / scheduled_count
+        affected = quality["affected_session_count"]
+        raw_soft_score = quality["raw_soft_score"]
+        affected_rate = affected / scheduled if scheduled else 0
+        pressure_per_session = raw_soft_score / scheduled if scheduled else 0
+        hard_deduction = min(70, hard * 18 + round(affected_rate * 25)) if scheduled and hard else 0
+        soft_deduction = min(35, round((soft / scheduled) * 35)) if scheduled else 0
+        affected_deduction = min(20, round(affected_rate * 20)) if scheduled else 0
+        pressure_deduction = min(15, round(pressure_per_session / 25)) if scheduled else 0
+        factor_deduction_total = hard_deduction + soft_deduction + affected_deduction + pressure_deduction
+        score_before_cap = max(0, min(100, 100 - factor_deduction_total))
+        hard_cap_applied = scheduled > 0 and hard > 0
+        hard_cap_deduction = max(0, score_before_cap - quality["score"]) if hard_cap_applied else 0
+
+        if scheduled:
+            hard_observed = (
+                f"{hard} hard conflict{'s' if hard != 1 else ''}; "
+                f"{affected} of {scheduled} sessions affected ({round(affected_rate * 100, 1)}%)"
+            )
+            hard_calculation = (
+                f"{hard} x 18 + round(({affected} / {scheduled}) x 25), capped at 70" if hard else "No hard conflicts, so no deduction"
+            )
+            soft_observed = (
+                f"{soft} soft warning{'s' if soft != 1 else ''} across {scheduled} scheduled sessions "
+                f"({round((soft / scheduled) * 100, 1)} per 100 sessions)"
+            )
+            soft_calculation = f"round(({soft} / {scheduled}) x 35), capped at 35"
+            affected_observed = f"{affected} of {scheduled} sessions carry at least one issue ({round(affected_rate * 100, 1)}%)"
+            affected_calculation = f"round(({affected} / {scheduled}) x 20), capped at 20"
+            pressure_observed = f"Raw preference pressure {raw_soft_score}; {round(pressure_per_session, 1)} per scheduled session"
+            pressure_calculation = f"round(({round(pressure_per_session, 1)} / 25)), capped at 15"
+        else:
+            hard_observed = f"{hard} hard conflict{'s' if hard != 1 else ''}; no scheduled sessions"
+            soft_observed = f"{soft} soft warning{'s' if soft != 1 else ''}; no scheduled sessions"
+            affected_observed = "No scheduled sessions to assess"
+            pressure_observed = f"Raw preference pressure {raw_soft_score}; no scheduled sessions"
+            hard_calculation = soft_calculation = affected_calculation = pressure_calculation = (
+                "No deduction is calculated without scheduled sessions"
+            )
+
         return {
             "starting_score": 100,
-            "hard_conflict_deduction": min(70, hard * 18 + round(affected_rate * 25)) if hard else 0,
-            "soft_warning_deduction": min(35, round((soft / scheduled_count) * 35)),
-            "affected_session_deduction": min(20, round(affected_rate * 20)),
-            "preference_pressure_deduction": min(15, round(pressure_per_session / 25)),
-            "hard_conflict_cap_applied": hard > 0,
+            "hard_conflict_deduction": hard_deduction,
+            "soft_warning_deduction": soft_deduction,
+            "affected_session_deduction": affected_deduction,
+            "preference_pressure_deduction": pressure_deduction,
+            "factor_deduction_total": factor_deduction_total,
+            "score_before_cap": score_before_cap,
+            "hard_conflict_cap_applied": hard_cap_applied,
+            "hard_conflict_cap_deduction": hard_cap_deduction,
+            "factors": [
+                {
+                    "key": "hard_conflicts",
+                    "label": "Hard conflicts",
+                    "observed": hard_observed,
+                    "calculation": hard_calculation,
+                    "deduction": hard_deduction,
+                    "maximum_deduction": 70,
+                },
+                {
+                    "key": "soft_warnings",
+                    "label": "Soft warnings",
+                    "observed": soft_observed,
+                    "calculation": soft_calculation,
+                    "deduction": soft_deduction,
+                    "maximum_deduction": 35,
+                },
+                {
+                    "key": "affected_sessions",
+                    "label": "Affected sessions",
+                    "observed": affected_observed,
+                    "calculation": affected_calculation,
+                    "deduction": affected_deduction,
+                    "maximum_deduction": 20,
+                },
+                {
+                    "key": "preference_pressure",
+                    "label": "Preference pressure",
+                    "observed": pressure_observed,
+                    "calculation": pressure_calculation,
+                    "deduction": pressure_deduction,
+                    "maximum_deduction": 15,
+                },
+            ],
         }
 
     def _breakdown(self, labels, order: dict[str, int] | None = None) -> list[dict]:
@@ -341,6 +414,158 @@ class ScheduleReportService:
             {"label": item["label"], "session_count": item["session_count"], "hours": round(item["minutes"] / 60, 1)}
             for item in sorted(buckets.values(), key=lambda value: (-value["session_count"], value["label"]))
         ]
+
+    def _report_changes(self, db: DbSession, run: ScheduleRun, session_by_id: dict[int, dict]) -> dict:
+        logs = (
+            db.query(ScheduleChangeLog)
+            .filter_by(schedule_run_id=run.id)
+            .order_by(ScheduleChangeLog.created_at, ScheduleChangeLog.id)
+            .all()
+        )
+        session_ids = {log.session_id for log in logs}
+        requirements = (
+            {
+                item.id: item
+                for item in db.query(RequirementSession)
+                .filter(RequirementSession.id.in_(session_ids))
+                .all()
+            }
+            if session_ids
+            else {}
+        )
+        items = [
+            self._change_item(
+                log=log,
+                session_row=session_by_id.get(log.session_id),
+                requirement=requirements.get(log.session_id),
+            )
+            for log in logs
+        ]
+
+        # Runs created before the audit table existed can still be compared with
+        # their source run. Mark these rows clearly because no event timestamp
+        # or intermediate moves were historically retained.
+        if not items:
+            items = self._inferred_auto_deconflict_changes(db, run, session_by_id)
+
+        return {
+            "count": len(items),
+            "auto_deconflict_count": sum(1 for item in items if item["change_source"] == "AUTO_DECONFLICT"),
+            "quick_fix_count": sum(1 for item in items if item["change_source"] == "QUICK_FIX"),
+            "manual_change_count": sum(1 for item in items if item["change_source"] == "MANUAL_CHANGE"),
+            "items": items,
+        }
+
+    def _change_item(
+        self,
+        *,
+        log: ScheduleChangeLog,
+        session_row: dict | None,
+        requirement: RequirementSession | None,
+    ) -> dict:
+        before = {
+            "day": log.before_day,
+            "start_time": log.before_start_time,
+            "end_time": log.before_end_time,
+            "room_code": log.before_room_code,
+            "week_pattern": log.before_week_pattern,
+        }
+        after = {
+            "day": log.after_day,
+            "start_time": log.after_start_time,
+            "end_time": log.after_end_time,
+            "room_code": log.after_room_code,
+            "week_pattern": log.after_week_pattern,
+        }
+        module_code, requirement_id = self._change_session_identity(session_row, requirement)
+        return {
+            "id": log.id,
+            "change_source": log.change_source,
+            "source_label": self._change_source_label(log.change_source),
+            "source_schedule_run_id": log.source_schedule_run_id,
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+            "session_id": log.session_id,
+            "module_code": module_code,
+            "requirement_id": requirement_id,
+            "before": before,
+            "after": after,
+            "changed_fields": changed_placement_fields(before, after),
+            "is_inferred": False,
+        }
+
+    def _inferred_auto_deconflict_changes(
+        self,
+        db: DbSession,
+        run: ScheduleRun,
+        session_by_id: dict[int, dict],
+    ) -> list[dict]:
+        match = re.search(r"Auto-deconflict (?:started )?from run #(\d+)", run.message or "")
+        if not match:
+            return []
+        source_run_id = int(match.group(1))
+        source_items = {
+            item.session_id: item
+            for item in db.query(ScheduledSession)
+            .filter_by(schedule_run_id=source_run_id)
+            .order_by(ScheduledSession.session_id, ScheduledSession.id)
+            .all()
+        }
+        current_items = (
+            db.query(ScheduledSession)
+            .filter_by(schedule_run_id=run.id)
+            .order_by(ScheduledSession.session_id, ScheduledSession.id)
+            .all()
+        )
+        moved = []
+        for current in current_items:
+            source = source_items.get(current.session_id)
+            if source is None:
+                continue
+            before = placement_snapshot(source)
+            after = placement_snapshot(current)
+            fields = changed_placement_fields(before, after)
+            if not fields:
+                continue
+            session_row = session_by_id.get(current.session_id)
+            requirement = current.session
+            module_code, requirement_id = self._change_session_identity(session_row, requirement)
+            moved.append(
+                {
+                    "id": None,
+                    "change_source": "AUTO_DECONFLICT",
+                    "source_label": "Auto-deconflict",
+                    "source_schedule_run_id": source_run_id,
+                    "created_at": run.created_at.isoformat() if run.created_at else None,
+                    "session_id": current.session_id,
+                    "module_code": module_code,
+                    "requirement_id": requirement_id,
+                    "before": before,
+                    "after": after,
+                    "changed_fields": fields,
+                    "is_inferred": True,
+                }
+            )
+        return moved
+
+    @staticmethod
+    def _change_session_identity(
+        session_row: dict | None,
+        requirement: RequirementSession | None,
+    ) -> tuple[str | None, str | None]:
+        if session_row:
+            return session_row.get("module_code"), session_row.get("requirement_id")
+        return (
+            requirement.module.module_code if requirement and requirement.module else None,
+            requirement.requirement_id if requirement else None,
+        )
+
+    @staticmethod
+    def _change_source_label(change_source: str) -> str:
+        return {
+            "AUTO_DECONFLICT": "Auto-deconflict",
+            "QUICK_FIX": "Quick Fix",
+            "MANUAL_CHANGE": "Manual change",
+        }.get(change_source, change_source.replace("_", " ").title())
 
     def _run_overview(self, report: dict, styles: dict) -> list:
         run = report["run"]
@@ -381,10 +606,87 @@ class ScheduleReportService:
         score_table = Table(score_rows, colWidths=[43 * mm] * 6)
         score_table.setStyle(self._table_style(header=True, center=True))
         elements.append(score_table)
-        cap_note = " Hard conflicts cap the final result at 49." if deductions["hard_conflict_cap_applied"] else ""
-        elements.append(Paragraph(escape(quality["summary"] + cap_note), styles["muted"]))
+        elements.append(Spacer(1, 3 * mm))
+        elements.append(Paragraph("Score factor detail", styles["subheading"]))
+        factor_rows = [["Factor", "Observed input", "Calculation rule", "Deduction", "Maximum"]]
+        factor_rows.extend(
+            [
+                self._cell(factor["label"], styles),
+                self._cell(factor["observed"], styles),
+                self._cell(factor["calculation"], styles),
+                f"-{factor['deduction']}",
+                factor["maximum_deduction"],
+            ]
+            for factor in deductions["factors"]
+        )
+        factor_table = LongTable(factor_rows, colWidths=[38 * mm, 63 * mm, 91 * mm, 30 * mm, 30 * mm], repeatRows=1)
+        factor_table.setStyle(self._table_style(header=True, alternating=True))
+        elements.append(factor_table)
+
+        if report["summary"]["scheduled_count"] <= 0:
+            equation = "No scheduled sessions were available to score, so the final result is 0/100."
+        else:
+            cap_part = (
+                f" - {deductions['hard_conflict_cap_deduction']} hard-conflict cap adjustment"
+                if deductions["hard_conflict_cap_deduction"]
+                else ""
+            )
+            equation = (
+                f"{deductions['starting_score']} starting points - {deductions['factor_deduction_total']} "
+                f"factor deductions{cap_part} = {quality['score']}/100."
+            )
+        cap_note = " Hard conflicts limit the final result to at most 49." if deductions["hard_conflict_cap_applied"] else ""
+        elements.append(Paragraph(escape(f"{equation} {quality['summary']}{cap_note}"), styles["muted"]))
         elements.append(Spacer(1, 5 * mm))
         return elements
+
+    def _changes_applied(self, report: dict, styles: dict) -> list:
+        changes = report["changes"]
+        elements = [Paragraph("Changes applied", styles["heading"])]
+        if not changes["items"]:
+            elements.append(Paragraph("N.A.", styles["body"]))
+            elements.append(Spacer(1, 5 * mm))
+            return elements
+
+        elements.append(
+            Paragraph(
+                f"{changes['count']} placement change(s): "
+                f"{changes['auto_deconflict_count']} auto-deconflict, "
+                f"{changes['quick_fix_count']} Quick Fix, and "
+                f"{changes['manual_change_count']} manual.",
+                styles["body"],
+            )
+        )
+        elements.append(Spacer(1, 3 * mm))
+        rows = [["Source", "Session", "Before", "After", "Changed"]]
+        for item in changes["items"]:
+            source = item["source_label"]
+            if item["is_inferred"]:
+                source += "\nReconstructed from source run"
+            session = item["module_code"] or item["requirement_id"] or f"Session {item['session_id']}"
+            if item["module_code"] and item["requirement_id"]:
+                session = f"{item['module_code']}\n{item['requirement_id']}"
+            rows.append(
+                [
+                    self._cell(source, styles),
+                    self._cell(session, styles),
+                    self._cell(self._change_placement_label(item["before"]), styles),
+                    self._cell(self._change_placement_label(item["after"]), styles),
+                    self._cell(", ".join(item["changed_fields"]), styles),
+                ]
+            )
+        table = LongTable(rows, colWidths=[44 * mm, 43 * mm, 59 * mm, 59 * mm, 53 * mm], repeatRows=1)
+        table.setStyle(self._table_style(header=True, alternating=True))
+        elements.extend([table, Spacer(1, 5 * mm)])
+        return elements
+
+    @staticmethod
+    def _change_placement_label(placement: dict) -> str:
+        return (
+            f"{placement['day']}\n"
+            f"{placement['start_time']}-{placement['end_time']}\n"
+            f"{placement['room_code']} | {placement['week_pattern']}"
+        )
 
     def _scheduling_breakdown(self, report: dict, styles: dict) -> list:
         elements = [Paragraph("Scheduling breakdown", styles["heading"])]

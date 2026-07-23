@@ -40,6 +40,7 @@ TABLE_DATABASE_NAMES = {
     "session_staff": "requirements",
     "lab_requirements": "requirements",
     "schedule_runs": "schedule_state",
+    "schedule_change_logs": "schedule_state",
     "scheduled_sessions": "schedule_state",
     "constraint_violations": "schedule_state",
     "soft_constraint_priorities": "schedule_state",
@@ -85,6 +86,7 @@ def _model_database_names():
     from app.models.programme import Programme
     from app.models.public_holiday import PublicHoliday
     from app.models.room import Room
+    from app.models.schedule_change_log import ScheduleChangeLog
     from app.models.schedule_run import ScheduleRun
     from app.models.scheduled_session import ScheduledSession
     from app.models.session import Session as Requirement
@@ -108,6 +110,7 @@ def _model_database_names():
         SessionStaff: "requirements",
         LabRequirement: "requirements",
         ScheduleRun: "schedule_state",
+        ScheduleChangeLog: "schedule_state",
         ScheduledSession: "schedule_state",
         ConstraintViolation: "schedule_state",
         SoftConstraintPriority: "schedule_state",

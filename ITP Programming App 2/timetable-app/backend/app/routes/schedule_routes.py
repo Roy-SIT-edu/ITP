@@ -20,6 +20,7 @@ from app.services.constraint_service import ConstraintService
 from app.services.export_service import ExportService
 from app.services.lab_overlap_service import LabOverlapService
 from app.services.quick_fix_service import QuickFixService
+from app.services.schedule_change_service import placement_snapshot, record_schedule_change
 from app.services.schedule_quality_service import schedule_quality_from_violations
 from app.services.schedule_report_service import ScheduleReportService
 from app.services.schedule_service import ScheduleService
@@ -36,6 +37,7 @@ class ManualMoveInput(BaseModel):
     start_time: str
     end_time: str
     room_code: str
+    change_source: Literal["MANUAL_CHANGE", "QUICK_FIX"] = "MANUAL_CHANGE"
 
 
 class QuickFixInput(BaseModel):
@@ -197,6 +199,7 @@ def move_scheduled_session(schedule_run_id: int, session_id: int, data: ManualMo
     if not candidate_room_allowed(item.session, room, relax_fixed=True):
         raise HTTPException(status_code=409, detail="Cannot move here: the room does not meet this session's requirements.")
 
+    before = placement_snapshot(item)
     item.room_id = room.id
     item.room = room
     item.time_slot_id = slot.id
@@ -218,6 +221,14 @@ def move_scheduled_session(schedule_run_id: int, session_id: int, data: ManualMo
             },
         )
 
+    record_schedule_change(
+        db,
+        schedule_run_id=schedule_run_id,
+        session_id=session_id,
+        change_source=data.change_source,
+        before=before,
+        after=placement_snapshot(item),
+    )
     soft_weights = SoftConstraintPriorityService().weights(db)
     check = ConstraintService().check_and_store(db, schedule_run_id, soft_weights)
     run = db.query(ScheduleRun).filter_by(id=schedule_run_id).first()

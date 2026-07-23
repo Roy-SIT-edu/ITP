@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   ArrowLeft,
+  BarChart3,
   Building2,
   CalendarDays,
   CheckCircle2,
@@ -8,14 +9,18 @@ import {
   Download,
   FileText,
   FlaskConical,
+  History,
   RefreshCw,
   Search,
+  Table2,
   Users,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getScheduleReport, scheduleReportPdfUrl } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import type { ReportBreakdownItem, ReportSession, ReportWorkloadItem, ScheduleReport } from "../types";
+import { consolidateReportConflicts, type ConsolidatedConflictGroup } from "./reportConflictGrouping";
+import { rankWorkloadItems, workloadMaximum, type WorkloadMetric } from "./reportWorkload";
 
 type SessionFilter = {
   query: string;
@@ -89,6 +94,7 @@ export default function RunReportPage() {
   const summary = report.summary;
   const quality = report.quality;
   const runStatus = report.run.solver_status ?? report.run.status;
+  const conflictGroups = consolidateReportConflicts(report.conflicts.items);
 
   return (
     <div className="run-report-page">
@@ -166,19 +172,127 @@ export default function RunReportPage() {
               </div>
               <p>{quality.summary}</p>
               <div className="score-deduction-grid">
-                <ScoreDeduction label="Hard conflicts" value={report.quality_breakdown.hard_conflict_deduction} />
-                <ScoreDeduction label="Soft warnings" value={report.quality_breakdown.soft_warning_deduction} />
-                <ScoreDeduction label="Affected sessions" value={report.quality_breakdown.affected_session_deduction} />
-                <ScoreDeduction
-                  label="Preference pressure"
-                  value={report.quality_breakdown.preference_pressure_deduction}
-                />
+                {report.quality_breakdown.factors.map((factor) => (
+                  <ScoreDeduction factor={factor} key={factor.key} />
+                ))}
+              </div>
+              <div className="score-equation">
+                <span>Final calculation</span>
+                {summary.scheduled_count > 0 ? (
+                  <>
+                    <strong>
+                      {report.quality_breakdown.starting_score} - {report.quality_breakdown.factor_deduction_total}
+                      {report.quality_breakdown.hard_conflict_cap_deduction > 0 &&
+                        ` - ${report.quality_breakdown.hard_conflict_cap_deduction} cap`}{" "}
+                      = {quality.score}/100
+                    </strong>
+                    <small>
+                      {report.quality_breakdown.hard_conflict_cap_applied
+                        ? `Score before the hard-conflict cap: ${report.quality_breakdown.score_before_cap}/100.`
+                        : `${report.quality_breakdown.factor_deduction_total} total points deducted from the starting score.`}
+                    </small>
+                  </>
+                ) : (
+                  <>
+                    <strong>No scheduled sessions = 0/100</strong>
+                    <small>A score is only calculated when at least one session is scheduled.</small>
+                  </>
+                )}
               </div>
               {report.quality_breakdown.hard_conflict_cap_applied && (
-                <div className="report-inline-alert">Hard conflicts cap the final score at 49.</div>
+                <div className="report-inline-alert">
+                  Hard conflicts limit the final score to at most 49
+                  {report.quality_breakdown.hard_conflict_cap_deduction > 0
+                    ? `, removing ${report.quality_breakdown.hard_conflict_cap_deduction} additional point${
+                        report.quality_breakdown.hard_conflict_cap_deduction === 1 ? "" : "s"
+                      }.`
+                    : "."}
+                </div>
               )}
             </div>
           </div>
+        </ReportSection>
+
+        <ReportSection
+          title="Changes applied"
+          subtitle="Run-level audit of Auto-deconflict, Quick Fix, and manual placement changes"
+        >
+          {report.changes.items.length > 0 ? (
+            <>
+              <div className="report-change-summary">
+                <div>
+                  <History size={18} />
+                  <span>
+                    <strong>{report.changes.count}</strong>
+                    Total changes
+                  </span>
+                </div>
+                <div>
+                  <strong>{report.changes.auto_deconflict_count}</strong>
+                  <span>Auto-deconflict</span>
+                </div>
+                <div>
+                  <strong>{report.changes.quick_fix_count}</strong>
+                  <span>Quick Fix</span>
+                </div>
+                <div>
+                  <strong>{report.changes.manual_change_count}</strong>
+                  <span>Manual</span>
+                </div>
+              </div>
+              <div className="report-table-wrap report-change-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Source</th>
+                      <th>Session</th>
+                      <th>Before</th>
+                      <th>After</th>
+                      <th>Changed</th>
+                      <th>Applied</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.changes.items.map((change, index) => (
+                      <tr key={change.id ?? `inferred-${change.session_id}-${index}`}>
+                        <td>
+                          <span className={`report-change-source ${change.change_source.toLowerCase()}`}>
+                            {change.source_label}
+                          </span>
+                          {change.is_inferred && <small>Reconstructed from run {change.source_schedule_run_id}</small>}
+                        </td>
+                        <td>
+                          <strong>
+                            {change.module_code ?? change.requirement_id ?? `Session ${change.session_id}`}
+                          </strong>
+                          {change.module_code && change.requirement_id && <span>{change.requirement_id}</span>}
+                        </td>
+                        <td>
+                          <ReportChangePlacement placement={change.before} />
+                        </td>
+                        <td>
+                          <ReportChangePlacement placement={change.after} />
+                        </td>
+                        <td>
+                          <div className="report-change-fields">
+                            {change.changed_fields.map((field) => (
+                              <span key={field}>{field}</span>
+                            ))}
+                          </div>
+                        </td>
+                        <td>{change.created_at ? formatDateTime(change.created_at) : "Not recorded"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <div className="report-na-state">
+              <strong>N.A.</strong>
+              <span>No Auto-deconflict, Quick Fix, or manual changes were applied to this run.</span>
+            </div>
+          )}
         </ReportSection>
 
         <ReportSection title="Scheduling breakdown" subtitle="Distribution of sessions across the generated timetable">
@@ -187,7 +301,7 @@ export default function RunReportPage() {
             <BreakdownList title="Day" items={report.breakdowns.by_day} />
             <BreakdownList title="Class type" items={report.breakdowns.by_class_type} />
             <BreakdownList title="Delivery mode" items={report.breakdowns.by_delivery_mode} />
-            <BreakdownList title="Programme" items={report.breakdowns.by_programme} limit={12} />
+            <BreakdownList title="Programme" items={report.breakdowns.by_programme} limit={12} wide />
           </div>
         </ReportSection>
 
@@ -195,10 +309,7 @@ export default function RunReportPage() {
           title="Resource workload"
           subtitle="Highest room and staff usage by session count and scheduled hours"
         >
-          <div className="report-two-column-tables">
-            <WorkloadTable title="Room workload" items={report.breakdowns.room_workload.slice(0, 20)} />
-            <WorkloadTable title="Staff workload" items={report.breakdowns.staff_workload.slice(0, 20)} />
-          </div>
+          <ResourceWorkload roomItems={report.breakdowns.room_workload} staffItems={report.breakdowns.staff_workload} />
         </ReportSection>
 
         <ReportSection
@@ -220,64 +331,12 @@ export default function RunReportPage() {
             </div>
           </div>
 
-          {report.conflicts.by_constraint.length > 0 ? (
-            <>
-              <div className="report-table-wrap compact">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Severity</th>
-                      <th>Constraint</th>
-                      <th>Occurrences</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.conflicts.by_constraint.map((item) => (
-                      <tr key={`${item.severity}-${item.constraint_code}`}>
-                        <td>
-                          <StatusBadge label={item.severity} tone={item.severity === "HARD" ? "bad" : "warn"} />
-                        </td>
-                        <td>{formatCode(item.constraint_code)}</td>
-                        <td>{item.count}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="report-table-wrap report-conflict-table">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Severity</th>
-                      <th>Constraint</th>
-                      <th>Message</th>
-                      <th>Affected sessions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.conflicts.items.map((item) => (
-                      <tr key={item.id}>
-                        <td>
-                          <StatusBadge label={item.severity} tone={item.severity === "HARD" ? "bad" : "warn"} />
-                        </td>
-                        <td>{formatCode(item.constraint_code)}</td>
-                        <td>{item.message}</td>
-                        <td>
-                          {item.affected_sessions.length > 0
-                            ? item.affected_sessions
-                                .map(
-                                  (session) =>
-                                    session.module_code ?? session.requirement_id ?? `Session ${session.session_id}`,
-                                )
-                                .join(", ")
-                            : "None recorded"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
+          {conflictGroups.length > 0 ? (
+            <div className="report-conflict-groups">
+              {conflictGroups.map((group) => (
+                <ConsolidatedConflictCard group={group} key={group.key} />
+              ))}
+            </div>
           ) : (
             <div className="report-clean-state">
               <CheckCircle2 size={20} /> No conflicts or warnings were recorded.
@@ -492,36 +551,262 @@ function ReportFact({ label, value }: { label: string; value: string | number })
   );
 }
 
-function ScoreDeduction({ label, value }: { label: string; value: number }) {
+function ReportChangePlacement({ placement }: { placement: ScheduleReport["changes"]["items"][number]["before"] }) {
   return (
-    <div>
-      <span>{label}</span>
-      <strong>-{value}</strong>
+    <div className="report-change-placement">
+      <strong>{placement.day}</strong>
+      <span>
+        {placement.start_time}-{placement.end_time}
+      </span>
+      <small>
+        {placement.room_code} · {placement.week_pattern}
+      </small>
     </div>
   );
 }
 
-function BreakdownList({ title, items, limit }: { title: string; items: ReportBreakdownItem[]; limit?: number }) {
-  const visible = limit ? items.slice(0, limit) : items;
+function ScoreDeduction({ factor }: { factor: ScheduleReport["quality_breakdown"]["factors"][number] }) {
   return (
-    <div className="report-breakdown-list">
-      <h3>{title}</h3>
-      {visible.map((item) => (
-        <div className="report-breakdown-row" key={item.label}>
-          <div>
-            <span>{item.label}</span>
-            <strong>{item.count}</strong>
-          </div>
-          <div className="report-breakdown-track">
-            <span style={{ width: `${Math.max(item.percent, 1)}%` }} />
-          </div>
-          <small>{item.percent}%</small>
+    <article>
+      <div className="score-deduction-heading">
+        <span>{factor.label}</span>
+        <strong>-{factor.deduction}</strong>
+      </div>
+      <small>{factor.observed}</small>
+      <em>{factor.calculation}</em>
+      <footer>Maximum deduction: {factor.maximum_deduction}</footer>
+    </article>
+  );
+}
+
+function BreakdownList({
+  title,
+  items,
+  limit,
+  wide = false,
+}: {
+  title: string;
+  items: ReportBreakdownItem[];
+  limit?: number;
+  wide?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = limit && !expanded ? items.slice(0, limit) : items;
+  const total = items.reduce((sum, item) => sum + item.count, 0);
+  return (
+    <section className={`report-breakdown-list ${wide ? "wide" : ""}`}>
+      <header className="report-breakdown-heading">
+        <div>
+          <h3>{title}</h3>
+          <span>
+            {items.length} categor{items.length === 1 ? "y" : "ies"}
+          </span>
         </div>
-      ))}
+        <div className="report-breakdown-total">
+          <strong>{total.toLocaleString("en-SG")}</strong>
+          <span>sessions</span>
+        </div>
+      </header>
+      <div className="report-breakdown-columns" aria-hidden="true">
+        <span>Category</span>
+        <span>Share</span>
+        <span>Sessions</span>
+        <span>Percent</span>
+      </div>
+      <div className="report-breakdown-rows">
+        {visible.map((item) => (
+          <div
+            aria-label={`${item.label}: ${item.count} sessions, ${item.percent}%`}
+            className="report-breakdown-row"
+            key={item.label}
+          >
+            <span className="report-breakdown-label">{item.label}</span>
+            <div className="report-breakdown-track" aria-hidden="true">
+              <span style={{ width: `${Math.max(item.percent, 1)}%` }} />
+            </div>
+            <strong>{item.count.toLocaleString("en-SG")}</strong>
+            <small>{item.percent}%</small>
+          </div>
+        ))}
+      </div>
       {limit && items.length > limit && (
-        <small>{items.length - limit} additional categories are included in the PDF.</small>
+        <button className="report-breakdown-toggle" onClick={() => setExpanded((current) => !current)} type="button">
+          {expanded ? `Show top ${limit}` : `Show ${items.length - limit} more categories`}
+        </button>
       )}
-    </div>
+    </section>
+  );
+}
+
+function ResourceWorkload({
+  roomItems,
+  staffItems,
+}: {
+  roomItems: ReportWorkloadItem[];
+  staffItems: ReportWorkloadItem[];
+}) {
+  const [view, setView] = useState<"graph" | "table">("graph");
+  const [metric, setMetric] = useState<WorkloadMetric>("session_count");
+  const [limit, setLimit] = useState(10);
+  const visibleRooms = rankWorkloadItems(roomItems, metric, limit);
+  const visibleStaff = rankWorkloadItems(staffItems, metric, limit);
+  const maximum = workloadMaximum([roomItems, staffItems], metric);
+
+  return (
+    <>
+      <div className="report-workload-controls">
+        <div className="report-workload-view-switch" aria-label="Resource workload view" role="group">
+          <button
+            aria-pressed={view === "graph"}
+            className={view === "graph" ? "active" : ""}
+            onClick={() => setView("graph")}
+            type="button"
+          >
+            <BarChart3 size={15} />
+            Graph
+          </button>
+          <button
+            aria-pressed={view === "table"}
+            className={view === "table" ? "active" : ""}
+            onClick={() => setView("table")}
+            type="button"
+          >
+            <Table2 size={15} />
+            Table
+          </button>
+        </div>
+        {view === "graph" && (
+          <div className="report-workload-graph-options">
+            <label>
+              <span>Compare by</span>
+              <select value={metric} onChange={(event) => setMetric(event.target.value as WorkloadMetric)}>
+                <option value="session_count">Sessions</option>
+                <option value="hours">Hours</option>
+              </select>
+            </label>
+            <label>
+              <span>Show</span>
+              <select value={limit} onChange={(event) => setLimit(Number(event.target.value))}>
+                {[5, 10, 15, 20].map((value) => (
+                  <option key={value} value={value}>
+                    Top {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
+      </div>
+
+      {view === "graph" ? (
+        <div className="report-two-column-charts">
+          <WorkloadChart items={visibleRooms} maximum={maximum} metric={metric} title="Room workload" />
+          <WorkloadChart items={visibleStaff} maximum={maximum} metric={metric} title="Staff workload" />
+        </div>
+      ) : (
+        <div className="report-two-column-tables">
+          <WorkloadTable title="Room workload" items={roomItems.slice(0, 20)} />
+          <WorkloadTable title="Staff workload" items={staffItems.slice(0, 20)} />
+        </div>
+      )}
+    </>
+  );
+}
+
+function ConsolidatedConflictCard({ group }: { group: ConsolidatedConflictGroup }) {
+  return (
+    <section className={`report-conflict-group ${group.severity.toLowerCase()}`}>
+      <header>
+        <div className="report-conflict-group-title">
+          <StatusBadge label={group.severity} tone={group.severity === "HARD" ? "bad" : "warn"} />
+          <div>
+            <h3>{formatCode(group.constraint_code)}</h3>
+            <span>
+              {group.details.length} consolidated detail row{group.details.length === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+        <div className="report-conflict-group-metrics">
+          <span>
+            <strong>{group.occurrence_count}</strong> occurrence{group.occurrence_count === 1 ? "" : "s"}
+          </span>
+          <span>
+            <strong>{group.affected_sessions.length}</strong> affected session
+            {group.affected_sessions.length === 1 ? "" : "s"}
+          </span>
+        </div>
+      </header>
+      <div className="report-conflict-details">
+        {group.details.map((detail) => (
+          <article key={detail.message}>
+            <div className="report-conflict-message">
+              <p>{detail.message}</p>
+              {detail.occurrence_count > 1 && <span>{detail.occurrence_count} identical occurrences</span>}
+            </div>
+            <div className="report-conflict-sessions">
+              <strong>Affected sessions</strong>
+              <div>
+                {detail.affected_sessions.map((session) => (
+                  <span key={session.session_id} title={session.placement}>
+                    {reportConflictSessionLabel(session)}
+                  </span>
+                ))}
+                {detail.affected_sessions.length === 0 && <em>None recorded</em>}
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function WorkloadChart({
+  title,
+  items,
+  metric,
+  maximum,
+}: {
+  title: string;
+  items: ReportWorkloadItem[];
+  metric: WorkloadMetric;
+  maximum: number;
+}) {
+  const unit = metric === "session_count" ? "sessions" : "hours";
+  return (
+    <section className="report-workload-chart">
+      <header>
+        <div>
+          <h3>{title}</h3>
+          <span>
+            Top {items.length} by {unit}
+          </span>
+        </div>
+        <strong>{maximum.toLocaleString("en-SG")} max</strong>
+      </header>
+      <div className="report-workload-chart-rows">
+        {items.map((item) => {
+          const value = item[metric];
+          return (
+            <div className="report-workload-chart-row" key={item.label}>
+              <div className="report-workload-resource" title={item.label}>
+                <strong>{item.label}</strong>
+                <small>
+                  {item.session_count} sessions · {item.hours} hours
+                </small>
+              </div>
+              <div className="report-workload-bar" aria-hidden="true">
+                <span style={{ width: `${(value / maximum) * 100}%` }} />
+              </div>
+              <strong>
+                {value.toLocaleString("en-SG")}
+                {metric === "hours" ? "h" : ""}
+              </strong>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -575,6 +860,10 @@ function formatCode(value: string) {
     .split("_")
     .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
     .join(" ");
+}
+
+function reportConflictSessionLabel(session: ConsolidatedConflictGroup["affected_sessions"][number]) {
+  return session.module_code ?? session.requirement_id ?? `Session ${session.session_id}`;
 }
 
 function labOverlapResources(resources: ScheduleReport["lab_overlap_resolution"]["overlaps"][number]["resources"]) {

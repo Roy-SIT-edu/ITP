@@ -14,6 +14,7 @@ import type {
   Dashboard,
   DatabaseRow,
   DatabaseTypeInfo,
+  ExportPreview,
   ImportPreviewRow,
   MoveOptionsResponse,
   PlanningPeriodDefault,
@@ -290,7 +291,13 @@ export function scheduleReportPdfUrl(scheduleRunId: number) {
 export function moveScheduledSession(
   scheduleRunId: number,
   sessionId: number,
-  data: { day: string; start_time: string; end_time: string; room_code: string },
+  data: {
+    day: string;
+    start_time: string;
+    end_time: string;
+    room_code: string;
+    change_source?: "MANUAL_CHANGE" | "QUICK_FIX";
+  },
 ) {
   return request<{ message: string; schedule_run: ScheduleRun | null; violations: ConstraintViolation[] }>(
     `/api/schedules/${scheduleRunId}/sessions/${sessionId}`,
@@ -335,12 +342,9 @@ export function recheckSchedule(scheduleRunId: number) {
 
 export function autoDeconflict(scheduleRunId: number, timeoutSeconds?: number) {
   const timeoutQuery = timeoutSeconds === undefined ? "" : `?timeout_seconds=${encodeURIComponent(timeoutSeconds)}`;
-  return request<ScheduleGenerateResult>(
-    `/api/schedules/${scheduleRunId}/auto-deconflict${timeoutQuery}`,
-    {
-      method: "POST",
-    },
-  );
+  return request<ScheduleGenerateResult>(`/api/schedules/${scheduleRunId}/auto-deconflict${timeoutQuery}`, {
+    method: "POST",
+  });
 }
 
 export function getViolations(scheduleRunId: number) {
@@ -349,6 +353,10 @@ export function getViolations(scheduleRunId: number) {
 
 export function exportUrl(scheduleRunId: number, format: "csv" | "xlsx") {
   return `${API_BASE}/api/export/${scheduleRunId}/${format}`;
+}
+
+export function getExportPreview(scheduleRunId: number) {
+  return request<ExportPreview>(`/api/export/${scheduleRunId}/preview`);
 }
 
 export function createSession(data: Omit<SessionRow, "id">) {

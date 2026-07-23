@@ -6,6 +6,7 @@ import pytest
 from app.database import get_db
 from app.main import app
 from app.models.room import Room
+from app.models.schedule_change_log import ScheduleChangeLog
 from app.models.schedule_run import ScheduleRun
 from app.models.scheduled_session import ScheduledSession
 from app.models.session import Session
@@ -114,6 +115,11 @@ def test_auto_deconflict_moves_flexible_session_and_preserves_source(db_session)
     assert result["solver_timeout_seconds"] is None
     assert _source_snapshot(db_session, run, sessions) == before
     assert not [item for item in ConstraintService().check_schedule(db_session, result["schedule_run_id"]) if item["severity"] == "HARD"]
+    change = db_session.query(ScheduleChangeLog).filter_by(schedule_run_id=result["schedule_run_id"]).one()
+    assert change.change_source == "AUTO_DECONFLICT"
+    assert change.source_schedule_run_id == run.id
+    assert change.before_room_code
+    assert change.after_room_code
 
 
 def test_auto_deconflict_moves_uploaded_fixed_sessions_without_rewriting_source(db_session):
